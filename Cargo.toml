@@ -1,0 +1,48 @@
+[package]
+name = "poc"
+version = "0.1.0"
+edition = "2018"
+authors = ["zaq"]
+license = "MIT OR Apache-2.0"
+documentation = "https://docs.rs/poc/0.1.0"
+homepage = "https://github.com/zaq/poc"
+repository = "https://github.com/zaq/poc"
+
+[dependencies]
+winit = { version = "0.24", features = ["serde"] }
+sierra = { version = "0.1", path = "../sierra", features = ["serde-1"] }
+skelly = { version = "0.3", path = "../skelly" }
+futures = "0.3"
+tracing = "0.1"
+tracing-error = "0.1"
+tracing-subscriber = "0.2"
+na = { package = "nalgebra", version = "0.26", features = ["serde-serialize"] }
+parking_lot = "0.11"
+ahash = { version = "0.7", features = ["compile-time-rng"] }
+hashbrown = { version = "0.11" }
+hecs = "0.5"
+tokio = { version = "1.0", features = ["rt"] }
+num_cpus = "1.0"
+eyre = "0.6"
+color-eyre = "0.5"
+thiserror = "1.0"
+parry2d = "0.4"
+parry3d = "0.4"
+percent-encoding = "2.1"
+base64 = "0.13"
+serde = "1.0"
+serde_json = "1.0"
+serde_bytes = "0.11"
+raw-window-handle = "0.3"
+bumpalo = "3.6"
+flume = "0.10"
+image = "0.23"
+ordered-float = "2.1"
+bytemuck = "1.0"
+url = "2.2"
+gltf = "0.15"
+byteorder = "1.4"
+cgmath = "0.18"
+
+[workspace]
+members = ["untitled", "store"]
