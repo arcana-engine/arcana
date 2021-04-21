@@ -1,5 +1,5 @@
 use {
-    crate::{clocks::ClockIndex, resources::Res},
+    crate::{clocks::ClockIndex, control::Control, prefab::PrefabLoader, resources::Res},
     bumpalo::Bump,
     hecs::World,
     std::time::{Duration, Instant},
@@ -12,6 +12,12 @@ pub struct SystemContext<'a> {
 
     /// Resources map.
     pub res: &'a mut Res,
+
+    /// Input controllers.
+    pub control: &'a mut Control,
+
+    /// Prefab loader.
+    pub loader: &'a PrefabLoader,
 
     /// Bump allocator.
     pub bump: &'a Bump,
@@ -89,8 +95,10 @@ impl Scheduler {
 
         'fixed: loop {
             let mut cx = SystemContext {
-                world: cx.world,
                 res: cx.res,
+                world: cx.world,
+                control: cx.control,
+                loader: cx.loader,
                 bump: cx.bump,
                 clock: cx.clock,
             };
@@ -111,8 +119,10 @@ impl Scheduler {
 
         for system in self.var_systems.iter_mut() {
             let cx = SystemContext {
-                world: cx.world,
                 res: cx.res,
+                world: cx.world,
+                control: cx.control,
+                loader: cx.loader,
                 bump: cx.bump,
                 clock: cx.clock,
             };

@@ -11,7 +11,7 @@ use {
     ::image::ImageError,
     futures::future::{try_join_all, BoxFuture},
     gltf::accessor::{DataType, Dimensions},
-    sierra::{Buffer, BufferUsage, ImageInfo, ImageView, OutOfMemory, Sampler},
+    sierra::{BufferUsage, ImageInfo, ImageView, OutOfMemory, Sampler},
     std::{collections::HashMap, sync::Arc},
     url::Url,
 };

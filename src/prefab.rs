@@ -30,6 +30,7 @@ pub trait Prefab: Send + Sync + 'static {
 }
 
 pub struct PrefabLoader {
+    loader: Loader,
     sender: Sender<Box<dyn FnOnce(&mut Res, &mut World, &mut Graphics) + Send>>,
 }
 
@@ -38,8 +39,8 @@ pub struct PrefabSpawner {
 }
 
 impl PrefabLoader {
-    pub fn load_prefab<P: Prefab>(&self, prefab: P, loader: &Loader, world: &mut World) -> Entity {
-        let fut = prefab.load(loader);
+    pub fn load_prefab<P: Prefab>(&self, prefab: P, world: &mut World) -> Entity {
+        let fut = prefab.load(&self.loader);
         let entity = world.spawn((prefab,));
 
         let sender = self.sender.clone();
@@ -71,8 +72,8 @@ impl PrefabSpawner {
     }
 }
 
-pub fn prefab_pipe() -> (PrefabLoader, PrefabSpawner) {
+pub fn prefab_pipe(loader: Loader) -> (PrefabLoader, PrefabSpawner) {
     let (sender, receiver) = unbounded();
 
-    (PrefabLoader { sender }, PrefabSpawner { receiver })
+    (PrefabLoader { loader, sender }, PrefabSpawner { receiver })
 }

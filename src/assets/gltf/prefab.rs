@@ -1,5 +1,5 @@
 use {
-    super::{GltfAsset, GltfFormat, GltfRenderable},
+    super::{GltfAsset, GltfFormat},
     crate::{
         assets::{AssetHandle, AssetResult, Loader},
         graphics::{Graphics, Scale},

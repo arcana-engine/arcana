@@ -23,11 +23,11 @@ mod viewport;
 
 pub use self::{
     clocks::{ClockIndex, Clocks, FixedClockStepIter},
-    control::{AssumeControlError, InputController, InputTranslator},
+    control::{AssumeControlError, Control, ControlResult, InputController},
     debug::{DebugInfo, EntityDebugInfo, EntityDispay, EntityRefDebugInfo, EntityRefDisplay},
-    funnel::{run_funnel, Funnel},
-    game::Game,
-    prefab::{Prefab, PrefabLoader},
+    funnel::Funnel,
+    game::{game, Game},
+    prefab::{prefab_pipe, Prefab, PrefabLoader, PrefabSpawner},
     resources::Res,
     scene::{Global3, Local3, SceneSystem},
     system::{Scheduler, System, SystemContext},

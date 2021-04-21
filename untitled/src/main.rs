@@ -1,18 +1,19 @@
 use poc::*;
 
 fn main() {
-    Game::new()
-        // Register systems
-        .with_system(camera::FreeCameraSystem)
-        // Load something
-        .with_prefab(assets::gltf::Gltf::new("sponza/Sponza.gltf".into()))
-        // Setup controller
-        .run(|game| {
-            InputController::with_controlled(
-                game.camera,
-                game.world,
-                camera::FreeCameraTranslator::new(),
+    game(|mut game| async move {
+        game.scheduler.add_system(camera::FreeCameraSystem);
+        game.loader.load_prefab(
+            assets::gltf::Gltf::new("sponza/Sponza.gltf".into()),
+            &mut game.world,
+        );
+        game.control
+            .assume_control(
+                game.viewport.camera(),
+                camera::FreeCameraController::new(),
+                &mut game.world,
             )
-            .map_err(Into::into)
-        });
+            .unwrap();
+        Ok(game)
+    })
 }

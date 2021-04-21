@@ -1,8 +1,8 @@
 use {
     super::{align_vec, GltfBuildContext, GltfDecoded, GltfLoadingError, GltfRenderable},
     crate::graphics::{
-        Binding, Indices, Joints, MeshBuilder, Normal3d, Position3d, PositionNormalTangent3dUV,
-        Skin, Tangent3d, VertexType, VerticesFromBytes, Weights, UV,
+        Binding, Indices, Joints, MeshBuilder, Normal3d, Position3d, Tangent3d, VertexType,
+        VerticesFromBytes, Weights, UV,
     },
     byteorder::{ByteOrder as _, LittleEndian},
     gltf::accessor::{Accessor, DataType, Dimensions},

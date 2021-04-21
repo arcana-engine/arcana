@@ -22,7 +22,7 @@ pub struct Viewport {
 
 impl Viewport {
     /// Returns new viewport instance attached to specified camera.
-    pub fn new(camera: Entity, window: &Window, graphics: &mut Graphics) -> eyre::Result<Self> {
+    pub fn new(camera: Entity, window: &Window, graphics: &Graphics) -> eyre::Result<Self> {
         let mut surface = graphics.create_surface(window)?;
         let mut swapchain = graphics.create_swapchain(&mut surface)?;
         swapchain.configure(
@@ -38,6 +38,10 @@ impl Viewport {
             swapchain,
             needs_redraw: true,
         })
+    }
+
+    pub fn set_camera(&mut self, camera: Entity) {
+        self.camera = camera;
     }
 
     pub fn camera(&self) -> Entity {

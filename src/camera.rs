@@ -1,8 +1,8 @@
 //! Provides types and functions to deal with various types of cameras.
 
 use crate::{
-    control::{Command, InputTranslator},
-    event::{DeviceEvent, ElementState, Event, KeyboardInput, VirtualKeyCode},
+    control::{ControlResult, InputController},
+    event::{DeviceEvent, ElementState, KeyboardInput, VirtualKeyCode},
     scene::Global3,
     system::{System, SystemContext},
 };
@@ -149,50 +149,32 @@ impl Camera3d {
     }
 }
 
-pub struct FreeCameraTranslator {
-    pitch: f32,
-    yaw: f32,
-}
-
-impl FreeCameraTranslator {
-    pub fn new() -> Self {
-        FreeCameraTranslator {
-            pitch: 0.0,
-            yaw: 0.0,
-        }
-    }
-}
-
 #[derive(Debug, Default)]
 pub struct FreeCamera {
     rot: na::UnitQuaternion<f32>,
     speed: na::Vector3<f32>,
 }
 
-#[derive(Debug)]
-pub enum FreeCameraCommand {
-    Rot(na::UnitQuaternion<f32>),
-    Dir(na::Vector3<f32>),
+pub struct FreeCameraController {
+    pitch: f32,
+    yaw: f32,
 }
 
-impl Command for FreeCameraCommand {
-    type Queue = FreeCamera;
-
-    fn enque(self, free_camera: &mut FreeCamera) {
-        match self {
-            FreeCameraCommand::Rot(rot) => free_camera.rot = rot,
-            FreeCameraCommand::Dir(dir) => free_camera.speed += dir,
+impl FreeCameraController {
+    pub fn new() -> Self {
+        FreeCameraController {
+            pitch: 0.0,
+            yaw: 0.0,
         }
     }
 }
 
-impl InputTranslator<FreeCameraCommand> for FreeCameraTranslator {
-    fn translate_event(&mut self, event: Event) -> Result<FreeCameraCommand, Event> {
+impl InputController for FreeCameraController {
+    type Controlled = FreeCamera;
+
+    fn control(&mut self, event: DeviceEvent, free_camera: &mut FreeCamera) -> ControlResult {
         match event {
-            Event::DeviceEvent {
-                event: DeviceEvent::MouseMotion { delta: (x, y) },
-                ..
-            } => {
+            DeviceEvent::MouseMotion { delta: (x, y) } => {
                 self.pitch -= x as f32 * 0.01;
                 self.yaw -= y as f32 * 0.01;
 
@@ -209,37 +191,41 @@ impl InputTranslator<FreeCameraCommand> for FreeCameraTranslator {
                     self.pitch -= std::f32::consts::TAU
                 }
 
-                Ok(FreeCameraCommand::Rot(
-                    na::UnitQuaternion::from_euler_angles(0.0, self.pitch, 0.0)
-                        * na::UnitQuaternion::from_euler_angles(self.yaw, 0.0, 0.0),
-                ))
+                free_camera.rot = na::UnitQuaternion::from_euler_angles(0.0, self.pitch, 0.0)
+                    * na::UnitQuaternion::from_euler_angles(self.yaw, 0.0, 0.0);
+
+                ControlResult::Consumed
             }
-            Event::DeviceEvent {
-                event:
-                    DeviceEvent::Key(KeyboardInput {
-                        virtual_keycode: Some(key),
-                        state,
-                        ..
-                    }),
+            DeviceEvent::Key(KeyboardInput {
+                virtual_keycode: Some(key),
+                state,
                 ..
-            } => {
+            }) => {
                 let s = match state {
                     ElementState::Pressed => 1.0,
                     ElementState::Released => -1.0,
                 };
 
-                match key {
-                    VirtualKeyCode::W => Ok(FreeCameraCommand::Dir(-na::Vector3::z() * s)),
-                    VirtualKeyCode::S => Ok(FreeCameraCommand::Dir(na::Vector3::z() * s)),
-                    VirtualKeyCode::A => Ok(FreeCameraCommand::Dir(-na::Vector3::x() * s)),
-                    VirtualKeyCode::D => Ok(FreeCameraCommand::Dir(na::Vector3::x() * s)),
-                    VirtualKeyCode::Space => Ok(FreeCameraCommand::Dir(na::Vector3::y() * s)),
-                    VirtualKeyCode::LControl => Ok(FreeCameraCommand::Dir(-na::Vector3::y() * s)),
-                    _ => Err(event),
-                }
+                let dir = match key {
+                    VirtualKeyCode::W => -na::Vector3::z() * s,
+                    VirtualKeyCode::S => na::Vector3::z() * s,
+                    VirtualKeyCode::A => -na::Vector3::x() * s,
+                    VirtualKeyCode::D => na::Vector3::x() * s,
+                    VirtualKeyCode::Space => na::Vector3::y() * s,
+                    VirtualKeyCode::LControl => -na::Vector3::y() * s,
+                    _ => return ControlResult::Ignored,
+                };
+
+                free_camera.speed += dir;
+
+                ControlResult::Consumed
             }
-            event => Err(event),
+            _ => ControlResult::Ignored,
         }
+    }
+
+    fn controlled(&self) -> Self::Controlled {
+        FreeCamera::default()
     }
 }
 

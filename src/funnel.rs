@@ -7,20 +7,42 @@ pub trait Funnel<T> {
     fn filter(&mut self, res: &mut Res, world: &mut World, value: T) -> Option<T>;
 }
 
-/// Run value through the series of funnel.
-pub fn run_funnel<T>(
-    funnel: &mut [&mut dyn Funnel<T>],
-    res: &mut Res,
-    world: &mut World,
-    value: T,
-) -> Option<T> {
-    let mut value = value;
-    for f in funnel {
-        if let Some(filtered) = f.filter(res, world, value) {
-            value = filtered;
-        } else {
-            return None;
+impl<T, F> Funnel<T> for [F]
+where
+    F: Funnel<T>,
+{
+    fn filter(&mut self, res: &mut Res, world: &mut World, value: T) -> Option<T> {
+        let mut value = value;
+        for f in self {
+            if let Some(filtered) = f.filter(res, world, value) {
+                value = filtered;
+            } else {
+                return None;
+            }
         }
+        Some(value)
     }
-    Some(value)
+}
+
+impl<T, F, const N: usize> Funnel<T> for [F; N]
+where
+    F: Funnel<T>,
+{
+    fn filter(&mut self, res: &mut Res, world: &mut World, value: T) -> Option<T> {
+        let mut value = value;
+        for f in self {
+            if let Some(filtered) = f.filter(res, world, value) {
+                value = filtered;
+            } else {
+                return None;
+            }
+        }
+        Some(value)
+    }
+}
+
+impl<T> Funnel<T> for &mut dyn Funnel<T> {
+    fn filter(&mut self, res: &mut Res, world: &mut World, value: T) -> Option<T> {
+        Funnel::filter(&mut **self, res, world, value)
+    }
 }
