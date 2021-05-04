@@ -1,12 +1,13 @@
-# untitled
+# Arcana
 
-[![crates](https://img.shields.io/crates/v/untitled.svg?style=for-the-badge&label=untitled)](https://crates.io/crates/untitled)
-[![docs](https://img.shields.io/badge/docs.rs-untitled-66c2a5?style=for-the-badge&labelColor=555555&logoColor=white)](https://docs.rs/untitled)
-[![actions](https://img.shields.io/github/workflow/status/zakarumych/untitled/badge/master?style=for-the-badge)](https://github.com/zakarumych/untitled/actions?query=workflow%3ARust)
+[![crates](https://img.shields.io/crates/v/arcana.svg?style=for-the-badge&label=arcana)](https://crates.io/crates/arcana)
+[![docs](https://img.shields.io/badge/docs.rs-arcana-66c2a5?style=for-the-badge&labelColor=555555&logoColor=white)](https://docs.rs/arcana)
+[![actions](https://img.shields.io/github/workflow/status/zakarumych/arcana/badge/master?style=for-the-badge)](https://github.com/zakarumych/arcana/actions?query=workflow%3ARust)
 [![MIT/Apache](https://img.shields.io/badge/license-MIT%2FApache-blue.svg?style=for-the-badge)](COPYING)
-![loc](https://img.shields.io/tokei/lines/github/zakarumych/untitled?style=for-the-badge)
+![loc](https://img.shields.io/tokei/lines/github/zakarumych/arcana?style=for-the-badge)
 
-{{readme}}
+
+Simple and someday powerful game engine.
 
 ## License
 

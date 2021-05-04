@@ -1,6 +1,6 @@
 use {
     crate::{
-        camera::Camera3d,
+        camera::{Camera2, Camera3},
         event::{Event, WindowEvent},
         funnel::Funnel,
         graphics::Graphics,
@@ -28,7 +28,7 @@ impl Viewport {
         swapchain.configure(
             ImageUsage::COLOR_ATTACHMENT,
             Format::BGRA8Srgb,
-            PresentMode::Fifo,
+            PresentMode::Immediate,
         )?;
 
         Ok(Viewport {
@@ -71,7 +71,11 @@ impl Funnel<Event> for Viewport {
                 event: WindowEvent::Resized(size),
                 ..
             } => {
-                if let Ok(mut camera) = world.get_mut::<Camera3d>(self.camera) {
+                if let Ok(mut camera) = world.get_mut::<Camera3>(self.camera) {
+                    camera.set_aspect(size.width as f32 / size.height as f32);
+                }
+
+                if let Ok(mut camera) = world.get_mut::<Camera2>(self.camera) {
                     camera.set_aspect(size.width as f32 / size.height as f32);
                 }
 

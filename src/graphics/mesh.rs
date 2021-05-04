@@ -1,6 +1,6 @@
 use {
     super::{
-        vertex::{Semantics, VertexLayout, VertexLocation, VertexType},
+        vertex::{Position3, Semantics, VertexLayout, VertexLocation, VertexType},
         Graphics,
     },
     bumpalo::{collections::Vec as BVec, Bump},
@@ -140,7 +140,7 @@ impl Mesh {
                     .layout
                     .locations
                     .iter()
-                    .find(|&attr| attr.semantics == Some(Semantics::Position3d))
+                    .find(|&attr| attr.semantics == Semantics::Position3)
                     .map(move |location| (binding, location))
             })
             .next()
@@ -175,7 +175,7 @@ impl Mesh {
                     .layout
                     .locations
                     .iter()
-                    .find(|&attr| attr.semantics == Some(Semantics::Position3d))
+                    .find(|&attr| attr.semantics == Semantics::Position3)
                     .map(move |location| (binding, location))
             })
             .next()
@@ -245,6 +245,30 @@ pub struct IndicesData<'a> {
     pub index_type: IndexType,
 }
 
+impl<'a, const N: usize> From<&'a [u16; N]> for IndicesData<'a> {
+    fn from(indices: &'a [u16; N]) -> Self {
+        IndicesData {
+            data: unsafe {
+                std::slice::from_raw_parts(indices.as_ptr() as *const u8, size_of_val(indices))
+            }
+            .into(),
+            index_type: IndexType::U16,
+        }
+    }
+}
+
+impl<'a, const N: usize> From<&'a [u32; N]> for IndicesData<'a> {
+    fn from(indices: &'a [u32; N]) -> Self {
+        IndicesData {
+            data: unsafe {
+                std::slice::from_raw_parts(indices.as_ptr() as *const u8, size_of_val(indices))
+            }
+            .into(),
+            index_type: IndexType::U32,
+        }
+    }
+}
+
 impl<'a> From<&'a [u16]> for IndicesData<'a> {
     fn from(indices: &'a [u16]) -> Self {
         IndicesData {
@@ -283,7 +307,11 @@ pub struct MeshData<'a> {
 }
 
 impl MeshData<'_> {
-    pub fn new(topology: PrimitiveTopology) -> Self {
+    pub fn new() -> Self {
+        MeshData::with_topology(PrimitiveTopology::TriangleList)
+    }
+
+    pub fn with_topology(topology: PrimitiveTopology) -> Self {
         MeshData {
             bindings: Vec::new(),
             indices: None,
@@ -434,7 +462,7 @@ mod gm {
     use {
         super::*,
         crate::renderer::vertex::{
-            Color, Normal3d, Position3d, PositionNormal3d, PositionNormal3dColor, VertexType,
+            Color, Normal3, Position3, PositionNormal3, PositionNormal3Color, VertexType,
         },
     };
 
@@ -448,7 +476,7 @@ mod gm {
         where
             G: SharedVertex<Vertex> + IndexedPolygon<Quad<usize>>,
         {
-            Self::from_generator(generator, usage, ctx, index_type, Position3d::from)
+            Self::from_generator(generator, usage, ctx, index_type, Position3::from)
         }
 
         pub fn from_generator_pos_norm<G>(
@@ -460,7 +488,7 @@ mod gm {
         where
             G: SharedVertex<Vertex> + IndexedPolygon<Quad<usize>>,
         {
-            Self::from_generator(generator, usage, ctx, index_type, PositionNormal3d::from)
+            Self::from_generator(generator, usage, ctx, index_type, PositionNormal3::from)
         }
 
         pub fn from_generator_pos_norm_fixed_color<G>(
@@ -474,7 +502,7 @@ mod gm {
             G: SharedVertex<Vertex> + IndexedPolygon<Quad<usize>>,
         {
             Self::from_generator(generator, usage, ctx, index_type, |v| {
-                PositionNormal3dColor {
+                PositionNormal3Color {
                     position: v.into(),
                     normal: v.into(),
                     color,
@@ -645,7 +673,7 @@ impl PoseMesh {
                 .layout
                 .locations
                 .iter()
-                .any(|l| l.semantics.map_or(false, |s| s.animate()));
+                .any(|l| l.semantics.animate());
 
             if animate {
                 prebindings.push((binding.layout.clone(), offset));
@@ -690,13 +718,13 @@ fn build_triangles_blas<'a>(
     assert_eq!(count % 3, 0);
     let triangle_count = count / 3;
 
-    assert_eq!(binding.layout.rate, VertexInputRate::Vertex);
+    assert_eq!(binding.layout, Position3::layout());
 
-    let pos_address = device
-        .get_buffer_device_address(&binding.buffer)
-        .unwrap()
-        .offset(binding.offset)
-        .offset(location.offset.into());
+    let pos_range = BufferRange {
+        buffer: binding.buffer.clone(),
+        offset: binding.offset,
+        size: u64::from(Position3::layout().stride) * u64::from(vertex_count),
+    };
 
     let sizes = device.get_acceleration_structure_build_sizes(
         AccelerationStructureLevel::Bottom,
@@ -736,20 +764,21 @@ fn build_triangles_blas<'a>(
     let geometries = bump.alloc([AccelerationStructureGeometry::Triangles {
         flags: GeometryFlags::empty(),
         vertex_format: Format::RGB32Sfloat,
-        vertex_data: pos_address,
+        vertex_data: pos_range,
         vertex_stride: binding.layout.stride.into(),
         vertex_count,
         first_vertex: 0,
         primitive_count: triangle_count,
         index_data: indices.map(|indices| {
-            let index_address = device
-                .get_buffer_device_address(&indices.buffer)
-                .unwrap()
-                .offset(indices.offset);
+            let index_range = BufferRange {
+                buffer: indices.buffer.clone(),
+                offset: indices.offset,
+                size: u64::from(indices.index_type.size()) * u64::from(count),
+            };
 
             match indices.index_type {
-                IndexType::U16 => IndexData::U16(index_address),
-                IndexType::U32 => IndexData::U32(index_address),
+                IndexType::U16 => IndexData::U16(index_range),
+                IndexType::U32 => IndexData::U32(index_range),
             }
         }),
         transform_data: None,

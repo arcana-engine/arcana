@@ -1,12 +1,12 @@
 [package]
-name = "poc"
+name = "arcana"
 version = "0.1.0"
 edition = "2018"
 authors = ["zaq"]
 license = "MIT OR Apache-2.0"
-documentation = "https://docs.rs/poc/0.1.0"
-homepage = "https://github.com/zaq/poc"
-repository = "https://github.com/zaq/poc"
+documentation = "https://docs.rs/arcana/0.1.0"
+homepage = "https://github.com/zaq/arcana"
+repository = "https://github.com/zaq/arcana"
 
 [dependencies]
 winit = { version = "0.24", features = ["serde"] }
@@ -34,7 +34,7 @@ serde = "1.0"
 serde_json = "1.0"
 serde_bytes = "0.11"
 raw-window-handle = "0.3"
-bumpalo = "3.6"
+bumpalo = { version = "3.6", features = ["collections", "boxed"] }
 flume = "0.10"
 image = "0.23"
 ordered-float = "2.1"
@@ -43,6 +43,14 @@ url = "2.2"
 gltf = "0.15"
 byteorder = "1.4"
 cgmath = "0.18"
+lazy_static = "1.0"
+
+rapier2d = "0.8"
+rapier3d = "0.8"
 
 [workspace]
-members = ["untitled", "store"]
+members = ["sponza", "blocks", "disk_game"]
+
+[patch.crates-io]
+parry2d = { version = "0.4.1", path = "../parry/build/parry2d" }
+parry3d = { version = "0.4.1", path = "../parry/build/parry3d" }

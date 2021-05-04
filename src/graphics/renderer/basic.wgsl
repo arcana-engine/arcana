@@ -28,6 +28,7 @@ struct Uniforms {
     camera_proj: mat4x4<f32>;
     transform: mat4x4<f32>;
     joints: [[stride(64)]] array<Joint, 128>;
+    albedo_factor: vec3<f32>;
 };
 
 [[group(0), binding(0)]]

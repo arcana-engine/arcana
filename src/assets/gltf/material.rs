@@ -16,8 +16,12 @@ impl GltfBuildContext<'_> {
         }
     }
 
-    fn get_texture(&mut self, texture: gltf::Texture) -> Result<Texture, GltfLoadingError> {
-        let image = self.get_image(texture.source())?;
+    fn get_texture(
+        &mut self,
+        texture: gltf::Texture,
+        srgb: bool,
+    ) -> Result<Texture, GltfLoadingError> {
+        let image = self.get_image(texture.source(), srgb)?;
         let sampler = self.get_sampler(texture.sampler())?;
         Ok(Texture { image, sampler })
     }
@@ -27,7 +31,7 @@ impl GltfBuildContext<'_> {
 
         Ok(Material {
             albedo_coverage: match pbr.base_color_texture() {
-                Some(info) => Some(self.get_texture(info.texture())?),
+                Some(info) => Some(self.get_texture(info.texture(), true)?),
                 None => None,
             },
             albedo_factor: {
@@ -40,14 +44,14 @@ impl GltfBuildContext<'_> {
             },
 
             metalness_roughness: match pbr.metallic_roughness_texture() {
-                Some(info) => Some(self.get_texture(info.texture())?),
+                Some(info) => Some(self.get_texture(info.texture(), false)?),
                 None => None,
             },
             metalness_factor: pbr.metallic_factor().into(),
             roughness_factor: pbr.roughness_factor().into(),
 
             emissive: match material.emissive_texture() {
-                Some(info) => Some(self.get_texture(info.texture())?),
+                Some(info) => Some(self.get_texture(info.texture(), true)?),
                 None => None,
             },
             emissive_factor: {
@@ -59,7 +63,7 @@ impl GltfBuildContext<'_> {
             transmission_factor: 0.0.into(),
 
             normal: match material.normal_texture() {
-                Some(info) => Some(self.get_texture(info.texture())?),
+                Some(info) => Some(self.get_texture(info.texture(), false)?),
                 None => None,
             },
             normal_factor: material

@@ -1,10 +1,10 @@
-# poc
+# arcana
 
-[![crates](https://img.shields.io/crates/v/poc.svg?style=for-the-badge&label=poc)](https://crates.io/crates/poc)
-[![docs](https://img.shields.io/badge/docs.rs-poc-66c2a5?style=for-the-badge&labelColor=555555&logoColor=white)](https://docs.rs/poc)
-[![actions](https://img.shields.io/github/workflow/status/zakarumych/poc/badge/master?style=for-the-badge)](https://github.com/zakarumych/poc/actions?query=workflow%3ARust)
+[![crates](https://img.shields.io/crates/v/arcana.svg?style=for-the-badge&label=arcana)](https://crates.io/crates/arcana)
+[![docs](https://img.shields.io/badge/docs.rs-arcana-66c2a5?style=for-the-badge&labelColor=555555&logoColor=white)](https://docs.rs/arcana)
+[![actions](https://img.shields.io/github/workflow/status/zakarumych/arcana/badge/master?style=for-the-badge)](https://github.com/zakarumych/arcana/actions?query=workflow%3ARust)
 [![MIT/Apache](https://img.shields.io/badge/license-MIT%2FApache-blue.svg?style=for-the-badge)](COPYING)
-![loc](https://img.shields.io/tokei/lines/github/zakarumych/poc?style=for-the-badge)
+![loc](https://img.shields.io/tokei/lines/github/zakarumych/arcana?style=for-the-badge)
 
 {{readme}}
 

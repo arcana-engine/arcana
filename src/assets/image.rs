@@ -33,7 +33,7 @@ impl Asset for ImageAsset {
 
     fn build(image: DynamicImage, graphics: &mut Graphics) -> Result<Self, CreateImageError> {
         let image = image.to_rgba8();
-        let image = image_view_from_dyn_image(&DynamicImage::ImageRgba8(image), graphics)?;
+        let image = image_view_from_dyn_image(&DynamicImage::ImageRgba8(image), false, graphics)?;
 
         Ok(ImageAsset { image })
     }
@@ -58,21 +58,33 @@ impl AssetDefaultFormat for ImageAsset {
 
 pub fn image_view_from_dyn_image(
     image: &DynamicImage,
+    srgb: bool,
     graphics: &mut Graphics,
 ) -> Result<ImageView, CreateImageError> {
     use sierra::Format;
 
-    let format = match &image {
-        DynamicImage::ImageLuma8(_) => Format::R8Unorm,
-        DynamicImage::ImageLumaA8(_) => Format::RG8Unorm,
-        DynamicImage::ImageRgb8(_) => Format::RGB8Unorm,
-        DynamicImage::ImageRgba8(_) => Format::RGBA8Unorm,
-        DynamicImage::ImageBgr8(_) => Format::BGR8Unorm,
-        DynamicImage::ImageBgra8(_) => Format::BGRA8Unorm,
-        DynamicImage::ImageLuma16(_) => Format::R16Unorm,
-        DynamicImage::ImageLumaA16(_) => Format::RG16Unorm,
-        DynamicImage::ImageRgb16(_) => Format::RGB16Unorm,
-        DynamicImage::ImageRgba16(_) => Format::RGBA16Unorm,
+    let format = match (&image, srgb) {
+        (DynamicImage::ImageLuma8(_), false) => Format::R8Unorm,
+        (DynamicImage::ImageLumaA8(_), false) => Format::RG8Unorm,
+        (DynamicImage::ImageRgb8(_), false) => Format::RGB8Unorm,
+        (DynamicImage::ImageRgba8(_), false) => Format::RGBA8Unorm,
+        (DynamicImage::ImageBgr8(_), false) => Format::BGR8Unorm,
+        (DynamicImage::ImageBgra8(_), false) => Format::BGRA8Unorm,
+        (DynamicImage::ImageLuma16(_), false) => Format::R16Unorm,
+        (DynamicImage::ImageLumaA16(_), false) => Format::RG16Unorm,
+        (DynamicImage::ImageRgb16(_), false) => Format::RGB16Unorm,
+        (DynamicImage::ImageRgba16(_), false) => Format::RGBA16Unorm,
+
+        (DynamicImage::ImageLuma8(_), true) => Format::R8Srgb,
+        (DynamicImage::ImageLumaA8(_), true) => Format::RG8Srgb,
+        (DynamicImage::ImageRgb8(_), true) => Format::RGB8Srgb,
+        (DynamicImage::ImageRgba8(_), true) => Format::RGBA8Srgb,
+        (DynamicImage::ImageBgr8(_), true) => Format::BGR8Srgb,
+        (DynamicImage::ImageBgra8(_), true) => Format::BGRA8Srgb,
+        (DynamicImage::ImageLuma16(_), true) => Format::R16Unorm,
+        (DynamicImage::ImageLumaA16(_), true) => Format::RG16Unorm,
+        (DynamicImage::ImageRgb16(_), true) => Format::RGB16Unorm,
+        (DynamicImage::ImageRgba16(_), true) => Format::RGBA16Unorm,
     };
 
     let (w, h) = image.dimensions();

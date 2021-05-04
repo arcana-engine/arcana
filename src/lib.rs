@@ -1,7 +1,7 @@
 // #![deny(missing_docs)]
 
 //!
-//! poc crate.
+//! arcana crate.
 //!
 
 pub mod assets;
@@ -15,6 +15,7 @@ mod control;
 mod debug;
 mod funnel;
 mod game;
+mod physics2;
 mod prefab;
 mod resources;
 mod scene;
@@ -26,10 +27,11 @@ pub use self::{
     control::{AssumeControlError, Control, ControlResult, InputController},
     debug::{DebugInfo, EntityDebugInfo, EntityDispay, EntityRefDebugInfo, EntityRefDisplay},
     funnel::Funnel,
-    game::{game, Game},
+    game::{game2, game3, Game},
+    physics2::{Physics2, PhysicsData2},
     prefab::{prefab_pipe, Prefab, PrefabLoader, PrefabSpawner},
     resources::Res,
-    scene::{Global3, Local3, SceneSystem},
+    scene::{Global2, Global3, Local2, Local3, SceneSystem},
     system::{Scheduler, System, SystemContext},
     viewport::Viewport,
 };

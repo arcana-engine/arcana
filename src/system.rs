@@ -33,6 +33,20 @@ pub trait System: 'static {
     fn run(&mut self, cx: SystemContext<'_>) -> eyre::Result<()>;
 }
 
+impl<F> System for F
+where
+    F: for<'a> FnMut(SystemContext<'a>) + 'static,
+{
+    fn name(&self) -> &str {
+        std::any::type_name::<F>()
+    }
+
+    fn run(&mut self, cx: SystemContext<'_>) -> eyre::Result<()> {
+        (*self)(cx);
+        Ok(())
+    }
+}
+
 struct FixSystem<S: ?Sized> {
     step: Duration,
     next: Instant,

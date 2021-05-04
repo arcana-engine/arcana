@@ -15,6 +15,7 @@ pub mod material;
 pub use self::{
     dataurl::DataUrlSource,
     fs::FsSource,
+    image::ImageAsset,
     loader::{AssetHandle, AssetResult, AssetResultPoisoned, Error, Loader, LoaderBuilder},
     source::Source,
 };

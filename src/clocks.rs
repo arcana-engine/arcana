@@ -52,7 +52,7 @@ impl Clocks {
     ///
     /// # Example
     /// ```
-    /// # use poc::Clocks;
+    /// # use arcana::Clocks;
     /// let mut clocks = Clocks::new();
     /// let mut last = clocks.step();
     /// loop {
@@ -79,7 +79,7 @@ impl Clocks {
     ///
     /// # Example
     /// ```
-    /// # use {poc::Clocks, std::time::Duration};
+    /// # use {arcana::Clocks, std::time::Duration};
     /// const DELTA: Duration = Duration::from_millis(10);
     /// let mut clocks = Clocks::new();
     /// let mut last = clocks.step();

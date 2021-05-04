@@ -1,7 +1,10 @@
+mod animation;
+mod collider;
 mod image;
 mod material;
-mod prefab;
-mod primitive;
+mod mesh;
+pub mod prefab;
+mod renderable;
 mod sampler;
 mod skin;
 
@@ -12,23 +15,79 @@ use {
     futures::future::{try_join_all, BoxFuture},
     gltf::accessor::{DataType, Dimensions},
     sierra::{BufferUsage, ImageInfo, ImageView, OutOfMemory, Sampler},
-    std::{collections::HashMap, sync::Arc},
+    std::{
+        collections::HashMap,
+        fmt::{self, Debug},
+        sync::Arc,
+    },
     url::Url,
 };
 
-pub use prefab::Gltf;
-
 #[derive(Clone, Debug)]
 pub struct GltfRenderable {
-    mesh: Mesh,
-    material: Material,
-    transform: na::Matrix4<f32>,
+    pub mesh: Mesh,
+    pub material: Material,
+}
+
+#[derive(Clone, Debug)]
+pub struct GltfMesh {
+    pub renderables: Option<Arc<[GltfRenderable]>>,
+    pub colliders: Option<Arc<[GltfCollider]>>,
+    pub skin: Option<GltfSkin>,
 }
 
 #[derive(Clone, Copy, Debug)]
 pub struct GltfFormat {
     pub mesh_vertices_usage: BufferUsage,
     pub mesh_indices_usage: BufferUsage,
+}
+
+#[derive(Clone, Debug)]
+pub struct GltfSkin {
+    inverse_binding_matrices: Option<Arc<[na::Matrix4<f32>]>>,
+    joints: Arc<[usize]>,
+}
+
+#[derive(Clone, Debug)]
+pub enum GltfSamplerOutput {
+    Scalar(Arc<[f32]>),
+    Vec2(Arc<[[f32; 2]]>),
+    Vec3(Arc<[[f32; 3]]>),
+    Vec4(Arc<[[f32; 4]]>),
+}
+
+#[derive(Clone, Debug)]
+pub struct GltfChannel {
+    node: usize,
+    property: gltf::animation::Property,
+    input: Arc<[f32]>,
+    output: GltfSamplerOutput,
+    interpolation: gltf::animation::Interpolation,
+}
+
+#[derive(Clone, Debug)]
+pub struct GltfAnimation {
+    channels: Arc<[GltfChannel]>,
+}
+
+#[derive(Clone, Copy)]
+pub enum ColliderKind {
+    AABB,
+    Convex,
+    TriMesh,
+}
+
+#[derive(Clone)]
+pub struct GltfCollider {
+    shape: parry3d::shape::SharedShape,
+}
+
+impl Debug for GltfCollider {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        f.debug_struct("GltfCollider")
+            .field("shape", &self.shape.shape_type())
+            .finish()
+    }
 }
 
 impl Default for GltfFormat {
@@ -53,22 +112,21 @@ impl GltfFormat {
     }
 }
 
-/// gltf scenes with initialized resources.
+/// GLTF scenes with initialized resources.
 #[derive(Clone, Debug)]
 pub struct GltfAsset {
-    gltf: gltf::Gltf,
-    renderables: Arc<[Box<[GltfRenderable]>]>,
+    pub gltf: gltf::Gltf,
+    pub meshes: Arc<[GltfMesh]>,
+    pub animations: Arc<[GltfAnimation]>,
 }
 
 struct GltfBuildContext<'a> {
     decoded: &'a GltfDecoded,
     graphics: &'a mut Graphics,
-    // buffers: HashMap<usize, Buffer>,
     images: HashMap<usize, ImageView>,
     samplers: HashMap<Option<usize>, Sampler>,
     materials: HashMap<Option<usize>, Material>,
-    primitives: HashMap<usize, GltfRenderable>,
-    // default_sampler: Option<Sampler>,
+    skins: HashMap<usize, GltfSkin>,
 }
 
 impl Asset for GltfAsset {
@@ -77,64 +135,31 @@ impl Asset for GltfAsset {
     type Decoded = GltfDecoded;
 
     fn build(decoded: GltfDecoded, graphics: &mut Graphics) -> Result<Self, GltfLoadingError> {
-        // let images = repr
-        //     .gltf
-        //     .images()
-        //     .map(|image| load_gltf_image(&repr, image, ctx))
-        //     .collect::<Result<Vec<_>, _>>()?;
-
-        // let samplers = repr
-        //     .gltf
-        //     .samplers()
-        //     .map(|sampler| load_gltf_sampler(sampler, ctx))
-        //     .collect::<Result<Vec<_>, _>>()?;
-
-        // let mut default_sampler = None;
-
-        // let textures = repr
-        //     .gltf
-        //     .textures()
-        //     .map(|texture| {
-        //         load_gltf_texture(
-        //             texture,
-        //             &images,
-        //             &samplers,
-        //             &mut default_sampler,
-        //             ctx,
-        //         )
-        //     })
-        //     .collect::<Result<Vec<_>, _>>()?;
-
         let mut ctx = GltfBuildContext {
             decoded: &decoded,
             graphics,
-            // buffers: HashMap::new(),
             images: HashMap::new(),
             samplers: HashMap::new(),
             materials: HashMap::new(),
-            primitives: HashMap::new(),
-            // default_sampler: None,
+            skins: HashMap::new(),
         };
 
-        // let materials = repr
-        //     .gltf
-        //     .materials()
-        //     .map(|material| load_gltf_material(material, &mut ctx))
-        //     .collect::<Result<Vec<_>, _>>()?;
-
-        let renderables = decoded
+        let meshes = decoded
             .gltf
             .meshes()
-            .map(|mesh| {
-                mesh.primitives()
-                    .map(|prim| ctx.get_primitive(prim))
-                    .collect::<Result<_, _>>()
-            })
+            .map(|mesh| ctx.create_mesh(mesh))
+            .collect::<Result<_, _>>()?;
+
+        let animations = decoded
+            .gltf
+            .animations()
+            .map(|animation| ctx.create_animation(animation))
             .collect::<Result<_, _>>()?;
 
         Ok(GltfAsset {
             gltf: decoded.gltf,
-            renderables,
+            meshes,
+            animations,
         })
     }
 }
@@ -302,9 +327,80 @@ pub enum GltfLoadingError {
 
     #[error("Combination paramters `{info:?}` is unsupported")]
     UnsupportedImage { info: ImageInfo },
+
+    #[error("Invalid convex shape provided")]
+    InvalidConvexShape,
+
+    #[error("View stride is less than accessor size")]
+    InvalidViewStride,
 }
 
 fn align_vec(bytes: &mut Vec<u8>, align_mask: usize) {
     let new_size = (bytes.len() + align_mask) & !align_mask;
     bytes.resize(new_size, 0xfe);
+}
+
+fn read_accessor<'a>(
+    accessor: gltf::Accessor<'_>,
+    decoded: &'a GltfDecoded,
+) -> Result<(&'a [u8], usize), GltfLoadingError> {
+    let view = accessor
+        .view()
+        .ok_or(GltfLoadingError::SparseAccessorUnsupported)?;
+
+    let stride = view.stride().unwrap_or(accessor.size());
+    if stride < accessor.size() {
+        tracing::error!(
+            "Accessor '{}' with size '{}' is bound to view '{}' with insufficient stride '{}'",
+            accessor.index(),
+            accessor.size(),
+            view.index(),
+            stride,
+        );
+        return Err(GltfLoadingError::InvalidViewStride);
+    }
+
+    // Total byte count for accessor.
+    let accessor_size = if accessor.count() == 0 {
+        0
+    } else {
+        (accessor.count() - 1) * stride + accessor.size()
+    };
+
+    if view.length() < accessor_size + accessor.offset() {
+        tracing::error!(
+            "Accessor '{}' is out of buffer view bounds",
+            accessor.index(),
+        );
+        return Err(GltfLoadingError::AccessorOutOfBound);
+    }
+
+    let bytes = match view.buffer().source() {
+        gltf::buffer::Source::Bin => decoded.gltf.blob.as_deref().ok_or_else(|| {
+            tracing::error!("View '{}' has non-existent bin", view.index());
+            GltfLoadingError::MissingSource
+        })?,
+        gltf::buffer::Source::Uri(uri) => decoded.sources.get(uri).ok_or_else(|| {
+            tracing::error!("View '{}' has non-existent source {}", view.index(), uri);
+            GltfLoadingError::MissingSource
+        })?,
+    };
+
+    if bytes.len() < view.offset() + view.length() {
+        tracing::error!("View '{}' is out of buffer bounds", view.index(),);
+        return Err(GltfLoadingError::ViewOutOfBound);
+    }
+
+    let bytes = &bytes[view.offset() + accessor.offset()..][..accessor_size];
+    Ok((bytes, stride))
+}
+
+trait GltfDataType: Sized + 'static {
+    const DIMENSIONS: Dimensions;
+    fn from_bytes(
+        data_type: DataType,
+        bytes: &[u8],
+        stride: usize,
+        output: &mut Vec<u8>,
+    ) -> Result<(), GltfLoadingError>;
 }

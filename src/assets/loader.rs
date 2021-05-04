@@ -273,7 +273,7 @@ impl<A> AssetResult<A>
 where
     A: Asset,
 {
-    pub fn get(&mut self, builder: &mut A::Builder) -> Result<Option<&A>, &Error> {
+    pub fn get(&mut self, builder: &mut A::Builder) -> Result<Option<&A>, Error> {
         if let AssetResultInner::Decoded {
             key,
             key_hash,
@@ -342,15 +342,13 @@ where
         match &self.0 {
             AssetResultInner::Missing => Ok(None),
             AssetResultInner::Asset(asset) => Ok(Some(asset)),
-            AssetResultInner::Error(err) => Err(err),
+            AssetResultInner::Error(err) => Err(err.clone()),
             AssetResultInner::Decoded { .. } => unreachable!(),
         }
     }
 
     pub fn get_existing(&mut self, builder: &mut A::Builder) -> Result<&A, Error> {
-        self.get(builder)
-            .map_err(Error::clone)?
-            .ok_or_else(|| Error::new(NotFound))
+        self.get(builder)?.ok_or_else(|| Error::new(NotFound))
     }
 }
 
@@ -561,8 +559,6 @@ impl Loader {
                     let shard = shard.clone();
 
                     async move {
-                        tracing::error!("Task for started '{}'", key);
-
                         match load_asset(&inner.sources, &key).await {
                             Ok(Some(data)) => {
                                 tracing::debug!("Asset data for `{}` loaded", key);

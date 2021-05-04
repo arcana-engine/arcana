@@ -9,7 +9,7 @@ use crate::{
 
 /// Camera in 3 dimensions.
 #[derive(Debug)]
-pub struct Camera3d {
+pub struct Camera3 {
     kind: Kind,
 
     /// Viewport aspect ratio.
@@ -33,17 +33,17 @@ enum Kind {
     Orthographic,
 }
 
-impl Default for Camera3d {
+impl Default for Camera3 {
     fn default() -> Self {
-        Camera3d::perspective(1.0, std::f32::consts::FRAC_PI_4, 0.1, 1000.0)
+        Camera3::perspective(1.0, std::f32::consts::FRAC_PI_4, 0.1, 1000.0)
     }
 }
 
-impl Camera3d {
-    /// Constructs perspective [`Camera3d`].
+impl Camera3 {
+    /// Constructs perspective [`Camera3`].
     pub fn perspective(aspect: f32, fovy: f32, znear: f32, zfar: f32) -> Self {
         let proj = na::Perspective3::new(aspect, fovy, znear, zfar).to_projective();
-        Camera3d {
+        Camera3 {
             aspect,
             fovy,
             znear,
@@ -53,14 +53,14 @@ impl Camera3d {
         }
     }
 
-    /// Constructs orthographic [`Camera3d`].
+    /// Constructs orthographic [`Camera3`].
     pub fn orthographic(aspect: f32, fovy: f32, znear: f32, zfar: f32) -> Self {
         let top = fovy * 0.5;
         let bottom = -top;
         let right = top * aspect * 0.5;
         let left = -right;
         let proj = na::Orthographic3::new(left, right, bottom, top, znear, zfar).to_projective();
-        Camera3d {
+        Camera3 {
             aspect,
             fovy,
             znear,
@@ -131,6 +131,7 @@ impl Camera3d {
 
         parry3d::query::Ray { origin, dir }
     }
+
     fn update_proj(&mut self) {
         match self.kind {
             Kind::Perspective => {
@@ -150,33 +151,33 @@ impl Camera3d {
 }
 
 #[derive(Debug, Default)]
-pub struct FreeCamera {
+pub struct FreeCamera3 {
     rot: na::UnitQuaternion<f32>,
     speed: na::Vector3<f32>,
 }
 
-pub struct FreeCameraController {
+pub struct FreeCamera3Controller {
     pitch: f32,
     yaw: f32,
 }
 
-impl FreeCameraController {
+impl FreeCamera3Controller {
     pub fn new() -> Self {
-        FreeCameraController {
+        FreeCamera3Controller {
             pitch: 0.0,
             yaw: 0.0,
         }
     }
 }
 
-impl InputController for FreeCameraController {
-    type Controlled = FreeCamera;
+impl InputController for FreeCamera3Controller {
+    type Controlled = FreeCamera3;
 
-    fn control(&mut self, event: DeviceEvent, free_camera: &mut FreeCamera) -> ControlResult {
+    fn control(&mut self, event: DeviceEvent, free_camera: &mut FreeCamera3) -> ControlResult {
         match event {
             DeviceEvent::MouseMotion { delta: (x, y) } => {
-                self.pitch -= x as f32 * 0.01;
-                self.yaw -= y as f32 * 0.01;
+                self.pitch -= (x * 0.01) as f32;
+                self.yaw -= (y * 0.01) as f32;
 
                 self.yaw = self.yaw.clamp(
                     std::f32::consts::FRAC_PI_2 * (f32::EPSILON - 1.0),
@@ -225,7 +226,7 @@ impl InputController for FreeCameraController {
     }
 
     fn controlled(&self) -> Self::Controlled {
-        FreeCamera::default()
+        FreeCamera3::default()
     }
 }
 
@@ -237,12 +238,100 @@ impl System for FreeCameraSystem {
     }
 
     fn run(&mut self, cx: SystemContext<'_>) -> eyre::Result<()> {
-        let query = cx.world.query_mut::<(&mut Global3, &mut FreeCamera)>();
+        const MAX_ROTATION_SPEED: f32 = 0.1;
+
+        let query = cx.world.query_mut::<(&mut Global3, &mut FreeCamera3)>();
         for (_, (global, free_camera)) in query {
             global.iso.translation.vector +=
                 free_camera.rot * free_camera.speed * cx.clock.delta.as_secs_f32() * 5.0;
-            global.iso.rotation = free_camera.rot;
+
+            let rot = global.iso.rotation.rotation_to(&free_camera.rot);
+
+            let max_rotation = MAX_ROTATION_SPEED * cx.clock.delta.as_secs_f32();
+            debug_assert!(max_rotation >= 0.0);
+
+            let angle = rot.angle();
+            if angle > max_rotation {
+                let a = (angle - max_rotation).powi(2) * angle.signum()
+                    / ((angle - max_rotation).abs() + 0.1);
+
+                let rot =
+                    na::UnitQuaternion::from_axis_angle(&rot.axis().unwrap(), a + max_rotation);
+                global.iso.append_rotation_wrt_center_mut(&rot);
+            } else {
+                global.iso.rotation = free_camera.rot;
+            }
         }
         Ok(())
+    }
+}
+
+/// Camera in 3 dimensions.
+#[derive(Debug)]
+pub struct Camera2 {
+    /// Viewport aspect ratio.
+    aspect: f32,
+
+    /// Vertical scale
+    scaley: f32,
+
+    affine: na::Affine2<f32>,
+}
+
+impl Default for Camera2 {
+    fn default() -> Self {
+        Camera2::new(1.0, 1.0)
+    }
+}
+
+impl Camera2 {
+    pub fn new(aspect: f32, scaley: f32) -> Self {
+        let affine = na::Affine2::from_matrix_unchecked(na::Matrix3::new(
+            aspect * scaley,
+            0.0,
+            0.0,
+            0.0,
+            scaley,
+            0.0,
+            0.0,
+            0.0,
+            1.0,
+        ));
+
+        Camera2 {
+            aspect,
+            scaley,
+            affine,
+        }
+    }
+
+    pub fn affine(&self) -> &na::Affine2<f32> {
+        &self.affine
+    }
+
+    /// Update aspect ration of the camera.
+    pub fn set_aspect(&mut self, aspect: f32) {
+        self.aspect = aspect;
+        self.update_affine();
+    }
+
+    /// Update aspect ration of the camera.
+    pub fn set_scaley(&mut self, scaley: f32) {
+        self.scaley = scaley;
+        self.update_affine();
+    }
+
+    pub fn update_affine(&mut self) {
+        self.affine = na::Affine2::from_matrix_unchecked(na::Matrix3::new(
+            self.scaley / self.aspect,
+            0.0,
+            0.0,
+            0.0,
+            self.scaley,
+            0.0,
+            0.0,
+            0.0,
+            1.0,
+        ));
     }
 }

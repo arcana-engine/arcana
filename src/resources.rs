@@ -98,10 +98,10 @@ impl Res {
     ///
     /// Unlike [`Resources::with`] closure may fail returning error
     /// which will be propagated back to caller.
-    pub fn try_with<T: Send + Sync + 'static, E>(
+    pub fn try_with<T: Send + Sync + 'static>(
         &mut self,
-        f: impl FnOnce() -> Result<T, E>,
-    ) -> Result<&mut T, E> {
+        f: impl FnOnce() -> eyre::Result<T>,
+    ) -> eyre::Result<&mut T> {
         match self.map.entry(TypeId::of::<T>()) {
             Entry::Occupied(entry) => Ok(entry.into_mut().downcast_mut().unwrap()),
             Entry::Vacant(entry) => {

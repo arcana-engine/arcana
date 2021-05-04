@@ -1,8 +1,9 @@
 mod material;
 mod mesh;
 pub mod node;
-mod renderer;
+pub mod renderer;
 mod scale;
+mod sprite;
 mod texture;
 mod vertex;
 
@@ -20,21 +21,27 @@ use {
     std::{convert::TryFrom as _, mem::size_of_val, ops::Deref},
 };
 
-pub use self::{
-    material::Material,
-    mesh::{Binding, BindingData, Indices, IndicesData, Mesh, MeshBuilder, MeshData, PoseMesh},
-    renderer::{BasicRenderer, Renderer, RendererContext},
-    scale::Scale,
-    texture::Texture,
-    vertex::{
-        Color, Joints, Normal3d, Position3d, Position3dColor, Position3dUV, PositionNormal3d,
-        PositionNormal3dColor, PositionNormal3dUV, PositionNormalTangent3d,
-        PositionNormalTangent3dUV, Semantics, Skin, Tangent3d, Transformation3d, VertexLayout,
-        VertexLocation, VertexType, VerticesFromBytes, Weights, UV,
+pub use {
+    self::{
+        material::Material,
+        mesh::{Binding, BindingData, Indices, IndicesData, Mesh, MeshBuilder, MeshData, PoseMesh},
+        renderer::{Renderer, RendererContext},
+        scale::Scale,
+        sprite::{Sprite, AABB},
+        texture::Texture,
+        vertex::{
+            Color, Joints, Normal3, Position3, Position3Color, Position3UV, PositionNormal3,
+            PositionNormal3Color, PositionNormal3UV, PositionNormalTangent3,
+            PositionNormalTangent3UV, Semantics, Skin, Tangent3, Transformation3d, VertexLayout,
+            VertexLocation, VertexType, Weights, UV,
+        },
     },
+    sierra::*,
 };
 
-/// Simplified renderer
+/// Graphics context.
+/// Combines device and single queue.
+/// Suitable for not too complex graphics tasks.
 pub struct Graphics {
     device: Device,
     queue: Queue,
@@ -54,7 +61,12 @@ impl Graphics {
             .ok_or_else(|| eyre::eyre!("Failed to find physical device"))?;
 
         let (device, queue) = physical.create_device(
-            &[sierra::Feature::SurfacePresentation],
+            &[
+                sierra::Feature::SurfacePresentation,
+                sierra::Feature::ShaderSampledImageDynamicIndexing,
+                sierra::Feature::ShaderSampledImageNonUniformIndexing,
+                sierra::Feature::RuntimeDescriptorArray,
+            ],
             SingleQueueQuery::GRAPHICS,
         )?;
 
@@ -102,6 +114,50 @@ impl Graphics {
             offset,
             access: AccessFlags::all(),
         });
+
+        Ok(())
+    }
+
+    #[tracing::instrument(skip(self, data))]
+    pub fn upload_buffer_with<'a, T>(
+        &self,
+        buffer: &'a Buffer,
+        offset: u64,
+        data: &[T],
+        encoder: &mut Encoder<'a>,
+        staging_out: &'a mut Option<Buffer>,
+    ) -> Result<(), MapError>
+    where
+        T: Pod,
+    {
+        let staging = self.device.create_buffer_static(
+            BufferInfo {
+                align: 15,
+                size: size_of_val(data) as u64,
+                usage: BufferUsage::TRANSFER_SRC,
+            },
+            data,
+        )?;
+
+        *staging_out = None;
+        let staging = staging_out.get_or_insert(staging);
+
+        encoder.copy_buffer(
+            staging,
+            buffer,
+            &[BufferCopy {
+                src_offset: 0,
+                dst_offset: offset,
+                size: staging.info().size,
+            }],
+        );
+
+        encoder.memory_barrier(
+            PipelineStageFlags::TRANSFER,
+            AccessFlags::TRANSFER_WRITE,
+            PipelineStageFlags::ALL_COMMANDS,
+            AccessFlags::all(),
+        );
 
         Ok(())
     }
@@ -283,13 +339,13 @@ impl Graphics {
 
             encoder.image_barriers(
                 PipelineStageFlags::TRANSFER,
-                PipelineStageFlags::TOP_OF_PIPE,
+                PipelineStageFlags::ALL_COMMANDS,
                 images.into_bump_slice(),
             );
         }
 
         self.queue
-            .submit(&[], Some(encoder.finish()), &[], None, bump);
+            .submit(&mut [], Some(encoder.finish()), &mut [], None, bump);
 
         self.buffer_uploads.clear();
         self.image_uploads.clear();
@@ -302,10 +358,10 @@ impl Graphics {
 
     pub fn submit(
         &mut self,
-        wait: &[(PipelineStageFlags, &Semaphore)],
+        wait: &mut [(PipelineStageFlags, &mut Semaphore)],
         cbufs: impl IntoIterator<IntoIter = impl ExactSizeIterator<Item = CommandBuffer>>,
-        signal: &[&Semaphore],
-        fence: Option<&Fence>,
+        signal: &mut [&mut Semaphore],
+        fence: Option<&mut Fence>,
         bump: &Bump,
     ) {
         self.queue.submit(wait, cbufs, signal, fence, bump)

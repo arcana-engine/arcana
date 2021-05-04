@@ -47,8 +47,6 @@ impl PrefabLoader {
         tokio::spawn(
             async move {
                 let loaded = fut.await;
-                tracing::error!("Prefab loaded");
-
                 let _ = sender.send(Box::new(move |res, world, graphics| {
                     if let Err(err) = P::spawn(loaded, res, world, graphics, entity) {
                         tracing::error!("Failed to spawn prefab: {}", err);
@@ -67,7 +65,6 @@ impl PrefabSpawner {
     pub fn flush(&mut self, res: &mut Res, world: &mut World, graphics: &mut Graphics) {
         self.receiver.drain().for_each(|f| {
             f(res, world, graphics);
-            tracing::error!("Prefab spawned");
         })
     }
 }
