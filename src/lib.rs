@@ -1,7 +1,15 @@
 // #![deny(missing_docs)]
 
 //!
-//! arcana crate.
+//! Arcana is a game engine built with focus on ease of use without compromising on level of control.
+//!
+//! # Getting started
+//!
+//! Starting writing a game is as simple as calling single function: `arcana::game2` or `arcana::game3`,\
+//! depending on what number of dimensions new game needs.\
+//! From there add systems, load prefabs or otherwise populate game world.
+//!
+//! Then start writing prefab implementations and input controls, implement custom rendering logic when required.
 //!
 
 pub mod assets;
