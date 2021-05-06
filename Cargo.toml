@@ -10,8 +10,7 @@ repository = "https://github.com/zaq/arcana"
 
 [dependencies]
 winit = { version = "0.24", features = ["serde"] }
-sierra = { version = "0.1", path = "../sierra", features = ["serde-1"] }
-skelly = { version = "0.3", path = "../skelly" }
+sierra = { version = "0.1", features = ["serde-1"], git = "https://github.com/zakarumych/sierra.git" }
 futures = "0.3"
 tracing = "0.1"
 tracing-error = "0.1"
@@ -53,5 +52,5 @@ rapier3d = "0.8"
 members = ["examples/sponza", "examples/blocks", "examples/tanks"]
 
 [patch.crates-io]
-parry2d = { version = "0.4.1", path = "../parry/build/parry2d" }
-parry3d = { version = "0.4.1", path = "../parry/build/parry3d" }
+parry2d = { version = "0.4.1", git = "https://github.com/zakarumych/parry.git", branch = "hide-prints" }
+parry3d = { version = "0.4.1", git = "https://github.com/zakarumych/parry.git", branch = "hide-prints" }
