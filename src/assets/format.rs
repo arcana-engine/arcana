@@ -1,6 +1,9 @@
 use {
     super::{asset::Asset, loader::Loader},
-    std::{error::Error, future::Future},
+    std::{
+        error::Error,
+        future::{ready, Future, Ready},
+    },
 };
 
 /// Data required to decode asset from bytes.
@@ -26,4 +29,36 @@ pub trait Format<A: Asset>: std::fmt::Debug + Send + 'static {
 pub trait AssetDefaultFormat: Asset {
     /// Default format type that can be default-constructed.
     type DefaultFormat: Format<Self> + Default;
+}
+
+#[derive(Clone, Copy, Debug)]
+pub struct SerdeJsonFormat;
+
+impl<A> Format<A> for SerdeJsonFormat
+where
+    A: Asset,
+    A::Decoded: serde::de::DeserializeOwned,
+{
+    type Error = serde_json::Error;
+    type Fut = Ready<Result<A::Decoded, serde_json::Error>>;
+
+    fn decode(self, bytes: Box<[u8]>, _key: &str, _loader: Loader) -> Self::Fut {
+        ready(serde_json::from_slice(&*bytes))
+    }
+}
+
+#[derive(Clone, Copy, Debug)]
+pub struct SerdeRonFormat;
+
+impl<A> Format<A> for SerdeRonFormat
+where
+    A: Asset,
+    A::Decoded: serde::de::DeserializeOwned,
+{
+    type Error = ron::Error;
+    type Fut = Ready<Result<A::Decoded, ron::Error>>;
+
+    fn decode(self, bytes: Box<[u8]>, _key: &str, _loader: Loader) -> Self::Fut {
+        ready(ron::de::from_bytes(&*bytes))
+    }
 }

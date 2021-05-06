@@ -1,7 +1,4 @@
-use {
-    std::{error::Error, future::Future},
-    url::Url,
-};
+use std::{error::Error, future::Future};
 
 /// Asset data loaded from [`Source`].
 pub struct AssetData {

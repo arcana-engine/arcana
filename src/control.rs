@@ -61,14 +61,14 @@ pub trait InputController: 'static {
 
 /// Collection of entity controllers mapped to device id.
 pub struct Control {
-    global: Option<Box<dyn ControllerEntryErased>>,
+    global: HashMap<Entity, Box<dyn ControllerEntryErased>>,
     devices: HashMap<DeviceId, Box<dyn ControllerEntryErased>>,
 }
 
 impl Control {
     pub fn new() -> Control {
         Control {
-            global: None,
+            global: HashMap::new(),
             devices: HashMap::new(),
         }
     }
@@ -85,7 +85,10 @@ impl Control {
                 world
                     .insert(entity, (CONTROLLED, controller.controlled()))
                     .unwrap();
-                self.global = Some(Box::new(ControllerEntry { entity, controller }));
+
+                self.global
+                    .insert(entity, Box::new(ControllerEntry { entity, controller }));
+
                 Ok(())
             }
             Err(hecs::ComponentError::NoSuchEntity) => {
@@ -170,7 +173,7 @@ impl Funnel<Event> for Control {
     fn filter(&mut self, _res: &mut Res, world: &mut World, event: Event) -> Option<Event> {
         match event {
             Event::DeviceEvent { device_id, event } => {
-                let event_opt = match self.devices.get_mut(&device_id) {
+                let mut event_opt = match self.devices.get_mut(&device_id) {
                     Some(controller) => match controller.control(world, event.clone()) {
                         ControlResult::ControlLost => {
                             self.devices.remove(&device_id);
@@ -182,19 +185,26 @@ impl Funnel<Event> for Control {
                     None => Some(event),
                 };
 
-                let event_opt = match (event_opt, &mut self.global) {
-                    (Some(event), Some(controller)) => {
+                let mut lost_control = Vec::new();
+
+                for (&e, controller) in self.global.iter_mut() {
+                    if let Some(event) = event_opt.take() {
                         match controller.control(world, event.clone()) {
                             ControlResult::ControlLost => {
-                                self.global = None;
-                                Some(event)
+                                lost_control.push(e);
+                                event_opt = Some(event);
                             }
-                            ControlResult::Consumed => None,
-                            ControlResult::Ignored => Some(event),
+                            ControlResult::Consumed => {}
+                            ControlResult::Ignored => event_opt = Some(event),
                         }
+                    } else {
+                        break;
                     }
-                    (event, _) => event,
-                };
+                }
+
+                for lost_control in lost_control {
+                    self.global.remove(&lost_control);
+                }
 
                 event_opt.map(|event| Event::DeviceEvent { device_id, event })
             }

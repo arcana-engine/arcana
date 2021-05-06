@@ -6,12 +6,11 @@ use {
     },
     crate::graphics::Graphics,
     image::{load_from_memory, DynamicImage, GenericImageView as _, ImageError},
-    sierra::{
-        CreateImageError, ImageExtent, ImageInfo, ImageUsage, ImageView, ImageViewInfo, Layout,
-        Samples1,
-    },
+    sierra::{ImageExtent, ImageInfo, ImageUsage, ImageView, ImageViewInfo, Layout, Samples1},
     std::future::{ready, Ready},
 };
+
+pub use sierra::CreateImageError;
 
 /// Image asset.
 #[derive(Clone, Debug, PartialEq, Eq, Hash)]

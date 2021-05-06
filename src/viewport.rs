@@ -28,7 +28,7 @@ impl Viewport {
         swapchain.configure(
             ImageUsage::COLOR_ATTACHMENT,
             Format::BGRA8Srgb,
-            PresentMode::Immediate,
+            PresentMode::Fifo,
         )?;
 
         Ok(Viewport {

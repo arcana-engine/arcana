@@ -1,0 +1,17 @@
+{
+    "tiles": [
+        {
+            "width": 32,
+            "height": 32,
+            "name": "dirt",
+            "url": "dirt.png"
+        },
+        {
+            "width": 32,
+            "height": 32,
+            "name": "wall",
+            "url": "wall.png",
+            "collider": "wall"
+        }
+    ]
+}

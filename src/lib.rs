@@ -22,13 +22,15 @@ mod scene;
 mod system;
 mod viewport;
 
+pub use {bumpalo, hecs, na, sierra};
+
 pub use self::{
     clocks::{ClockIndex, Clocks, FixedClockStepIter},
     control::{AssumeControlError, Control, ControlResult, InputController},
     debug::{DebugInfo, EntityDebugInfo, EntityDispay, EntityRefDebugInfo, EntityRefDisplay},
     funnel::Funnel,
     game::{game2, game3, Game},
-    physics2::{Physics2, PhysicsData2},
+    physics2::{ContactQueue2, Physics2, PhysicsData2},
     prefab::{prefab_pipe, Prefab, PrefabLoader, PrefabSpawner},
     resources::Res,
     scene::{Global2, Global3, Local2, Local3, SceneSystem},

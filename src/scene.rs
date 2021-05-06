@@ -29,7 +29,7 @@ impl Local2 {
         }
     }
 
-    pub fn from_iso(parent: Entity, iso: na::Isometry2<f32>) -> Self {
+    pub fn new(parent: Entity, iso: na::Isometry2<f32>) -> Self {
         Local2 { parent, iso }
     }
 
@@ -82,13 +82,22 @@ impl Global2 {
         Global2 { iso }
     }
 
-    pub fn append_iso(&self, iso: &na::Isometry2<f32>) -> Self {
-        Global2 {
-            iso: self.iso * iso,
-        }
+    pub fn append_iso(&mut self, iso: &na::Isometry2<f32>) -> &mut Self {
+        self.iso *= iso;
+        self
     }
 
-    pub fn append_local(&self, local: &Local2) -> Self {
+    pub fn append_translation(&mut self, translation: &na::Translation2<f32>) -> &mut Self {
+        self.iso *= translation;
+        self
+    }
+
+    pub fn append_rotation(&mut self, rot: &na::UnitComplex<f32>) -> &mut Self {
+        self.iso *= rot;
+        self
+    }
+
+    pub fn append_local(&mut self, local: &Local2) -> &mut Self {
         self.append_iso(&local.iso)
     }
 
@@ -117,7 +126,7 @@ impl Local3 {
         }
     }
 
-    pub fn from_iso(parent: Entity, iso: na::Isometry3<f32>) -> Self {
+    pub fn new(parent: Entity, iso: na::Isometry3<f32>) -> Self {
         Local3 { parent, iso }
     }
 
@@ -170,13 +179,22 @@ impl Global3 {
         Global3 { iso }
     }
 
-    pub fn append_iso(&self, iso: &na::Isometry3<f32>) -> Self {
-        Global3 {
-            iso: self.iso * iso,
-        }
+    pub fn append_iso(&mut self, iso: &na::Isometry3<f32>) -> &mut Self {
+        self.iso *= iso;
+        self
     }
 
-    pub fn append_local(&self, local: &Local3) -> Self {
+    pub fn append_translation(&mut self, translation: &na::Translation3<f32>) -> &mut Self {
+        self.iso *= translation;
+        self
+    }
+
+    pub fn append_rotation(&mut self, rot: &na::UnitQuaternion<f32>) -> &mut Self {
+        self.iso *= rot;
+        self
+    }
+
+    pub fn append_local(&mut self, local: &Local3) -> &mut Self {
         self.append_iso(&local.iso)
     }
 
@@ -258,9 +276,9 @@ fn update_global_2<'a>(
             match parent_ref.get::<Global2>() {
                 Some(parent_global_ref) => {
                     // Parent is root node.
-                    let global = parent_global_ref.append_local(local);
+                    let mut global = Global2::clone(&*parent_global_ref);
                     drop(parent_global_ref);
-
+                    global.append_local(local);
                     let mut global_ref = entity_ref.get_mut::<Global2>().unwrap();
                     *global_ref = global;
 
@@ -294,9 +312,9 @@ fn update_global_2<'a>(
 
             match parent_global {
                 Some(parent_global) => {
-                    let global = parent_global.append_local(local);
+                    let mut global = Global2::clone(&*parent_global);
                     drop(parent_global);
-
+                    global.append_local(local);
                     let mut global_ref = entity_ref.get_mut::<Global2>().unwrap();
                     *global_ref = global;
                     Some(global_ref)
@@ -334,9 +352,9 @@ fn update_global_3<'a>(
             match parent_ref.get::<Global3>() {
                 Some(parent_global_ref) => {
                     // Parent is root node.
-                    let global = parent_global_ref.append_local(local);
+                    let mut global = Global3::clone(&*parent_global_ref);
                     drop(parent_global_ref);
-
+                    global.append_local(local);
                     let mut global_ref = entity_ref.get_mut::<Global3>().unwrap();
                     *global_ref = global;
 
@@ -370,9 +388,9 @@ fn update_global_3<'a>(
 
             match parent_global {
                 Some(parent_global) => {
-                    let global = parent_global.append_local(local);
+                    let mut global = Global3::clone(&*parent_global);
                     drop(parent_global);
-
+                    global.append_local(local);
                     let mut global_ref = entity_ref.get_mut::<Global3>().unwrap();
                     *global_ref = global;
                     Some(global_ref)

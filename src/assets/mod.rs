@@ -13,7 +13,9 @@ pub mod image;
 pub mod material;
 
 pub use self::{
+    asset::{Asset, SimpleAsset},
     dataurl::DataUrlSource,
+    format::{AssetDefaultFormat, Format},
     fs::FsSource,
     image::ImageAsset,
     loader::{AssetHandle, AssetResult, AssetResultPoisoned, Error, Loader, LoaderBuilder},

@@ -27,7 +27,7 @@ pub use {
         mesh::{Binding, BindingData, Indices, IndicesData, Mesh, MeshBuilder, MeshData, PoseMesh},
         renderer::{Renderer, RendererContext},
         scale::Scale,
-        sprite::{Sprite, AABB},
+        sprite::{Rect, Sprite},
         texture::Texture,
         vertex::{
             Color, Joints, Normal3, Position3, Position3Color, Position3UV, PositionNormal3,
@@ -99,6 +99,10 @@ impl Graphics {
     where
         T: Pod,
     {
+        if data.is_empty() {
+            return Ok(());
+        }
+
         let staging = self.device.create_buffer_static(
             BufferInfo {
                 align: 15,
@@ -130,6 +134,10 @@ impl Graphics {
     where
         T: Pod,
     {
+        if data.is_empty() {
+            return Ok(());
+        }
+
         let staging = self.device.create_buffer_static(
             BufferInfo {
                 align: 15,

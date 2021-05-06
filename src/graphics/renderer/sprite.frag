@@ -12,8 +12,13 @@ layout(set = 0, binding = 1) uniform texture2D textures[];
 
 void main() {
     if (albedo != 0xFFFFFFFF) {
-        color_out = texture(sampler2D(textures[albedo], s), uv) * vec4(albedo_factor, 1);
+        vec4 color = texture(sampler2D(textures[albedo], s), uv);
+        if (color.a < 0.001) {
+            discard;
+        }
+        color_out = color * vec4(albedo_factor, 1);
     } else {
         color_out = vec4(albedo_factor, 1);
     }
+
 }

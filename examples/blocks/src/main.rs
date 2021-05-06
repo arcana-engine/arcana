@@ -61,7 +61,7 @@ impl Prefab for Block {
             entity,
             (
                 graphics::Sprite {
-                    pos: graphics::AABB {
+                    pos: graphics::Rect {
                         left: -0.015,
                         right: 0.015,
                         top: -0.02,
