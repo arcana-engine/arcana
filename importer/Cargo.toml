@@ -1,0 +1,14 @@
+[package]
+name = "arcana-importer"
+version = "0.1.0"
+authors = ["Zakarum <zakarumych@ya.ru>"]
+edition = "2018"
+description = "Importer 'treasury'32 plugin for arcana game engine"
+
+[lib]
+crate-type = ["dylib"]
+
+[dependencies]
+treasury-import = { version = "0.1", path = "../../goods/import" }
+# arcana = { version = "0.1.0", path = ".." }
+image = "0.23"

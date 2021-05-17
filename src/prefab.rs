@@ -1,27 +1,19 @@
 use {
-    crate::{assets::Loader, graphics::Graphics, resources::Res},
+    crate::{graphics::Graphics, resources::Res},
     flume::{unbounded, Receiver, Sender},
+    goods::{Asset, AssetResult, Loader},
     hecs::{Entity, World},
-    std::future::Future,
     tracing::Instrument,
+    uuid::Uuid,
 };
 
 /// An prefab type that can be spawned in the [`World`].
 ///
 /// Typical prefab would load assets and construct components from them.
-pub trait Prefab: Send + Sync + 'static {
-    /// Decoded representation of this prefab.
-    type Loaded: Send + Sync;
-
-    /// Prefab components loading future.
-    type Fut: Future<Output = Self::Loaded> + Send;
-
-    /// Loads prefab components.
-    fn load(&self, loader: &Loader) -> Self::Fut;
-
+pub trait Prefab: Asset {
     /// Spawns prefab instance using loaded components.
-    fn spawn(
-        loaded: Self::Loaded,
+    fn insert(
+        result: AssetResult<Self>,
         res: &mut Res,
         world: &mut World,
         graphics: &mut Graphics,
@@ -39,16 +31,36 @@ pub struct PrefabSpawner {
 }
 
 impl PrefabLoader {
-    pub fn load_prefab<P: Prefab>(&self, prefab: P, world: &mut World) -> Entity {
-        let fut = prefab.load(&self.loader);
-        let entity = world.spawn((prefab,));
+    pub fn spawn_prefab<P: Prefab>(&self, uuid: &Uuid, world: &mut World) -> Entity {
+        let handle = self.loader.load::<P>(uuid);
+        let entity = world.reserve_entity();
 
         let sender = self.sender.clone();
         tokio::spawn(
             async move {
-                let loaded = fut.await;
+                let result = handle.await;
                 let _ = sender.send(Box::new(move |res, world, graphics| {
-                    if let Err(err) = P::spawn(loaded, res, world, graphics, entity) {
+                    if let Err(err) = P::insert(result, res, world, graphics, entity) {
+                        tracing::error!("Failed to spawn prefab: {}", err);
+                        let _ = world.despawn(entity);
+                    }
+                }));
+            }
+            .in_current_span(),
+        );
+
+        entity
+    }
+
+    pub fn load_prefab<P: Prefab>(&self, entity: Entity, uuid: &Uuid, world: &mut World) -> Entity {
+        let handle = self.loader.load::<P>(uuid);
+
+        let sender = self.sender.clone();
+        tokio::spawn(
+            async move {
+                let result = handle.await;
+                let _ = sender.send(Box::new(move |res, world, graphics| {
+                    if let Err(err) = P::insert(result, res, world, graphics, entity) {
                         tracing::error!("Failed to spawn prefab: {}", err);
                         let _ = world.despawn(entity);
                     }

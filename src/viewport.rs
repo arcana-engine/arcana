@@ -18,6 +18,7 @@ pub struct Viewport {
     surface: Surface,
     swapchain: Swapchain,
     needs_redraw: bool,
+    focused: bool,
 }
 
 impl Viewport {
@@ -37,6 +38,7 @@ impl Viewport {
             surface,
             swapchain,
             needs_redraw: true,
+            focused: false,
         })
     }
 
@@ -51,6 +53,11 @@ impl Viewport {
     /// Checks if this viewport needs a redraw.
     pub fn needs_redraw(&self) -> bool {
         self.needs_redraw
+    }
+
+    /// Checks if viewport window is focused.
+    pub fn focused(&self) -> bool {
+        self.focused
     }
 
     pub fn acquire_image(&mut self, optimal: bool) -> Result<SwapchainImage, SurfaceError> {
@@ -69,8 +76,8 @@ impl Funnel<Event> for Viewport {
             }
             Event::WindowEvent {
                 event: WindowEvent::Resized(size),
-                ..
-            } => {
+                window_id,
+            } if window_id == self.window => {
                 if let Ok(mut camera) = world.get_mut::<Camera3>(self.camera) {
                     camera.set_aspect(size.width as f32 / size.height as f32);
                 }
@@ -81,6 +88,13 @@ impl Funnel<Event> for Viewport {
 
                 // TODO: Update for Camera2d
                 Some(event)
+            }
+            Event::WindowEvent {
+                event: WindowEvent::Focused(focused),
+                window_id,
+            } if window_id == self.window => {
+                self.focused = focused;
+                None
             }
             event => Some(event),
         }

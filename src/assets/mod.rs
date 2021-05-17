@@ -1,27 +1,6 @@
 //! Asset loading facility.
 
-mod asset;
-mod dataurl;
-mod format;
-mod fs;
-mod key;
-mod loader;
-mod source;
-
-pub mod gltf;
 pub mod image;
-pub mod material;
+pub mod tiles;
 
-pub use self::{
-    asset::{Asset, SimpleAsset},
-    dataurl::DataUrlSource,
-    format::{AssetDefaultFormat, Format},
-    fs::FsSource,
-    image::ImageAsset,
-    loader::{AssetHandle, AssetResult, AssetResultPoisoned, Error, Loader, LoaderBuilder},
-    source::Source,
-};
-
-#[derive(Debug, thiserror::Error)]
-#[error("Not found")]
-struct NotFound;
+pub use self::image::ImageAsset;

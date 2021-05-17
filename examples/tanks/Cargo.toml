@@ -8,6 +8,7 @@ publish = false
 
 [dependencies]
 arcana = { path = "../.." }
+goods = { path = "../../../goods" }
 color-eyre = "0.5"
 hecs = "0.5"
 rapier2d = "0.8"
@@ -19,3 +20,5 @@ serde_json = "1.0"
 na = { package = "nalgebra", version = "0.26" }
 tracing = "0.1"
 ordered-float = "2.1"
+uuid = "0.8"
+thiserror = "1.0"

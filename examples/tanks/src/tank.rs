@@ -1,6 +1,6 @@
 use {
     arcana::{
-        assets::{self, Asset, AssetDefaultFormat, AssetHandle, AssetResult, ImageAsset, Loader},
+        assets::ImageAsset,
         bumpalo::collections::Vec as BVec,
         event::{DeviceEvent, ElementState, KeyboardInput, VirtualKeyCode},
         graphics::{Graphics, ImageView, Material, Rect, Sprite, Texture},
@@ -9,149 +9,36 @@ use {
         SystemContext,
     },
     futures::future::BoxFuture,
+    goods::{Asset, AssetHandle, AssetResult, Loader},
     ordered_float::OrderedFloat,
     rapier2d::{
         dynamics::{RigidBodyBuilder, RigidBodyHandle},
         geometry::{Collider, ColliderBuilder},
     },
     std::{future::ready, time::Duration},
+    uuid::Uuid,
 };
 
-#[derive(Clone, Debug)]
+#[derive(Clone, Debug, serde::Deserialize)]
 pub struct Frame {
     pub rect: Rect,
     pub duration_us: u64,
 }
 
-#[derive(Debug)]
-pub struct SpriteSheetInfo {
-    pub frames: Vec<Frame>,
-    pub animations: Vec<Animation>,
-    pub image: Box<str>,
-}
-
-pub struct SpriteSheetDecoded {
-    pub frames: Vec<Frame>,
-    pub animations: Vec<Animation>,
-    pub image: AssetResult<ImageAsset>,
-}
-
-#[derive(Clone, Debug)]
+#[derive(Clone, Debug, Asset)]
 pub struct SpriteSheet {
     pub frames: Vec<Frame>,
     pub animations: Vec<Animation>,
-    pub image: ImageView,
+
+    #[container]
+    pub image: Texture,
 }
 
-#[derive(Clone, Debug, serde::Deserialize)]
+#[derive(Clone, Debug)]
 pub struct Animation {
     pub name: Box<str>,
     pub from: usize,
     pub to: usize,
-}
-
-mod serde_impls {
-    use {super::*, serde::de::*};
-
-    #[derive(serde::Deserialize)]
-    pub struct FrameDe {
-        pub frame: Rect,
-        pub duration: f32,
-    }
-
-    #[derive(serde::Deserialize)]
-    struct SpriteSheetDe {
-        frames: Vec<FrameDe>,
-        meta: SpriteSheetMeta,
-    }
-
-    #[derive(serde::Deserialize)]
-    struct Size {
-        w: f32,
-        h: f32,
-    }
-
-    #[derive(serde::Deserialize)]
-    struct SpriteSheetMeta {
-        image: Box<str>,
-        #[serde(rename = "frameTags")]
-        animations: Vec<Animation>,
-        size: Size,
-    }
-
-    impl<'de> Deserialize<'de> for SpriteSheetInfo {
-        fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
-        where
-            D: Deserializer<'de>,
-        {
-            let sheet = SpriteSheetDe::deserialize(deserializer)?;
-
-            let width = sheet.meta.size.w;
-            let height = sheet.meta.size.h;
-
-            Ok(SpriteSheetInfo {
-                frames: sheet
-                    .frames
-                    .into_iter()
-                    .map(|f| Frame {
-                        rect: Rect {
-                            left: f.frame.left / width,
-                            right: f.frame.right / width,
-                            top: f.frame.top / height,
-                            bottom: f.frame.bottom / height,
-                        },
-                        duration_us: (f.duration * 1000.0) as u64,
-                    })
-                    .collect(),
-                animations: sheet.meta.animations,
-                image: sheet.meta.image,
-            })
-        }
-    }
-}
-
-#[derive(Clone, Copy, Debug, Default)]
-pub struct SpriteSheetFormat;
-
-impl AssetDefaultFormat for SpriteSheet {
-    type DefaultFormat = SpriteSheetFormat;
-}
-
-impl assets::Format<SpriteSheet> for SpriteSheetFormat {
-    type Error = serde_json::Error;
-    type Fut = BoxFuture<'static, Result<SpriteSheetDecoded, serde_json::Error>>;
-
-    fn decode(self, bytes: Box<[u8]>, key: &str, loader: Loader) -> Self::Fut {
-        match serde_json::from_slice::<SpriteSheetInfo>(&*bytes) {
-            Ok(info) => Box::pin(async move {
-                Ok(SpriteSheetDecoded {
-                    frames: info.frames,
-                    animations: info.animations,
-                    image: loader.load(&info.image).await,
-                })
-            }),
-            Err(err) => Box::pin(ready(Err(err))),
-        }
-    }
-}
-
-impl Asset for SpriteSheet {
-    type Decoded = SpriteSheetDecoded;
-    type Builder = Graphics;
-    type Error = assets::Error;
-
-    fn build(
-        mut decoded: SpriteSheetDecoded,
-        graphics: &mut Graphics,
-    ) -> Result<Self, assets::Error> {
-        let image = decoded.image.get_existing(graphics)?;
-
-        Ok(SpriteSheet {
-            frames: decoded.frames,
-            animations: decoded.animations,
-            image: image.image.clone(),
-        })
-    }
 }
 
 pub struct Bullet;
@@ -165,18 +52,13 @@ impl BulletCollider {
 }
 
 pub struct Tank {
-    sprite_sheet: Box<str>,
     size: na::Vector2<f32>,
     color: [f32; 3],
 }
 
 impl Tank {
-    pub fn new(sprite_sheet: Box<str>, size: na::Vector2<f32>, color: [f32; 3]) -> Self {
-        Tank {
-            sprite_sheet,
-            size,
-            color,
-        }
+    pub fn spawn(size: na::Vector2<f32>, color: [f32; 3]) -> Self {
+        Tank { size, color }
     }
 }
 
@@ -276,6 +158,11 @@ pub struct TankController {
     left: VirtualKeyCode,
     right: VirtualKeyCode,
     fire: VirtualKeyCode,
+
+    forward_pressed: bool,
+    backward_pressed: bool,
+    left_pressed: bool,
+    right_pressed: bool,
 }
 
 impl TankController {
@@ -286,6 +173,11 @@ impl TankController {
             left: VirtualKeyCode::A,
             right: VirtualKeyCode::D,
             fire: VirtualKeyCode::Space,
+
+            forward_pressed: false,
+            backward_pressed: false,
+            left_pressed: false,
+            right_pressed: false,
         }
     }
 
@@ -296,6 +188,11 @@ impl TankController {
             left: VirtualKeyCode::Left,
             right: VirtualKeyCode::Right,
             fire: VirtualKeyCode::Insert,
+
+            forward_pressed: false,
+            backward_pressed: false,
+            left_pressed: false,
+            right_pressed: false,
         }
     }
 }
@@ -325,24 +222,31 @@ impl InputController for TankController {
                 virtual_keycode: Some(key),
                 ..
             }) => {
-                let sign = match state {
-                    ElementState::Pressed => 1.0,
-                    ElementState::Released => -1.0,
+                let pressed = match state {
+                    ElementState::Pressed => true,
+                    ElementState::Released => false,
                 };
 
                 if key == self.forward {
-                    tank.newstate.speed += 3.0 * sign;
+                    self.forward_pressed = pressed;
                 } else if key == self.backward {
-                    tank.newstate.speed -= 3.0 * sign;
+                    self.backward_pressed = pressed;
                 } else if key == self.left {
-                    tank.newstate.moment -= 3.0 * sign;
+                    self.left_pressed = pressed;
                 } else if key == self.right {
-                    tank.newstate.moment += 3.0 * sign;
+                    self.right_pressed = pressed;
                 } else if key == self.fire {
                     tank.newstate.fire = state == ElementState::Pressed;
                 } else {
                     return ControlResult::Ignored;
                 }
+
+                tank.newstate.speed =
+                    3.0 * (self.forward_pressed as u8 as f32 - self.backward_pressed as u8 as f32);
+
+                tank.newstate.moment =
+                    3.0 * (self.right_pressed as u8 as f32 - self.left_pressed as u8 as f32);
+
                 ControlResult::Consumed
             }
             _ => ControlResult::Ignored,

@@ -9,48 +9,67 @@ homepage = "https://github.com/zaq/arcana"
 repository = "https://github.com/zaq/arcana"
 
 [dependencies]
+# Windowing
 winit = { version = "0.24", features = ["serde"] }
+raw-window-handle = "0.3"
+
+# Graphics
 sierra = { version = "0.1", features = ["serde-1"], git = "https://github.com/zakarumych/sierra.git" }
-futures = "0.3"
+
+# Ecs
+hecs = "0.5"
+
+# Logging
 tracing = "0.1"
 tracing-error = "0.1"
 tracing-subscriber = "0.2"
-na = { package = "nalgebra", version = "0.26", features = ["serde-serialize"] }
-parking_lot = "0.11"
-ahash = { version = "0.7", features = ["compile-time-rng"] }
-hashbrown = { version = "0.11" }
-hecs = "0.5"
+
+# Async and networking
+pin-project = "1"
+futures = "0.3"
+flume = "0.10"
 tokio = { version = "1.0", features = ["rt"] }
-num_cpus = "1.0"
+url = "2.2"
+
+# Math
+na = { package = "nalgebra", version = "0.26", features = ["serde-serialize"] }
+
+# Physics
+parry2d = "0.4"
+parry3d = "0.4"
+rapier2d = "0.8"
+rapier3d = "0.8"
+
+# Error Handling
 eyre = "0.6"
 color-eyre = "0.5"
 thiserror = "1.0"
-parry2d = "0.4"
-parry3d = "0.4"
+
+# Serialization
 percent-encoding = "2.1"
 base64 = "0.13"
 serde = "1.0"
 serde_json = "1.0"
 serde_bytes = "0.11"
 ron = "0.6"
-raw-window-handle = "0.3"
-bumpalo = { version = "3.6", features = ["collections", "boxed"] }
-flume = "0.10"
+
+# Asset processing
 image = "0.23"
+goods = { path = "../goods" }
+uuid = { version = "0.8", features = ["serde"] }
+gltf = "0.15"
+
+# Utility
+parking_lot = "0.11"
+ahash = { version = "0.7", features = ["compile-time-rng"] }
+hashbrown = { version = "0.11" }
+bumpalo = { version = "3.6", features = ["collections", "boxed"] }
+num_cpus = "1.0"
 ordered-float = "2.1"
 bytemuck = "1.0"
-url = "2.2"
-gltf = "0.15"
 byteorder = "1.4"
-cgmath = "0.18"
 lazy_static = "1.0"
 
-rapier2d = "0.8"
-rapier3d = "0.8"
 
 [workspace]
-members = ["examples/sponza", "examples/blocks", "examples/tanks"]
-
-[patch.crates-io]
-parry2d = { version = "0.4.1", git = "https://github.com/zakarumych/parry.git", branch = "hide-prints" }
-parry3d = { version = "0.4.1", git = "https://github.com/zakarumych/parry.git", branch = "hide-prints" }
+members = ["examples/sponza", "examples/blocks", "examples/tanks", "importer", "proc"]

@@ -1,6 +1,7 @@
 use {
-    crate::{clocks::ClockIndex, control::Control, prefab::PrefabLoader, resources::Res},
+    crate::{clocks::ClockIndex, control::Control, resources::Res, task::Spawner},
     bumpalo::Bump,
+    goods::Loader,
     hecs::World,
     std::time::{Duration, Instant},
 };
@@ -16,14 +17,32 @@ pub struct SystemContext<'a> {
     /// Input controllers.
     pub control: &'a mut Control,
 
-    /// Prefab loader.
-    pub loader: &'a PrefabLoader,
+    /// Task spawner,
+    pub spawner: &'a mut Spawner,
+
+    /// Asset loader
+    pub loader: &'a Loader,
 
     /// Bump allocator.
     pub bump: &'a Bump,
 
     /// Clock index.
     pub clock: ClockIndex,
+}
+
+impl<'a> SystemContext<'a> {
+    /// Reborrow system context.
+    pub fn reborrow(&mut self) -> SystemContext<'_> {
+        SystemContext {
+            res: self.res,
+            world: self.world,
+            control: self.control,
+            spawner: self.spawner,
+            loader: self.loader,
+            bump: self.bump,
+            clock: self.clock,
+        }
+    }
 }
 
 /// System trait for the ECS.
@@ -104,18 +123,11 @@ impl Scheduler {
         }
     }
 
-    pub fn run(&mut self, cx: SystemContext<'_>) -> eyre::Result<()> {
+    pub fn run(&mut self, mut cx: SystemContext<'_>) -> eyre::Result<()> {
         let clock = cx.clock;
 
         'fixed: loop {
-            let mut cx = SystemContext {
-                res: cx.res,
-                world: cx.world,
-                control: cx.control,
-                loader: cx.loader,
-                bump: cx.bump,
-                clock: cx.clock,
-            };
+            let mut cx = cx.reborrow();
 
             if let Some(fixed) = self.fix_systems.iter_mut().min_by_key(|f| f.next) {
                 if fixed.next <= clock.current {
@@ -132,14 +144,7 @@ impl Scheduler {
         }
 
         for system in self.var_systems.iter_mut() {
-            let cx = SystemContext {
-                res: cx.res,
-                world: cx.world,
-                control: cx.control,
-                loader: cx.loader,
-                bump: cx.bump,
-                clock: cx.clock,
-            };
+            let cx = cx.reborrow();
             system.run(cx)?;
         }
 

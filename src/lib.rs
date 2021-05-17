@@ -12,11 +12,11 @@
 //! Then start writing prefab implementations and input controls, implement custom rendering logic when required.
 //!
 
-pub mod assets;
 pub mod camera;
 pub mod event;
 pub mod graphics;
 
+pub mod assets;
 mod bitset;
 mod clocks;
 mod control;
@@ -24,10 +24,11 @@ mod debug;
 mod funnel;
 mod game;
 mod physics2;
-mod prefab;
+// mod prefab;
 mod resources;
 mod scene;
 mod system;
+mod task;
 mod viewport;
 
 pub use {bumpalo, hecs, na, sierra};
@@ -39,7 +40,7 @@ pub use self::{
     funnel::Funnel,
     game::{game2, game3, Game},
     physics2::{ContactQueue2, Physics2, PhysicsData2},
-    prefab::{prefab_pipe, Prefab, PrefabLoader, PrefabSpawner},
+    // prefab::{prefab_pipe, Prefab, PrefabLoader, PrefabSpawner},
     resources::Res,
     scene::{Global2, Global3, Local2, Local3, SceneSystem},
     system::{Scheduler, System, SystemContext},

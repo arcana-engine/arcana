@@ -248,10 +248,7 @@ pub struct IndicesData<'a> {
 impl<'a, const N: usize> From<&'a [u16; N]> for IndicesData<'a> {
     fn from(indices: &'a [u16; N]) -> Self {
         IndicesData {
-            data: unsafe {
-                std::slice::from_raw_parts(indices.as_ptr() as *const u8, size_of_val(indices))
-            }
-            .into(),
+            data: bytemuck::cast_slice(indices).into(),
             index_type: IndexType::U16,
         }
     }

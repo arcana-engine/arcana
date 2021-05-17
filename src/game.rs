@@ -1,6 +1,7 @@
+use hecs::DynamicBundle;
+
 use {
     crate::{
-        assets::Loader,
         camera::{Camera2, Camera3},
         clocks::Clocks,
         control::Control,
@@ -10,18 +11,15 @@ use {
             renderer::{basic::BasicRenderer, sprite::SpriteRenderer},
             Graphics, Renderer, RendererContext,
         },
-        prefab::{prefab_pipe, PrefabLoader},
         resources::Res,
         scene::{Global2, Global3, SceneSystem},
         system::{Scheduler, SystemContext},
+        task::{Executor, Spawner, TaskContext},
         viewport::Viewport,
     },
+    goods::Loader,
     hecs::World,
-    std::{
-        collections::VecDeque,
-        future::Future,
-        time::{Duration, Instant},
-    },
+    std::{collections::VecDeque, future::Future, path::Path, time::Duration},
     winit::window::Window,
 };
 
@@ -67,7 +65,6 @@ pub struct Game {
     pub world: World,
     pub scheduler: Scheduler,
     pub control: Control,
-    pub loader: PrefabLoader,
     pub graphics: Graphics,
     pub renderer: Option<Box<dyn Renderer>>,
     pub viewport: Viewport,
@@ -78,25 +75,58 @@ where
     F: FnOnce(Game) -> Fut + 'static,
     Fut: Future<Output = eyre::Result<Game>>,
 {
+    game::<_, _, SpriteRenderer, (Camera2, Global2)>(f)
+}
+
+pub fn game3<F, Fut>(f: F)
+where
+    F: FnOnce(Game) -> Fut + 'static,
+    Fut: Future<Output = eyre::Result<Game>>,
+{
+    game::<_, _, BasicRenderer, (Camera3, Global3)>(f)
+}
+
+fn game<F, Fut, R, C>(f: F)
+where
+    F: FnOnce(Game) -> Fut + 'static,
+    Fut: Future<Output = eyre::Result<Game>>,
+    R: Renderer,
+    C: DynamicBundle + Default,
+{
     crate::install_eyre_handler();
     crate::install_tracing_subscriber();
 
     Loop::run(|event_loop| async move {
-        let (loader, mut spawner) = prefab_pipe(Loader::with_default_sources());
+        // Load config.
+        let cfg = load_default_config()?;
 
+        // Initialize asset loader.
+        let mut loader_builder = Loader::builder();
+        if let Some(path) = cfg.treasury {
+            let treasury = goods::source::treasury::TreasurySource::open(path)?;
+            loader_builder.add(treasury);
+        }
+        let mut loader = loader_builder.build();
+
+        // Create new world with camera.
         let mut world = World::new();
-        let camera = world.spawn((Camera2::default(), Global2::identity()));
+        let camera = world.spawn(C::default());
 
+        // Open game window.
         let mut window = MainWindow::new(&event_loop)?;
+
+        // Initialize graphics system.
         let graphics = Graphics::new()?;
+
+        // Attach viewport to window and camera.
         let viewport = Viewport::new(camera, &window, &graphics)?;
 
+        // Configure game with closure.
         let game = f(Game {
             res: Res::new(),
             world,
             scheduler: Scheduler::new(),
             control: Control::new(),
-            loader,
             graphics,
             renderer: None,
             viewport,
@@ -108,49 +138,81 @@ where
             mut world,
             mut scheduler,
             mut control,
-            loader,
             mut graphics,
             renderer,
             mut viewport,
         } = game;
 
-        let mut bump = bumpalo::Bump::new();
-
+        // Take renderer. Use default one if not configured.
         let mut renderer = match renderer {
             Some(renderer) => renderer,
-            None => Box::new(SpriteRenderer::new(&mut graphics)?),
+            None => Box::new(R::new(&mut graphics)?),
         };
 
+        // Start the clocks.
         let mut clocks = Clocks::new();
 
+        // Schedule default systems.
         scheduler.add_system(SceneSystem);
+
         scheduler.start(clocks.start());
+
+        let mut executor = Executor::new();
+        let mut spawner = Spawner::new();
 
         let mut frames = VecDeque::new();
         let mut last_fps_report = clocks.start();
 
+        // Init bumpalo allocator.
+        let mut bump = bumpalo::Bump::new();
+
+        // Begin game loop.
         loop {
+            // Loop through new  events.
+            let mut funnel = GameFunnel {
+                window: &mut window,
+                viewport: &mut viewport,
+                control: &mut control,
+            };
+
             loop {
-                match Funnel::filter(
-                    &mut [
-                        &mut window as &mut dyn Funnel<Event>,
-                        &mut viewport,
-                        &mut control,
-                    ],
-                    &mut res,
-                    &mut world,
-                    event_loop.next_event(Duration::new(0, 16_666_666)).await,
-                ) {
-                    Some(Event::Loop) => break,
+                let event = event_loop.next_event(Duration::new(0, 1_000_000)).await;
+
+                // Filter event
+                let event = funnel.filter(&mut res, &mut world, event);
+
+                match event {
+                    Some(Event::Loop) => break, // No new events. Continue game loop
                     Some(Event::Exit) => {
+                        // It's time to exit. This event never generated by event loop.
+                        // For example viewport generates this event on windows close.
+
+                        // Try to finish outstanding async tasks.
+                        executor
+                            .teardown(
+                                TaskContext {
+                                    world: &mut world,
+                                    res: &mut res,
+                                    control: &mut control,
+                                    spawner: &mut spawner,
+                                    loader: &mut loader,
+                                    bump: &bump,
+                                },
+                                cfg.teardown_timeout,
+                            )
+                            .await;
+
                         drop(renderer);
                         drop(world);
+
+                        // Wait for graphics to finish pending work.
                         graphics.wait_idle();
                         return Ok(());
                     }
                     _ => {}
                 }
             }
+
             let clock = clocks.step();
 
             frames.push_back(clock.current);
@@ -169,15 +231,25 @@ where
                 tracing::info!("FPS: {}", fps);
             }
 
-            spawner.flush(&mut res, &mut world, &mut graphics);
             scheduler.run(SystemContext {
                 world: &mut world,
                 res: &mut res,
                 control: &mut control,
-                loader: &loader,
-                clock,
+                spawner: &mut spawner,
+                loader: &mut loader,
                 bump: &bump,
+                clock,
             })?;
+
+            executor.append(&mut spawner);
+            executor.run_once(TaskContext {
+                world: &mut world,
+                res: &mut res,
+                control: &mut control,
+                spawner: &mut spawner,
+                loader: &mut loader,
+                bump: &bump,
+            });
 
             graphics.flush_uploads(&bump)?;
 
@@ -197,107 +269,54 @@ where
     });
 }
 
-pub fn game3<F, Fut>(f: F)
-where
-    F: FnOnce(Game) -> Fut + 'static,
-    Fut: Future<Output = eyre::Result<Game>>,
-{
-    crate::install_eyre_handler();
-    crate::install_tracing_subscriber();
+struct GameFunnel<'a> {
+    window: &'a mut MainWindow,
+    viewport: &'a mut Viewport,
+    control: &'a mut Control,
+}
 
-    Loop::run(|event_loop| async move {
-        let (loader, mut spawner) = prefab_pipe(Loader::with_default_sources());
-
-        let mut world = World::new();
-        let camera = world.spawn((Camera3::default(), Global3::identity()));
-
-        let mut window = MainWindow::new(&event_loop)?;
-        let graphics = Graphics::new()?;
-        let viewport = Viewport::new(camera, &window, &graphics)?;
-
-        let game = f(Game {
-            res: Res::new(),
-            world,
-            scheduler: Scheduler::new(),
-            control: Control::new(),
-            loader,
-            graphics,
-            renderer: None,
-            viewport,
-        })
-        .await?;
-
-        let Game {
-            mut res,
-            mut world,
-            mut scheduler,
-            mut control,
-            loader,
-            mut graphics,
-            renderer,
-            mut viewport,
-        } = game;
-
-        let mut bump = bumpalo::Bump::new();
-
-        let mut renderer = match renderer {
-            Some(renderer) => renderer,
-            None => Box::new(BasicRenderer::new(&mut graphics)?),
-        };
-
-        let mut clocks = Clocks::new();
-
-        scheduler.add_system(SceneSystem);
-        scheduler.start(clocks.start());
-
-        loop {
-            loop {
-                match Funnel::filter(
-                    &mut [
-                        &mut window as &mut dyn Funnel<Event>,
-                        &mut viewport,
-                        &mut control,
-                    ],
-                    &mut res,
-                    &mut world,
-                    event_loop.next_event(Duration::new(0, 16_666_666)).await,
-                ) {
-                    Some(Event::Loop) => break,
-                    Some(Event::Exit) => {
-                        drop(renderer);
-                        drop(world);
-                        graphics.wait_idle();
-                        return Ok(());
-                    }
-                    _ => {}
+impl Funnel<Event> for GameFunnel<'_> {
+    fn filter(&mut self, res: &mut Res, world: &mut World, event: Event) -> Option<Event> {
+        match Funnel::filter(&mut *self.window, res, world, event) {
+            None => None,
+            Some(event) => match Funnel::filter(&mut *self.viewport, res, world, event) {
+                None => None,
+                Some(event) if self.viewport.focused() => {
+                    Funnel::filter(&mut *self.control, res, world, event)
                 }
-            }
-            let clock = clocks.step();
-
-            spawner.flush(&mut res, &mut world, &mut graphics);
-            scheduler.run(SystemContext {
-                world: &mut world,
-                res: &mut res,
-                control: &mut control,
-                loader: &loader,
-                clock,
-                bump: &bump,
-            })?;
-
-            graphics.flush_uploads(&bump)?;
-
-            renderer.render(
-                RendererContext {
-                    res: &mut res,
-                    world: &mut world,
-                    graphics: &mut graphics,
-                    bump: &bump,
-                    clock,
-                },
-                &mut [&mut viewport],
-            )?;
-
-            bump.reset();
+                Some(event) => Some(event),
+            },
         }
-    });
+    }
+}
+
+#[derive(serde::Deserialize)]
+struct Config {
+    #[serde(default)]
+    treasury: Option<Box<Path>>,
+
+    #[serde(default = "default_teardown_timeout")]
+    teardown_timeout: Duration,
+}
+
+fn default_teardown_timeout() -> Duration {
+    Duration::from_secs(5)
+}
+
+#[tracing::instrument]
+fn load_config(path: &Path) -> eyre::Result<Config> {
+    let cfg = std::fs::read(path)?;
+    let cfg = serde_json::from_slice(&cfg)?;
+    Ok(cfg)
+}
+
+fn load_default_config() -> eyre::Result<Config> {
+    let path = Path::new("cfg.json");
+    if path.is_file() {
+        load_config(path)
+    } else {
+        let mut path = std::env::current_exe()?;
+        path.set_file_name("cfg.json");
+        load_config(&path)
+    }
 }

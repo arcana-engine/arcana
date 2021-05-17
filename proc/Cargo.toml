@@ -1,0 +1,12 @@
+[package]
+name = "proc"
+version = "0.1.0"
+authors = ["Zakarum <zakarumych@ya.ru>"]
+edition = "2018"
+
+[lib]
+proc-macro = true
+
+[dependencies]
+syn = "1.0"
+quote = "1.0"
