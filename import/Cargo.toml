@@ -1,0 +1,22 @@
+[package]
+name = "arcana-import"
+version = "0.1.0"
+authors = ["Zakarum <zakarumych@ya.ru>"]
+edition = "2018"
+description = "Asset importer for arcana game engine"
+
+[lib]
+crate-type = ["cdylib"]
+
+[dependencies]
+arcana-timespan = { version = "0.1", path = "../timespan", features = ["serde"] }
+
+treasury-import = { version = "0.1", git = "https://github.com/zakarumych/goods" }
+image = "0.23"
+serde = { version = "1.0", features = ["derive"] }
+serde_json = { version = "1.0" }
+uuid = { version = "0.8", features = ["serde"] }
+eyre = "0.6"
+gltf = "0.15"
+na = { package = "nalgebra", version = "0.26", features = ["serde-serialize"] }
+byteorder = "1.4"

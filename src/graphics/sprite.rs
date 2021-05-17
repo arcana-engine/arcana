@@ -18,30 +18,75 @@ impl Default for Rect {
     }
 }
 
-/// Sprite component.
-#[repr(C)]
-#[derive(Clone, Copy, Default)]
-pub struct Sprite {
-    /// Rect of the sprite to render.
-    pub pos: Rect,
+impl Rect {
+    pub const ONE_QUAD: Rect = Rect {
+        left: 0.0,
+        right: 1.0,
+        top: 0.0,
+        bottom: 1.0,
+    };
 
-    /// Rect of sprite texture portion.
-    pub uv: Rect,
+    pub fn relative_to(&self, rhs: &Rect) -> Rect {
+        let x = |x| (x - rhs.left) / (rhs.right - rhs.left);
+        let y = |y| (y - rhs.top) / (rhs.bottom - rhs.top);
+
+        Rect {
+            left: x(self.left),
+            right: x(self.right),
+            top: y(self.top),
+            bottom: y(self.bottom),
+        }
+    }
+
+    pub fn from_relative_to(&self, rhs: &Rect) -> Rect {
+        let x = |x| x * (rhs.right - rhs.left) + rhs.left;
+        let y = |y| y * (rhs.bottom - rhs.top) + rhs.top;
+
+        Rect {
+            left: x(self.left),
+            right: x(self.right),
+            top: y(self.top),
+            bottom: y(self.bottom),
+        }
+    }
+}
+
+/// Sprite component.
+#[derive(Clone, Copy, Debug, Default)]
+pub struct Sprite {
+    /// Rect to render this sprite into.
+    pub world: Rect,
+
+    /// Relative original rect of the sprite.
+    pub src: Rect,
+
+    /// Cropped rect of the sprite's texture portion.
+    pub tex: Rect,
 
     /// Layer at which sprite should be rendered
-    /// Layers are relative, the higher level sprites are rendered over
+    /// The higher level sprites are rendered over
     /// lower layer sprites.
     pub layer: u32,
 }
 
 mod serde_impls {
-    use {super::*, serde::de::*};
+    use {
+        super::*,
+        serde::{de::*, ser::*},
+    };
 
     #[derive(serde::Deserialize)]
     struct LRTB {
+        #[serde(alias = "l")]
         left: f32,
+
+        #[serde(alias = "r")]
         right: f32,
+
+        #[serde(alias = "t")]
         top: f32,
+
+        #[serde(alias = "b")]
         bottom: f32,
     }
 
@@ -84,6 +129,20 @@ mod serde_impls {
                 },
             };
             Ok(rect)
+        }
+    }
+
+    impl Serialize for Rect {
+        fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
+        where
+            S: Serializer,
+        {
+            let mut serializer = serializer.serialize_struct("Rect", 4)?;
+            serializer.serialize_field("l", &self.left)?;
+            serializer.serialize_field("r", &self.right)?;
+            serializer.serialize_field("t", &self.top)?;
+            serializer.serialize_field("b", &self.bottom)?;
+            serializer.end()
         }
     }
 }

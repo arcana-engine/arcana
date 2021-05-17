@@ -1,28 +1,32 @@
-use std::{
-    convert::TryFrom,
-    time::{Duration, Instant},
-};
+//! Contains types for time measurement and ticking.
+//!
+//! `TimeSpan` type is suitable for measuring difference between instances.
 
-/// Clocks for checking current time, delta time, global start time etc.
+pub use arcana_timespan::{TimeSpan, TimeSpanParseErr};
+use std::time::Instant;
+
+/// Clocks for tracking current time, update delta time, global start time etc.
+/// Clocks are implemented using monotonously growing timer - `Instant`.
+///
+/// Any kind of time measurement can be left to single global `Clocks` instance.
 pub struct Clocks {
     /// Instant of clocks start.
     start: Instant,
 
-    /// Instant of last step.
-    last: Instant,
-
-    /// Instant of last fixed step.
-    last_fixed: Instant,
+    /// Time elasped from `start`.
+    elapsed: TimeSpan,
 }
 
 /// Collection of clock measurements.
+///
+/// Updated clock index is accessible in system, task and graphics contexts.
 #[derive(Clone, Copy, Debug)]
 pub struct ClockIndex {
     /// Delta since previous step.
-    pub delta: Duration,
+    pub delta: TimeSpan,
 
-    /// Instant of this step.
-    pub current: Instant,
+    /// Time elapsed from `start`.
+    pub elapsed: TimeSpan,
 
     /// Instant of clocks start.
     pub start: Instant,
@@ -37,18 +41,46 @@ impl Clocks {
         let now = Instant::now();
         Clocks {
             start: now,
-            last: now,
-            last_fixed: now,
+            elapsed: TimeSpan::ZERO,
         }
     }
 
-    pub fn start(&self) -> Instant {
+    /// Sets starting instance of the clocks.
+    ///
+    /// # Panics
+    ///
+    /// This function panics if `start` is in future.
+    /// This function panics if `start` is in too distant past (hundreds of thousands of years).
+    pub fn restart_from(&mut self, start: Instant) {
+        let now = Instant::now();
+        assert!(now >= start);
+
+        let elapsed = (now - start).as_micros();
+        assert!(elapsed < u64::MAX as u128);
+
+        self.elapsed = TimeSpan::from_micros(elapsed as u64);
+        self.start = start;
+    }
+
+    /// Restarts clocks from current instant.
+    pub fn restart(&mut self) {
+        self.start = Instant::now();
+        self.elapsed = TimeSpan::ZERO;
+    }
+
+    /// Returns clocks starting instance.
+    pub fn get_start(&self) -> Instant {
         self.start
     }
 
     /// Advances clocks step.
     /// Step timestamp monotonically increases.
     /// It  case it can be the same as previous step.
+    ///
+    /// # Panics
+    ///
+    /// Clocks break if not restarted for 292'271 years.
+    /// Realistically this is possible only by manually setting start to somewhere around 292'271 years ago.
     ///
     /// # Example
     /// ```
@@ -65,69 +97,16 @@ impl Clocks {
     /// ```
     pub fn step(&mut self) -> ClockIndex {
         let now = Instant::now();
-        let delta = now - self.last;
-        self.last = now;
+        let elapsed = (now - self.start).as_micros();
+        assert!(elapsed < u64::MAX as u128);
+        let elapsed = TimeSpan::from_micros(elapsed as u64);
+
+        let delta = elapsed - self.elapsed;
+        self.elapsed = elapsed;
         ClockIndex {
             delta,
-            current: self.last,
+            elapsed: self.elapsed,
             start: self.start,
         }
-    }
-
-    /// Advances clocks with fixed steps.
-    /// Returns iterator over fixed steps clock indices.
-    ///
-    /// # Example
-    /// ```
-    /// # use {arcana::Clocks, std::time::Duration};
-    /// const DELTA: Duration = Duration::from_millis(10);
-    /// let mut clocks = Clocks::new();
-    /// let mut last = clocks.step();
-    /// for next in clocks.fixed_steps(DELTA) {
-    ///   assert_eq!(next.step, last.step + DELTA, "Next step is fixed delta ahead of last step");
-    ///   assert!(next.step >= next.start, "Step is never eariler than clock start time");
-    ///   assert_eq!(next.start, last.start, "All steps from same `Clock` has same `start` value");
-    ///   last = next;
-    /// }
-    /// ```
-    pub fn fixed_steps(&mut self, fixed: Duration) -> FixedClockStepIter<'_> {
-        let now = Instant::now();
-        FixedClockStepIter {
-            clocks: self,
-            fixed,
-            now,
-        }
-    }
-}
-
-/// Iterator over fixed steps.
-pub struct FixedClockStepIter<'a> {
-    clocks: &'a mut Clocks,
-    fixed: Duration,
-    now: Instant,
-}
-
-impl<'a> Iterator for FixedClockStepIter<'a> {
-    type Item = ClockIndex;
-
-    fn next(&mut self) -> Option<ClockIndex> {
-        if self.now < self.clocks.last_fixed.checked_add(self.fixed)? {
-            None
-        } else {
-            self.clocks.last_fixed += self.fixed;
-            Some(ClockIndex {
-                delta: self.fixed,
-                current: self.clocks.last_fixed,
-                start: self.clocks.start,
-            })
-        }
-    }
-
-    fn size_hint(&self) -> (usize, Option<usize>) {
-        let len = (self.now - self.clocks.last_fixed)
-            .as_nanos()
-            .checked_div(self.fixed.as_nanos());
-        let len = len.and_then(|len| usize::try_from(len).ok());
-        (len.unwrap_or(usize::max_value()), len)
     }
 }

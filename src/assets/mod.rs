@@ -1,27 +1,11 @@
 //! Asset loading facility.
 
-mod asset;
-mod dataurl;
-mod format;
-mod fs;
-mod key;
-mod loader;
-mod source;
-
-pub mod gltf;
 pub mod image;
-pub mod material;
+pub mod sprite_sheet;
+pub mod tiles;
 
 pub use self::{
-    asset::{Asset, SimpleAsset},
-    dataurl::DataUrlSource,
-    format::{AssetDefaultFormat, Format},
-    fs::FsSource,
     image::ImageAsset,
-    loader::{AssetHandle, AssetResult, AssetResultPoisoned, Error, Loader, LoaderBuilder},
-    source::Source,
+    sprite_sheet::{SpriteAnimation, SpriteFrame, SpriteRect, SpriteSheet, SpriteSize},
+    tiles::{Tile, TileMap, TileSet},
 };
-
-#[derive(Debug, thiserror::Error)]
-#[error("Not found")]
-struct NotFound;

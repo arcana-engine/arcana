@@ -8,6 +8,7 @@ mod texture;
 mod vertex;
 
 use {
+    crate::bitset::BoxedBitSet,
     bumpalo::{collections::Vec as BVec, Bump},
     bytemuck::Pod,
     raw_window_handle::HasRawWindowHandle,
@@ -18,7 +19,13 @@ use {
         PipelineStageFlags, PresentOk, Queue, Semaphore, SingleQueueQuery, SubresourceLayers,
         SubresourceRange, Surface, SwapchainImage,
     },
-    std::{convert::TryFrom as _, mem::size_of_val, ops::Deref},
+    std::{
+        collections::hash_map::{Entry, HashMap},
+        convert::TryFrom as _,
+        hash::Hash,
+        mem::size_of_val,
+        ops::Deref,
+    },
 };
 
 pub use {
@@ -28,7 +35,7 @@ pub use {
         renderer::{Renderer, RendererContext},
         scale::Scale,
         sprite::{Rect, Sprite},
-        texture::Texture,
+        texture::{Texture, TextureAssetError, TextureDecoded, TextureFuture, TextureInfo},
         vertex::{
             Color, Joints, Normal3, Position3, Position3Color, Position3UV, PositionNormal3,
             PositionNormal3Color, PositionNormal3UV, PositionNormalTangent3,
@@ -406,4 +413,38 @@ struct ImageUpload {
     subresource: SubresourceLayers,
     offset: Offset3d,
     extent: Extent3d,
+}
+
+pub struct SparseDescriptors<T> {
+    resources: HashMap<T, u32>,
+    bitset: BoxedBitSet,
+    next: u32,
+}
+
+impl<T> SparseDescriptors<T>
+where
+    T: Hash + Eq,
+{
+    fn new() -> Self {
+        SparseDescriptors {
+            resources: HashMap::new(),
+            bitset: BoxedBitSet::new(),
+            next: 0,
+        }
+    }
+
+    fn index(&mut self, resource: T) -> (u32, bool) {
+        match self.resources.entry(resource) {
+            Entry::Occupied(entry) => (*entry.get(), false),
+            Entry::Vacant(entry) => {
+                if let Some(index) = self.bitset.find_set() {
+                    self.bitset.unset(index);
+                    (*entry.insert(index as u32), true)
+                } else {
+                    self.next += 1;
+                    (*entry.insert(self.next - 1), true)
+                }
+            }
+        }
+    }
 }

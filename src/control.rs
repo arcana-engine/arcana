@@ -47,7 +47,7 @@ pub enum ControlResult {
 }
 
 /// A controller.
-pub trait InputController: 'static {
+pub trait InputController: Send + 'static {
     /// Component that receives command from this controller.
     type Controlled: Send + Sync + 'static;
 
@@ -128,7 +128,7 @@ struct ControllerEntry<T> {
     controller: T,
 }
 
-trait ControllerEntryErased {
+trait ControllerEntryErased: Send {
     fn control(&mut self, world: &mut World, event: DeviceEvent) -> ControlResult;
 }
 

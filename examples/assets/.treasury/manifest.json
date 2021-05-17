@@ -1,0 +1,23 @@
+{
+  "importers_dirs": [
+    "..\\..\\target\\wasm32-wasi\\release"
+  ],
+  "assets": [
+    {
+      "uuid": "7406ddc2-5331-4988-b138-86b7ef93793e",
+      "source": "C:\\code\\arcana\\examples\\assets/tank.png",
+      "source_format": "image",
+      "native_format": "rgba.png",
+      "tags": [
+        "texture"
+      ]
+    },
+    {
+      "uuid": "a6ba2179-d4d5-4a86-bd33-e82e97bb30aa",
+      "source": "C:\\code\\arcana\\examples\\assets/tank.json",
+      "source_format": "aseprite.spritesheet",
+      "native_format": "arcana.spritesheet",
+      "tags": []
+    }
+  ]
+}

@@ -1,58 +1,58 @@
 use {
-    super::{
-        asset::Asset,
-        format::{AssetDefaultFormat, Format},
-        Loader,
-    },
     crate::graphics::Graphics,
+    goods::{Asset, AssetBuild, Loader},
     image::{load_from_memory, DynamicImage, GenericImageView as _, ImageError},
-    sierra::{ImageExtent, ImageInfo, ImageUsage, ImageView, ImageViewInfo, Layout, Samples1},
-    std::future::{ready, Ready},
+    sierra::{
+        CreateImageError, ImageExtent, ImageInfo, ImageUsage, ImageView, ImageViewInfo, Layout,
+        Samples1,
+    },
+    std::{
+        borrow::BorrowMut,
+        future::{ready, Ready},
+    },
 };
-
-pub use sierra::CreateImageError;
 
 /// Image asset.
 #[derive(Clone, Debug, PartialEq, Eq, Hash)]
 #[repr(transparent)]
-pub struct ImageAsset {
-    pub image: ImageView,
-}
+pub struct ImageAsset(pub ImageView);
 
 impl ImageAsset {
     pub fn into_inner(self) -> ImageView {
-        self.image
+        self.0
+    }
+}
+
+impl From<ImageAsset> for ImageView {
+    fn from(asset: ImageAsset) -> Self {
+        asset.0
     }
 }
 
 impl Asset for ImageAsset {
-    type Error = CreateImageError;
+    type DecodeError = ImageError;
+    type BuildError = CreateImageError;
     type Decoded = DynamicImage;
-    type Builder = Graphics;
-
-    fn build(image: DynamicImage, graphics: &mut Graphics) -> Result<Self, CreateImageError> {
-        let image = image.to_rgba8();
-        let image = image_view_from_dyn_image(&DynamicImage::ImageRgba8(image), false, graphics)?;
-
-        Ok(ImageAsset { image })
-    }
-}
-
-/// Quasi-format that tries to guess image format.
-#[derive(Debug, Default)]
-pub struct GuessImageFormat;
-
-impl Format<ImageAsset> for GuessImageFormat {
-    type Error = ImageError;
-
     type Fut = Ready<Result<DynamicImage, ImageError>>;
-    fn decode(self, bytes: Box<[u8]>, _key: &str, _loader: Loader) -> Self::Fut {
-        ready(load_from_memory(&bytes))
+
+    fn decode(bytes: Box<[u8]>, _loader: &Loader) -> Self::Fut {
+        ready(load_from_memory(&bytes).map_err(Into::into))
     }
 }
+impl<B> AssetBuild<B> for ImageAsset
+where
+    B: BorrowMut<Graphics>,
+{
+    fn build(image: DynamicImage, builder: &mut B) -> Result<Self, CreateImageError> {
+        let image = image.to_rgba8();
+        let image = image_view_from_dyn_image(
+            &DynamicImage::ImageRgba8(image),
+            false,
+            builder.borrow_mut(),
+        )?;
 
-impl AssetDefaultFormat for ImageAsset {
-    type DefaultFormat = GuessImageFormat;
+        Ok(ImageAsset(image))
+    }
 }
 
 pub fn image_view_from_dyn_image(

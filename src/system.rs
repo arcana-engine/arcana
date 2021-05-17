@@ -1,8 +1,14 @@
 use {
-    crate::{clocks::ClockIndex, control::Control, prefab::PrefabLoader, resources::Res},
+    crate::{
+        clocks::{ClockIndex, TimeSpan},
+        control::Control,
+        graphics::Graphics,
+        resources::Res,
+        task::{Spawner, TaskContext},
+    },
     bumpalo::Bump,
+    goods::Loader,
     hecs::World,
-    std::time::{Duration, Instant},
 };
 
 /// Context in which [`System`] runs.
@@ -16,14 +22,48 @@ pub struct SystemContext<'a> {
     /// Input controllers.
     pub control: &'a mut Control,
 
-    /// Prefab loader.
-    pub loader: &'a PrefabLoader,
+    /// Task spawner,
+    pub spawner: &'a mut Spawner,
+
+    /// Graphics context.
+    pub graphics: &'a mut Graphics,
+
+    /// Asset loader
+    pub loader: &'a Loader,
 
     /// Bump allocator.
     pub bump: &'a Bump,
 
     /// Clock index.
     pub clock: ClockIndex,
+}
+
+impl<'a> SystemContext<'a> {
+    /// Reborrow system context.
+    pub fn reborrow(&mut self) -> SystemContext<'_> {
+        SystemContext {
+            world: self.world,
+            res: self.res,
+            control: self.control,
+            spawner: self.spawner,
+            graphics: self.graphics,
+            loader: self.loader,
+            bump: self.bump,
+            clock: self.clock,
+        }
+    }
+
+    pub fn task(&mut self) -> TaskContext<'_> {
+        TaskContext {
+            world: self.world,
+            res: self.res,
+            control: self.control,
+            spawner: self.spawner,
+            graphics: self.graphics,
+            loader: self.loader,
+            bump: self.bump,
+        }
+    }
 }
 
 /// System trait for the ECS.
@@ -48,8 +88,8 @@ where
 }
 
 struct FixSystem<S: ?Sized> {
-    step: Duration,
-    next: Instant,
+    step: TimeSpan,
+    next: TimeSpan,
     system: S,
 }
 
@@ -79,48 +119,41 @@ impl Scheduler {
     }
 
     /// Adds fixed-step system to the app.
-    pub fn with_fixed_system(mut self, system: impl System, step: Duration) -> Self {
+    pub fn with_fixed_system(mut self, system: impl System, step: TimeSpan) -> Self {
         self.fix_systems.push(Box::new(FixSystem {
             step,
-            next: Instant::now(),
+            next: TimeSpan::ZERO,
             system,
         }));
         self
     }
 
     /// Adds fixed-step system to the app.
-    pub fn add_fixed_system(&mut self, system: impl System, step: Duration) -> &mut Self {
+    pub fn add_fixed_system(&mut self, system: impl System, step: TimeSpan) -> &mut Self {
         self.fix_systems.push(Box::new(FixSystem {
             step,
-            next: Instant::now(),
+            next: TimeSpan::ZERO,
             system,
         }));
         self
     }
 
-    pub fn start(&mut self, start: Instant) {
+    pub fn start(&mut self, start: TimeSpan) {
         for fixed in &mut self.fix_systems {
             fixed.next = start;
         }
     }
 
-    pub fn run(&mut self, cx: SystemContext<'_>) -> eyre::Result<()> {
+    pub fn run(&mut self, mut cx: SystemContext<'_>) -> eyre::Result<()> {
         let clock = cx.clock;
 
         'fixed: loop {
-            let mut cx = SystemContext {
-                res: cx.res,
-                world: cx.world,
-                control: cx.control,
-                loader: cx.loader,
-                bump: cx.bump,
-                clock: cx.clock,
-            };
+            let mut cx = cx.reborrow();
 
             if let Some(fixed) = self.fix_systems.iter_mut().min_by_key(|f| f.next) {
-                if fixed.next <= clock.current {
+                if fixed.next <= clock.elapsed {
                     cx.clock.delta = fixed.step;
-                    cx.clock.current = fixed.next;
+                    cx.clock.elapsed = fixed.next;
                     fixed.system.run(cx)?;
 
                     fixed.next += fixed.step;
@@ -132,14 +165,7 @@ impl Scheduler {
         }
 
         for system in self.var_systems.iter_mut() {
-            let cx = SystemContext {
-                res: cx.res,
-                world: cx.world,
-                control: cx.control,
-                loader: cx.loader,
-                bump: cx.bump,
-                clock: cx.clock,
-            };
+            let cx = cx.reborrow();
             system.run(cx)?;
         }
 
