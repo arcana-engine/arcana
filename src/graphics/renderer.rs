@@ -13,8 +13,8 @@ use {
 };
 
 pub struct RendererContext<'a> {
-    pub res: &'a mut Res,
     pub world: &'a mut World,
+    pub res: &'a mut Res,
     pub graphics: &'a mut Graphics,
     pub bump: &'a Bump,
     pub clock: ClockIndex,
@@ -23,8 +23,8 @@ pub struct RendererContext<'a> {
 impl RendererContext<'_> {
     fn reborrow(&mut self) -> RendererContext<'_> {
         RendererContext {
-            res: &mut *self.res,
             world: &mut *self.world,
+            res: &mut *self.res,
             graphics: &mut *self.graphics,
             bump: &*self.bump,
             clock: self.clock,

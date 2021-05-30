@@ -1,3 +1,5 @@
+use arcana::TaskContext;
+
 use {
     arcana::{
         assets::ImageAsset,
@@ -5,41 +7,18 @@ use {
         event::{DeviceEvent, ElementState, KeyboardInput, VirtualKeyCode},
         graphics::{Graphics, ImageView, Material, Rect, Sprite, Texture},
         hecs::{Entity, World},
-        ContactQueue2, ControlResult, Global2, InputController, PhysicsData2, Prefab, Res, System,
-        SystemContext,
+        AsyncTaskContext, ContactQueue2, ControlResult, Global2, InputController, PhysicsData2,
+        Res, Spawner, System, SystemContext,
     },
-    futures::future::BoxFuture,
     goods::{Asset, AssetHandle, AssetResult, Loader},
     ordered_float::OrderedFloat,
     rapier2d::{
         dynamics::{RigidBodyBuilder, RigidBodyHandle},
         geometry::{Collider, ColliderBuilder},
     },
-    std::{future::ready, time::Duration},
+    std::time::Duration,
     uuid::Uuid,
 };
-
-#[derive(Clone, Debug, serde::Deserialize)]
-pub struct Frame {
-    pub rect: Rect,
-    pub duration_us: u64,
-}
-
-#[derive(Clone, Debug, Asset)]
-pub struct SpriteSheet {
-    pub frames: Vec<Frame>,
-    pub animations: Vec<Animation>,
-
-    #[container]
-    pub image: Texture,
-}
-
-#[derive(Clone, Debug)]
-pub struct Animation {
-    pub name: Box<str>,
-    pub from: usize,
-    pub to: usize,
-}
 
 pub struct Bullet;
 
@@ -54,40 +33,24 @@ impl BulletCollider {
 pub struct Tank {
     size: na::Vector2<f32>,
     color: [f32; 3],
+    sprite_sheet: Uuid,
 }
 
 impl Tank {
-    pub fn spawn(size: na::Vector2<f32>, color: [f32; 3]) -> Self {
-        Tank { size, color }
-    }
-}
-
-impl Prefab for Tank {
-    type Loaded = AssetResult<SpriteSheet>;
-    type Fut = AssetHandle<SpriteSheet>;
-
-    fn load(&self, loader: &Loader) -> Self::Fut {
-        loader.load(&self.sprite_sheet)
+    pub fn new(size: na::Vector2<f32>, color: [f32; 3], sprite_sheet: Uuid) -> Self {
+        Tank {
+            size,
+            color,
+            sprite_sheet,
+        }
     }
 
-    fn spawn(
-        mut sprite_sheet: AssetResult<SpriteSheet>,
-        res: &mut Res,
-        world: &mut World,
-        graphics: &mut Graphics,
-        entity: Entity,
-    ) -> eyre::Result<()> {
-        let tank = world.get_mut::<Self>(entity)?;
-        let size = tank.size;
-        let color = tank.color;
-        drop(tank);
+    /// Spawn this tank.
+    pub fn spawn(self, cx: TaskContext<'_>) -> Entity {
+        let sprite_sheet = cx.loader.load::<SpriteSheet>(&self.sprite_sheet);
 
-        let sprite_sheet = sprite_sheet.get_existing(graphics)?;
-        let sampler = graphics.create_sampler(Default::default())?;
-
-        let physics = res.with(PhysicsData2::new);
-
-        let hs = size * 0.5;
+        let physics = cx.res.with(PhysicsData2::new);
+        let hs = self.size * 0.5;
 
         let body = physics
             .bodies
@@ -99,44 +62,51 @@ impl Prefab for Tank {
             &mut physics.bodies,
         );
 
-        world.insert(
-            entity,
-            (
-                Global2::identity(),
-                body,
-                Sprite {
-                    pos: Rect {
-                        left: -hs.x,
-                        right: hs.x,
-                        top: -hs.y,
-                        bottom: hs.y,
-                    },
-                    uv: Rect {
-                        left: 0.0,
-                        right: 1.0,
-                        top: 0.0,
-                        bottom: 1.0,
-                    },
-                    layer: 1,
+        let entity = cx.world.spawn((
+            Global2::identity(),
+            body,
+            Sprite {
+                pos: Rect {
+                    left: -hs.x,
+                    right: hs.x,
+                    top: -hs.y,
+                    bottom: hs.y,
                 },
-                Material {
-                    albedo_coverage: Some(Texture {
-                        image: sprite_sheet.image.clone(),
-                        sampler,
-                    }),
-                    albedo_factor: [
-                        OrderedFloat(color[0]),
-                        OrderedFloat(color[1]),
-                        OrderedFloat(color[2]),
-                    ],
-                    ..Default::default()
+                uv: Rect {
+                    left: 0.0,
+                    right: 1.0,
+                    top: 0.0,
+                    bottom: 1.0,
                 },
-                SpriteAnimState::new(sprite_sheet),
-                ContactQueue2::new(),
-            ),
-        )?;
+                layer: 1,
+            },
+            ContactQueue2::new(),
+        ));
 
-        Ok(())
+        cx.spawner.spawn(async move {
+            let mut cx = AsyncTaskContext::new();
+            let mut sprite_sheet = sprite_sheet.await;
+            let cx = cx.get();
+            let sprite_sheet = sprite_sheet.get(cx.graphics)?;
+            cx.world.insert(
+                entity,
+                (
+                    SpriteAnimState::new(sprite_sheet),
+                    Material {
+                        albedo_coverage: Some(sprite_sheet.texture.clone()),
+                        albedo_factor: [
+                            OrderedFloat(self.color[0]),
+                            OrderedFloat(self.color[1]),
+                            OrderedFloat(self.color[2]),
+                        ],
+                        ..Default::default()
+                    },
+                ),
+            )?;
+            Ok(())
+        });
+
+        entity
     }
 }
 
@@ -393,112 +363,6 @@ impl System for TankSystem {
 
         Ok(())
     }
-}
-
-pub struct SpriteAnimationSystem;
-
-impl System for SpriteAnimationSystem {
-    fn name(&self) -> &str {
-        "SpriteAnimationSystem"
-    }
-
-    fn run(&mut self, cx: SystemContext<'_>) -> eyre::Result<()> {
-        for (_, (state, sprite)) in cx.world.query_mut::<(&mut SpriteAnimState, &mut Sprite)>() {
-            state.advance(cx.clock.delta);
-            sprite.uv = state.get_frame().rect;
-        }
-
-        Ok(())
-    }
-}
-
-#[derive(Debug)]
-struct SpriteAnimState {
-    current_animation: usize,
-    current_frame: usize,
-    current_frame_time_us: u64,
-    anim: Anim,
-    frames: Vec<Frame>,
-    animations: Vec<Animation>,
-}
-
-impl SpriteAnimState {
-    fn new(sheet: &SpriteSheet) -> Self {
-        SpriteAnimState {
-            current_animation: 0,
-            current_frame: 0,
-            current_frame_time_us: 0,
-            anim: Anim::Loop { animation: 0 },
-            frames: sheet.frames.clone(),
-            animations: sheet.animations.clone(),
-        }
-    }
-
-    fn set_anim(&mut self, anim: Anim) {
-        match anim {
-            Anim::Loop { animation } => {
-                self.anim = anim;
-                self.current_animation = animation;
-                self.current_frame = 0;
-                self.current_frame_time_us = 0;
-            }
-            Anim::RunAndLoop { animation, .. } => {
-                self.anim = anim;
-                self.current_animation = animation;
-                self.current_frame = 0;
-                self.current_frame_time_us = 0;
-            }
-        }
-    }
-
-    fn get_frame(&self) -> &Frame {
-        let anim = &self.animations[self.current_animation];
-        &self.frames[anim.from..=anim.to][self.current_frame]
-    }
-
-    fn advance(&mut self, delta: Duration) {
-        let mut delta = delta.as_micros() as u64;
-
-        loop {
-            let anim = &self.animations[self.current_animation];
-            let frames = &self.frames[anim.from..=anim.to];
-
-            if self.current_frame_time_us + delta < frames[self.current_frame].duration_us {
-                self.current_frame_time_us += delta;
-                return;
-            }
-
-            delta -= frames[self.current_frame].duration_us - self.current_frame_time_us;
-
-            self.current_frame += 1;
-            self.current_frame_time_us = 0;
-            if frames.len() == self.current_frame {
-                self.current_frame = 0;
-
-                match self.anim {
-                    Anim::Loop { .. } => {}
-                    Anim::RunAndLoop { and_loop, .. } => {
-                        self.anim = Anim::Loop {
-                            animation: and_loop,
-                        };
-                        self.current_animation = and_loop;
-                    }
-                }
-            }
-        }
-    }
-}
-
-#[derive(Clone, Copy, Debug)]
-pub enum Anim {
-    /// Cycle through animations
-    Loop {
-        animation: usize,
-    },
-    RunAndLoop {
-        animation: usize,
-        and_loop: usize,
-    },
 }
 
 pub struct BulletSystem;

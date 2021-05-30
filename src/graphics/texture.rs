@@ -124,7 +124,7 @@ impl<'de> serde::Deserialize<'de> for TextureInfo {
             }
         }
 
-        deserializer.deserialize_struct("TextureInfo", &["image", "sampler"], Visitor)
+        deserializer.deserialize_any(Visitor)
     }
 }
 

@@ -1,11 +1,15 @@
 use {
+    super::sprite_sheet::SpriteSheet,
     crate::{
-        graphics::{Graphics, Material, Rect, SamplerInfo, Sprite, Texture},
+        graphics::{
+            Graphics, Material, Rect, SamplerInfo, Sprite, Texture, TextureAssetError,
+            TextureDecoded, TextureFuture, TextureInfo,
+        },
         physics2::PhysicsData2,
         resources::Res,
         scene::{Global2, Local2},
     },
-    goods::{Asset, AssetField, AssetResult},
+    goods::{Asset, AssetField, AssetHandle, AssetResult},
     hecs::{Entity, World},
     na,
     ordered_float::OrderedFloat,
@@ -14,6 +18,7 @@ use {
         geometry::{ColliderBuilder, SharedShape},
     },
     std::{collections::HashMap, sync::Arc},
+    uuid::Uuid,
 };
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash, serde::Deserialize)]
@@ -106,12 +111,8 @@ impl TileMap {
                                     top: -hc,
                                     bottom: hc,
                                 },
-                                uv: Rect {
-                                    left: 0.0,
-                                    right: 1.0,
-                                    top: 0.0,
-                                    bottom: 1.0,
-                                },
+                                uv_src: Rect::default(),
+                                uv_dst: Rect::default(),
                                 layer: 10,
                             },
                             Material {
@@ -144,12 +145,8 @@ impl TileMap {
                                     top: -hc,
                                     bottom: hc,
                                 },
-                                uv: Rect {
-                                    left: 0.0,
-                                    right: 1.0,
-                                    top: 0.0,
-                                    bottom: 1.0,
-                                },
+                                uv_src: Rect::default(),
+                                uv_dst: Rect::default(),
                                 layer: 10,
                             },
                             Material {
@@ -167,3 +164,42 @@ impl TileMap {
         Ok(())
     }
 }
+
+// #[derive(serde::Deserialize)]
+// #[serde(untagged)]
+// enum TextureOrSpriteInfo {
+//     Texture(Uuid),
+//     Sprite { spritesheet: Uuid, frame: usize },
+// }
+
+// enum TextureOrSpriteFuture {
+//     Texture(TextureFuture),
+//     Sprite {
+//         spritesheet: AssetHandle<SpriteSheet>,
+//         frame: usize,
+//     },
+// }
+
+// enum TextureOrSpriteDecoded {
+//     Texture(TextureDecoded),
+//     Sprite {
+//         spritesheet: AssetResult<SpriteSheet>,
+//         frame: usize,
+//     },
+// }
+
+// enum TextureOrSprite {
+//     Texture(Texture),
+//     Sprite {
+//         spritesheet: SpriteSheet,
+//         frame: usize,
+//     },
+// }
+
+// enum TextureOrSpriteDecodeError {}
+
+// impl AssetField for TextureOrSprite {
+//     type Info = TextureOrSpriteInfo;
+//     type Decoded = TextureOrSpriteDecoded;
+//     type DecodeError = TextureOrSpriteDecodedError;
+// }

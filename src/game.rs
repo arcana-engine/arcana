@@ -66,8 +66,10 @@ pub struct Game {
     pub scheduler: Scheduler,
     pub control: Control,
     pub graphics: Graphics,
-    pub renderer: Option<Box<dyn Renderer>>,
+    pub renderer: Option<Box<dyn Renderer + Send>>,
     pub viewport: Viewport,
+    pub loader: Loader,
+    pub spawner: Spawner,
 }
 
 pub fn game2<F, Fut>(f: F)
@@ -90,7 +92,7 @@ fn game<F, Fut, R, C>(f: F)
 where
     F: FnOnce(Game) -> Fut + 'static,
     Fut: Future<Output = eyre::Result<Game>>,
-    R: Renderer,
+    R: Renderer + Send,
     C: DynamicBundle + Default,
 {
     crate::install_eyre_handler();
@@ -106,7 +108,7 @@ where
             let treasury = goods::source::treasury::TreasurySource::open(path)?;
             loader_builder.add(treasury);
         }
-        let mut loader = loader_builder.build();
+        let loader = loader_builder.build();
 
         // Create new world with camera.
         let mut world = World::new();
@@ -120,6 +122,7 @@ where
 
         // Attach viewport to window and camera.
         let viewport = Viewport::new(camera, &window, &graphics)?;
+        let spawner = Spawner::new();
 
         // Configure game with closure.
         let game = f(Game {
@@ -130,6 +133,8 @@ where
             graphics,
             renderer: None,
             viewport,
+            loader,
+            spawner,
         })
         .await?;
 
@@ -141,6 +146,8 @@ where
             mut graphics,
             renderer,
             mut viewport,
+            mut loader,
+            mut spawner,
         } = game;
 
         // Take renderer. Use default one if not configured.
@@ -158,7 +165,6 @@ where
         scheduler.start(clocks.start());
 
         let mut executor = Executor::new();
-        let mut spawner = Spawner::new();
 
         let mut frames = VecDeque::new();
         let mut last_fps_report = clocks.start();
@@ -195,6 +201,7 @@ where
                                     res: &mut res,
                                     control: &mut control,
                                     spawner: &mut spawner,
+                                    graphics: &mut graphics,
                                     loader: &mut loader,
                                     bump: &bump,
                                 },
@@ -236,6 +243,7 @@ where
                 res: &mut res,
                 control: &mut control,
                 spawner: &mut spawner,
+                graphics: &mut graphics,
                 loader: &mut loader,
                 bump: &bump,
                 clock,
@@ -247,16 +255,17 @@ where
                 res: &mut res,
                 control: &mut control,
                 spawner: &mut spawner,
+                graphics: &mut graphics,
                 loader: &mut loader,
                 bump: &bump,
-            });
+            })?;
 
             graphics.flush_uploads(&bump)?;
 
             renderer.render(
                 RendererContext {
-                    res: &mut res,
                     world: &mut world,
+                    res: &mut res,
                     graphics: &mut graphics,
                     bump: &bump,
                     clock,

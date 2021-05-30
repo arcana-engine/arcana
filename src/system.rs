@@ -1,5 +1,11 @@
 use {
-    crate::{clocks::ClockIndex, control::Control, resources::Res, task::Spawner},
+    crate::{
+        clocks::ClockIndex,
+        control::Control,
+        graphics::Graphics,
+        resources::Res,
+        task::{Spawner, TaskContext},
+    },
     bumpalo::Bump,
     goods::Loader,
     hecs::World,
@@ -20,6 +26,9 @@ pub struct SystemContext<'a> {
     /// Task spawner,
     pub spawner: &'a mut Spawner,
 
+    /// Graphics context.
+    pub graphics: &'a mut Graphics,
+
     /// Asset loader
     pub loader: &'a Loader,
 
@@ -34,13 +43,26 @@ impl<'a> SystemContext<'a> {
     /// Reborrow system context.
     pub fn reborrow(&mut self) -> SystemContext<'_> {
         SystemContext {
-            res: self.res,
             world: self.world,
+            res: self.res,
             control: self.control,
             spawner: self.spawner,
+            graphics: self.graphics,
             loader: self.loader,
             bump: self.bump,
             clock: self.clock,
+        }
+    }
+
+    pub fn task(&mut self) -> TaskContext<'_> {
+        TaskContext {
+            world: self.world,
+            res: self.res,
+            control: self.control,
+            spawner: self.spawner,
+            graphics: self.graphics,
+            loader: self.loader,
+            bump: self.bump,
         }
     }
 }

@@ -18,18 +18,47 @@ impl Default for Rect {
     }
 }
 
+impl Rect {
+    pub fn to_relative(&self, rhs: &Rect) -> Rect {
+        let x = |x| (x - self.left) / (self.right - self.left);
+        let y = |y| (y - self.top) / (self.bottom - self.top);
+
+        Rect {
+            left: x(rhs.left),
+            right: x(rhs.right),
+            top: y(rhs.top),
+            bottom: y(rhs.bottom),
+        }
+    }
+
+    pub fn from_relative(&self, rhs: &Rect) -> Rect {
+        let x = |x| x * (self.right - self.left) + self.left;
+        let y = |y| y * (self.bottom - self.top) + self.top;
+
+        Rect {
+            left: x(rhs.left),
+            right: x(rhs.right),
+            top: y(rhs.top),
+            bottom: y(rhs.bottom),
+        }
+    }
+}
+
 /// Sprite component.
 #[repr(C)]
 #[derive(Clone, Copy, Default)]
 pub struct Sprite {
-    /// Rect of the sprite to render.
+    /// Rect to render this sprite into.
     pub pos: Rect,
 
-    /// Rect of sprite texture portion.
-    pub uv: Rect,
+    /// Cropped rect of the sprite's texture portion.
+    pub uv_src: Rect,
+
+    /// Relative original rect of the sprite.
+    pub uv_dst: Rect,
 
     /// Layer at which sprite should be rendered
-    /// Layers are relative, the higher level sprites are rendered over
+    /// The higher level sprites are rendered over
     /// lower layer sprites.
     pub layer: u32,
 }

@@ -153,6 +153,7 @@ mod shared {
             Guard { shared: self }
         }
 
+        /// Returned reference must not survive awaits.
         pub unsafe fn get_event_loop(&self) -> &winit::event_loop::EventLoopWindowTarget<()> {
             let ptr = self.event_loop.get();
             &*ptr
@@ -233,7 +234,7 @@ impl Loop {
                         }
                         Err(err) => {
                             fut_opt = None;
-                            tracing::error!("{}", err);
+                            tracing::error!("{:#}", err);
                             *flow = winit::event_loop::ControlFlow::Exit;
                         }
                     }

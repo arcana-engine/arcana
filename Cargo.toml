@@ -72,4 +72,4 @@ lazy_static = "1.0"
 
 
 [workspace]
-members = ["examples/sponza", "examples/blocks", "examples/tanks", "importer", "proc"]
+members = ["examples/sponza", "examples/blocks", "examples/tanks", "examples/moonwalk", "import", "proc"]

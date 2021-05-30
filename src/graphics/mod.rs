@@ -28,7 +28,7 @@ pub use {
         renderer::{Renderer, RendererContext},
         scale::Scale,
         sprite::{Rect, Sprite},
-        texture::Texture,
+        texture::{Texture, TextureAssetError, TextureDecoded, TextureFuture, TextureInfo},
         vertex::{
             Color, Joints, Normal3, Position3, Position3Color, Position3UV, PositionNormal3,
             PositionNormal3Color, PositionNormal3UV, PositionNormalTangent3,

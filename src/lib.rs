@@ -16,6 +16,7 @@ pub mod camera;
 pub mod event;
 pub mod graphics;
 
+pub mod anim;
 pub mod assets;
 mod bitset;
 mod clocks;
@@ -24,7 +25,6 @@ mod debug;
 mod funnel;
 mod game;
 mod physics2;
-// mod prefab;
 mod resources;
 mod scene;
 mod system;
@@ -44,6 +44,7 @@ pub use self::{
     resources::Res,
     scene::{Global2, Global3, Local2, Local3, SceneSystem},
     system::{Scheduler, System, SystemContext},
+    task::{AsyncTaskContext, Spawner, TaskContext},
     viewport::Viewport,
 };
 
