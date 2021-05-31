@@ -138,6 +138,7 @@ impl Importer for SpriteSheetImporter {
             &source_path.with_file_name(&sprite_sheet.meta.image),
             "image",
             "rgba.png",
+            &["texture"],
         )?;
 
         let sprite_sheet = SpriteSheet {

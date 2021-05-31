@@ -93,6 +93,7 @@ impl Importer for SpriteSheetEnrich {
             &source_path.with_file_name(&info.main),
             &info.source_format,
             "arcana.spritesheet",
+            &["spritesheet"],
         )?;
 
         let main_path = registry.fetch(&main)?;
@@ -115,6 +116,7 @@ impl Importer for SpriteSheetEnrich {
             &source_path.with_file_name(&info.posture),
             &info.source_format,
             "arcana.spritesheet",
+            &["spritesheet", "posture"],
         )?;
 
         let posture_path = registry.fetch(&posture)?;
