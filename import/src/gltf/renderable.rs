@@ -1,7 +1,7 @@
 use {
     super::{
         align_vec, read_accessor, GltfBuildContext, GltfDataType, GltfDecoded, GltfLoadingError,
-        GltfRenderable,
+        Renderable,
     },
     crate::graphics::{
         Binding, Indices, Joints, MeshBuilder, Normal3, Position3, Tangent3, VertexType, Weights,
@@ -21,7 +21,7 @@ impl GltfBuildContext<'_> {
     pub fn create_primitive(
         &mut self,
         prim: gltf::Primitive,
-    ) -> Result<GltfRenderable, GltfLoadingError> {
+    ) -> Result<Renderable, GltfLoadingError> {
         let topology = match prim.mode() {
             gltf::mesh::Mode::Points => PrimitiveTopology::PointList,
             gltf::mesh::Mode::Lines => PrimitiveTopology::LineList,
@@ -136,7 +136,7 @@ impl GltfBuildContext<'_> {
         let mesh = mesh.build(count, vertex_count);
         let material = self.get_material(prim.material())?;
 
-        Ok(GltfRenderable { mesh, material })
+        Ok(Renderable { mesh, material })
     }
 }
 

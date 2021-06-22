@@ -2,21 +2,23 @@ use arcana::TaskContext;
 
 use {
     arcana::{
-        assets::ImageAsset,
+        anim::{
+            graph::{AnimTransitionRule, CurrentAnimInfo},
+            sprite::{SpriteGraphAnimation, SpriteGraphAnimationSystem},
+        },
+        assets::SpriteSheet,
         bumpalo::collections::Vec as BVec,
         event::{DeviceEvent, ElementState, KeyboardInput, VirtualKeyCode},
-        graphics::{Graphics, ImageView, Material, Rect, Sprite, Texture},
-        hecs::{Entity, World},
+        graphics::{Material, Rect, Sprite},
+        hecs::Entity,
         AsyncTaskContext, ContactQueue2, ControlResult, Global2, InputController, PhysicsData2,
-        Res, Spawner, System, SystemContext,
+        System, SystemContext,
     },
-    goods::{Asset, AssetHandle, AssetResult, Loader},
     ordered_float::OrderedFloat,
     rapier2d::{
         dynamics::{RigidBodyBuilder, RigidBodyHandle},
         geometry::{Collider, ColliderBuilder},
     },
-    std::time::Duration,
     uuid::Uuid,
 };
 
@@ -28,6 +30,39 @@ impl BulletCollider {
     fn new() -> Self {
         BulletCollider(ColliderBuilder::ball(0.1).build())
     }
+}
+
+#[derive(Debug)]
+pub enum TankAnimTransitionRule {
+    Moving,
+    Idle,
+    Broken,
+    AnimationComplete,
+}
+
+impl AnimTransitionRule<TankState> for TankAnimTransitionRule {
+    fn matches(&self, state: &TankState, info: &CurrentAnimInfo) -> bool {
+        match self {
+            Self::Moving => (state.drive != 0 || state.rotate != 0) && state.alive,
+            Self::Idle => state.drive == 0 && state.rotate == 0 && state.alive,
+            Self::Broken => !state.alive,
+            Self::AnimationComplete => info.is_complete(),
+        }
+    }
+}
+
+fn tank_graph_animation(sheet: &SpriteSheet) -> SpriteGraphAnimation<TankAnimTransitionRule> {
+    dbg!(SpriteGraphAnimation::new(
+        0,
+        sheet,
+        vec![
+            (TankAnimTransitionRule::AnimationComplete, vec![0], 0),
+            (TankAnimTransitionRule::AnimationComplete, vec![1], 1),
+            (TankAnimTransitionRule::Moving, vec![0], 1),
+            (TankAnimTransitionRule::Broken, vec![0, 1], 2),
+            (TankAnimTransitionRule::Idle, vec![1], 0),
+        ],
+    ))
 }
 
 pub struct Tank {
@@ -62,25 +97,30 @@ impl Tank {
             &mut physics.bodies,
         );
 
+        let color = self.color;
+
         let entity = cx.world.spawn((
             Global2::identity(),
             body,
             Sprite {
-                pos: Rect {
+                world: Rect {
                     left: -hs.x,
                     right: hs.x,
                     top: -hs.y,
                     bottom: hs.y,
                 },
-                uv: Rect {
-                    left: 0.0,
-                    right: 1.0,
-                    top: 0.0,
-                    bottom: 1.0,
-                },
+                src: Rect::ONE_QUAD,
+                tex: Rect::ONE_QUAD,
                 layer: 1,
             },
             ContactQueue2::new(),
+            TankState {
+                drive: 0,
+                rotate: 0,
+                alive: true,
+                fire: false,
+            },
+            self,
         ));
 
         cx.spawner.spawn(async move {
@@ -91,18 +131,21 @@ impl Tank {
             cx.world.insert(
                 entity,
                 (
-                    SpriteAnimState::new(sprite_sheet),
+                    tank_graph_animation(&sprite_sheet),
                     Material {
                         albedo_coverage: Some(sprite_sheet.texture.clone()),
                         albedo_factor: [
-                            OrderedFloat(self.color[0]),
-                            OrderedFloat(self.color[1]),
-                            OrderedFloat(self.color[2]),
+                            OrderedFloat(color[0]),
+                            OrderedFloat(color[1]),
+                            OrderedFloat(color[2]),
                         ],
                         ..Default::default()
                     },
                 ),
             )?;
+
+            tracing::info!("Tank is fully loaded");
+
             Ok(())
         });
 
@@ -110,18 +153,7 @@ impl Tank {
     }
 }
 
-#[derive(Clone, Copy)]
-struct TankState {
-    speed: f32,
-    moment: f32,
-    fire: bool,
-}
-
-pub struct ControlledTank {
-    state: TankState,
-    newstate: TankState,
-}
-
+#[derive(Debug)]
 pub struct TankController {
     forward: VirtualKeyCode,
     backward: VirtualKeyCode,
@@ -167,21 +199,29 @@ impl TankController {
     }
 }
 
+#[derive(Debug)]
+pub struct TankState {
+    drive: i8,
+    rotate: i8,
+    fire: bool,
+    alive: bool,
+}
+
+#[derive(Debug)]
+pub struct ControlledTank {
+    drive: i8,
+    rotate: i8,
+    fire: bool,
+}
+
 impl InputController for TankController {
     type Controlled = ControlledTank;
 
     fn controlled(&self) -> ControlledTank {
         ControlledTank {
-            state: TankState {
-                speed: 0.0,
-                moment: 0.0,
-                fire: false,
-            },
-            newstate: TankState {
-                speed: 0.0,
-                moment: 0.0,
-                fire: false,
-            },
+            drive: 0,
+            rotate: 0,
+            fire: false,
         }
     }
 
@@ -206,16 +246,13 @@ impl InputController for TankController {
                 } else if key == self.right {
                     self.right_pressed = pressed;
                 } else if key == self.fire {
-                    tank.newstate.fire = state == ElementState::Pressed;
+                    tank.fire = state == ElementState::Pressed;
                 } else {
                     return ControlResult::Ignored;
                 }
 
-                tank.newstate.speed =
-                    3.0 * (self.forward_pressed as u8 as f32 - self.backward_pressed as u8 as f32);
-
-                tank.newstate.moment =
-                    3.0 * (self.right_pressed as u8 as f32 - self.left_pressed as u8 as f32);
+                tank.drive = self.forward_pressed as i8 - self.backward_pressed as i8;
+                tank.rotate = self.right_pressed as i8 - self.left_pressed as i8;
 
                 ControlResult::Consumed
             }
@@ -236,87 +273,53 @@ impl System for TankSystem {
 
         let mut bullets = BVec::new_in(cx.bump);
 
-        let mut despawn = BVec::new_in(cx.bump);
-
-        'e: for (entity, (body, global, tank, state, queue)) in cx
+        for (entity, (body, global, tank, control, contacts)) in cx
             .world
             .query::<(
                 &RigidBodyHandle,
                 &Global2,
+                &mut TankState,
                 &mut ControlledTank,
-                Option<&mut SpriteAnimState>,
                 &mut ContactQueue2,
             )>()
             .with::<Tank>()
             .iter()
         {
-            for collider in queue.drain_contacts_started() {
+            tank.fire = false;
+
+            for collider in contacts.drain_contacts_started() {
                 let bits = physics.colliders.get(collider).unwrap().user_data as u64;
                 let bullet = cx.world.get::<Bullet>(Entity::from_bits(bits)).is_ok();
 
                 if bullet {
-                    despawn.push(entity);
+                    tank.alive = false;
+
                     physics
                         .bodies
                         .remove(*body, &mut physics.colliders, &mut physics.joints);
-                    continue 'e;
                 }
             }
 
-            if let Some(state) = state {
-                if tank.newstate.speed > 0.1 && tank.state.speed <= 0.1 {
-                    state.set_anim(Anim::Loop { animation: 1 });
+            if tank.alive {
+                tank.drive = control.drive;
+                tank.rotate = control.rotate;
+
+                if let Some(body) = physics.bodies.get_mut(*body) {
+                    let vel = na::Vector2::new(0.0, -tank.drive as f32);
+                    let vel = global.iso.rotation.transform_vector(&vel);
+
+                    body.set_linvel(vel, true);
+                    body.set_angvel(tank.rotate as f32 * 3.0, true);
                 }
 
-                if tank.newstate.speed <= 0.1 && tank.state.speed > 0.1 {
-                    state.set_anim(Anim::Loop { animation: 0 });
+                if control.fire {
+                    let pos = global.iso.transform_point(&na::Point2::new(0.0, -0.6));
+                    let dir = global.iso.transform_vector(&na::Vector2::new(0.0, -10.0));
+                    bullets.push((pos, dir));
+                    tank.fire = true;
+                    control.fire = false;
                 }
             }
-
-            if let Some(body) = physics.bodies.get_mut(*body) {
-                let vel = na::Vector2::new(0.0, -tank.newstate.speed);
-                let vel = global.iso.rotation.transform_vector(&vel);
-
-                body.set_linvel(vel, true);
-                body.set_angvel(tank.newstate.moment, true);
-            }
-
-            if tank.newstate.fire {
-                let pos = global.iso.transform_point(&na::Point2::new(0.0, -0.6));
-                let dir = global.iso.transform_vector(&na::Vector2::new(0.0, -10.0));
-                bullets.push((pos, dir));
-                tank.newstate.fire = false;
-            }
-
-            tank.state = tank.newstate;
-        }
-
-        for entity in despawn {
-            if let Ok(iso) = cx.world.get::<Global2>(entity).map(|g| g.iso) {
-                cx.world.spawn((
-                    Global2::new(iso),
-                    Sprite {
-                        pos: Rect {
-                            left: -0.5,
-                            right: 0.5,
-                            top: -0.5,
-                            bottom: 0.5,
-                        },
-                        uv: Rect {
-                            left: 0.0,
-                            right: 1.0,
-                            top: 0.0,
-                            bottom: 1.0,
-                        },
-                        layer: 0,
-                    },
-                    Material {
-                        albedo_factor: [OrderedFloat(0.7), OrderedFloat(0.1), OrderedFloat(0.1)],
-                        ..Default::default()
-                    },
-                ));
-            }
-            let _ = cx.world.despawn(entity);
         }
 
         if !bullets.is_empty() {
@@ -338,18 +341,14 @@ impl System for TankSystem {
                     Bullet,
                     body,
                     Sprite {
-                        pos: Rect {
+                        world: Rect {
                             left: -0.05,
                             right: 0.05,
                             top: -0.05,
                             bottom: 0.05,
                         },
-                        uv: Rect {
-                            left: 0.0,
-                            right: 1.0,
-                            top: 0.0,
-                            bottom: 1.0,
-                        },
+                        src: Rect::ONE_QUAD,
+                        tex: Rect::ONE_QUAD,
                         layer: 0,
                     },
                     Material {
@@ -396,18 +395,14 @@ impl System for BulletSystem {
                 cx.world.spawn((
                     Global2::new(iso),
                     Sprite {
-                        pos: Rect {
+                        world: Rect {
                             left: -0.2,
                             right: 0.2,
                             top: -0.2,
                             bottom: 0.2,
                         },
-                        uv: Rect {
-                            left: 0.0,
-                            right: 1.0,
-                            top: 0.0,
-                            bottom: 1.0,
-                        },
+                        src: Rect::ONE_QUAD,
+                        tex: Rect::ONE_QUAD,
                         layer: 0,
                     },
                     Material {
@@ -422,3 +417,5 @@ impl System for BulletSystem {
         Ok(())
     }
 }
+
+pub type TankAnimationSystem = SpriteGraphAnimationSystem<TankState, TankAnimTransitionRule>;

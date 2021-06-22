@@ -1,15 +1,11 @@
 use {
-    super::sprite_sheet::SpriteSheet,
     crate::{
-        graphics::{
-            Graphics, Material, Rect, SamplerInfo, Sprite, Texture, TextureAssetError,
-            TextureDecoded, TextureFuture, TextureInfo,
-        },
+        graphics::{Graphics, Material, Rect, Sprite, Texture},
         physics2::PhysicsData2,
         resources::Res,
         scene::{Global2, Local2},
     },
-    goods::{Asset, AssetField, AssetHandle, AssetResult},
+    goods::{Asset, AssetField, AssetResult},
     hecs::{Entity, World},
     na,
     ordered_float::OrderedFloat,
@@ -18,7 +14,6 @@ use {
         geometry::{ColliderBuilder, SharedShape},
     },
     std::{collections::HashMap, sync::Arc},
-    uuid::Uuid,
 };
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash, serde::Deserialize)]
@@ -68,7 +63,7 @@ pub struct TileMap {
 }
 
 impl TileMap {
-    fn spawn(
+    pub fn spawn(
         mut result: AssetResult<TileMap>,
         res: &mut Res,
         world: &mut World,
@@ -76,8 +71,6 @@ impl TileMap {
         entity: Entity,
     ) -> eyre::Result<()> {
         let tilemap = result.get(graphics)?;
-
-        let sampler = graphics.create_sampler(SamplerInfo::default())?;
 
         let cell_size = tilemap.cell_size;
         let cells = tilemap.cells.clone();
@@ -105,14 +98,14 @@ impl TileMap {
                             Local2::new(entity, local_iso),
                             Global2::identity(),
                             Sprite {
-                                pos: Rect {
+                                world: Rect {
                                     left: -hc,
                                     right: hc,
                                     top: -hc,
                                     bottom: hc,
                                 },
-                                uv_src: Rect::default(),
-                                uv_dst: Rect::default(),
+                                src: Rect::ONE_QUAD,
+                                tex: Rect::ONE_QUAD,
                                 layer: 10,
                             },
                             Material {
@@ -139,14 +132,14 @@ impl TileMap {
                             Local2::new(entity, local_iso),
                             Global2::identity(),
                             Sprite {
-                                pos: Rect {
+                                world: Rect {
                                     left: -hc,
                                     right: hc,
                                     top: -hc,
                                     bottom: hc,
                                 },
-                                uv_src: Rect::default(),
-                                uv_dst: Rect::default(),
+                                src: Rect::ONE_QUAD,
+                                tex: Rect::ONE_QUAD,
                                 layer: 10,
                             },
                             Material {
@@ -164,42 +157,3 @@ impl TileMap {
         Ok(())
     }
 }
-
-// #[derive(serde::Deserialize)]
-// #[serde(untagged)]
-// enum TextureOrSpriteInfo {
-//     Texture(Uuid),
-//     Sprite { spritesheet: Uuid, frame: usize },
-// }
-
-// enum TextureOrSpriteFuture {
-//     Texture(TextureFuture),
-//     Sprite {
-//         spritesheet: AssetHandle<SpriteSheet>,
-//         frame: usize,
-//     },
-// }
-
-// enum TextureOrSpriteDecoded {
-//     Texture(TextureDecoded),
-//     Sprite {
-//         spritesheet: AssetResult<SpriteSheet>,
-//         frame: usize,
-//     },
-// }
-
-// enum TextureOrSprite {
-//     Texture(Texture),
-//     Sprite {
-//         spritesheet: SpriteSheet,
-//         frame: usize,
-//     },
-// }
-
-// enum TextureOrSpriteDecodeError {}
-
-// impl AssetField for TextureOrSprite {
-//     type Info = TextureOrSpriteInfo;
-//     type Decoded = TextureOrSpriteDecoded;
-//     type DecodeError = TextureOrSpriteDecodedError;
-// }

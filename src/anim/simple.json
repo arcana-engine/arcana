@@ -1,0 +1,298 @@
+{
+    "animations": [
+        {
+            "animation": {
+                "name": "idle_left",
+                "from": 0,
+                "to": 1
+            },
+            "span": "500ms",
+            "transitions": [
+                2,
+                3,
+                4,
+                5,
+                6,
+                7,
+                8,
+                1
+            ]
+        },
+        {
+            "animation": {
+                "name": "idle_right",
+                "from": 2,
+                "to": 3
+            },
+            "span": "500ms",
+            "transitions": [
+                2,
+                3,
+                4,
+                5,
+                6,
+                7,
+                9,
+                0
+            ]
+        },
+        {
+            "animation": {
+                "name": "run_left",
+                "from": 4,
+                "to": 7
+            },
+            "span": "1000ms",
+            "transitions": [
+                0,
+                1,
+                2,
+                3,
+                4,
+                5,
+                7,
+                10
+            ]
+        },
+        {
+            "animation": {
+                "name": "run_right",
+                "from": 8,
+                "to": 11
+            },
+            "span": "1000ms",
+            "transitions": [
+                0,
+                1,
+                2,
+                3,
+                4,
+                5,
+                8,
+                11
+            ]
+        },
+        {
+            "animation": {
+                "name": "jump_left",
+                "from": 12,
+                "to": 12
+            },
+            "span": "500ms",
+            "transitions": [
+                12,
+                13,
+                14,
+                15
+            ]
+        },
+        {
+            "animation": {
+                "name": "jump_right",
+                "from": 15,
+                "to": 15
+            },
+            "span": "500ms",
+            "transitions": [
+                12,
+                13,
+                14,
+                15
+            ]
+        },
+        {
+            "animation": {
+                "name": "fall_left",
+                "from": 16,
+                "to": 16
+            },
+            "span": "500ms",
+            "transitions": [
+                14,
+                15
+            ]
+        },
+        {
+            "animation": {
+                "name": "fall_right",
+                "from": 17,
+                "to": 17
+            },
+            "span": "500ms",
+            "transitions": [
+                14,
+                15
+            ]
+        },
+        {
+            "animation": {
+                "name": "land_left",
+                "from": 18,
+                "to": 18
+            },
+            "span": "200ms",
+            "transitions": [
+                9,
+                10
+            ]
+        },
+        {
+            "animation": {
+                "name": "land_right",
+                "from": 19,
+                "to": 19
+            },
+            "span": "200ms",
+            "transitions": [
+                9,
+                10
+            ]
+        }
+    ],
+    "transitions": [
+        {
+            "rule": {
+                "IsIdle": {
+                    "face": "Left"
+                }
+            },
+            "transition": null,
+            "target": 0
+        },
+        {
+            "rule": {
+                "IsIdle": {
+                    "face": "Right"
+                }
+            },
+            "transition": null,
+            "target": 1
+        },
+        {
+            "rule": {
+                "IsJumping": {
+                    "face": "Left"
+                }
+            },
+            "transition": null,
+            "target": 4
+        },
+        {
+            "rule": {
+                "IsJumping": {
+                    "face": "Right"
+                }
+            },
+            "transition": null,
+            "target": 5
+        },
+        {
+            "rule": {
+                "IsAirborne": {
+                    "face": "Left"
+                }
+            },
+            "transition": null,
+            "target": 6
+        },
+        {
+            "rule": {
+                "IsAirborne": {
+                    "face": "Right"
+                }
+            },
+            "transition": null,
+            "target": 7
+        },
+        {
+            "rule": {
+                "IsRunning": {
+                    "face": "Left"
+                }
+            },
+            "transition": null,
+            "target": 2
+        },
+        {
+            "rule": {
+                "IsRunning": {
+                    "face": "Right"
+                }
+            },
+            "transition": null,
+            "target": 3
+        },
+        {
+            "rule": {
+                "AnimationEnded": {
+                    "face": "Left"
+                }
+            },
+            "transition": null,
+            "target": 0
+        },
+        {
+            "rule": {
+                "AnimationEnded": {
+                    "face": "Right"
+                }
+            },
+            "transition": null,
+            "target": 1
+        },
+        {
+            "rule": {
+                "AnimationEnded": {
+                    "face": "Left"
+                }
+            },
+            "transition": null,
+            "target": 2
+        },
+        {
+            "rule": {
+                "AnimationEnded": {
+                    "face": "Right"
+                }
+            },
+            "transition": null,
+            "target": 3
+        },
+        {
+            "rule": {
+                "AnimationEnded": {
+                    "face": "Left"
+                }
+            },
+            "transition": null,
+            "target": 6,
+        },
+        {
+            "rule": {
+                "AnimationEnded": {
+                    "face": "Right"
+                }
+            },
+            "transition": null,
+            "target": 7
+        },
+        {
+            "rule": {
+                "IsNotAirborne": {
+                    "face": "Left"
+                }
+            },
+            "transition": null,
+            "target": 8
+        },
+        {
+            "rule": {
+                "IsNotAirborne": {
+                    "face": "Right"
+                }
+            },
+            "transition": null,
+            "target": 9
+        }
+    ]
+}

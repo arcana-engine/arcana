@@ -1,6 +1,5 @@
 use {
     super::{GltfBuildContext, GltfLoadingError},
-    crate::graphics::{Material, Texture},
     std::collections::hash_map::Entry,
 };
 

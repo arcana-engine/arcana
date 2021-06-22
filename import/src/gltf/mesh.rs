@@ -1,12 +1,12 @@
 use {
-    super::{ColliderKind, GltfBuildContext, GltfLoadingError, GltfMesh},
+    super::{ColliderKind, GltfBuildContext, GltfLoadingError, Mesh},
     std::sync::Arc,
 };
 
 impl GltfBuildContext<'_> {
-    pub fn create_mesh(&mut self, mesh: gltf::Mesh) -> Result<GltfMesh, GltfLoadingError> {
+    pub fn create_mesh(&mut self, mesh: gltf::Mesh) -> Result<Mesh, GltfLoadingError> {
         let purpose = mesh_purpose(&mesh);
-        let mut gltf_mesh = GltfMesh {
+        let mut gltf_mesh = Mesh {
             renderables: None,
             colliders: None,
             skin: None,

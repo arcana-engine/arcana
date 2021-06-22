@@ -1,5 +1,5 @@
 use {
-    super::{ColliderKind, GltfBuildContext, GltfCollider, GltfLoadingError},
+    super::{ColliderKind, GltfBuildContext, Collider, GltfLoadingError},
     parry3d::shape::SharedShape,
 };
 
@@ -8,7 +8,7 @@ impl GltfBuildContext<'_> {
         &mut self,
         prim: gltf::Primitive,
         kind: ColliderKind,
-    ) -> Result<GltfCollider, GltfLoadingError> {
+    ) -> Result<Collider, GltfLoadingError> {
         let reader = prim.reader(|buffer| match buffer.source() {
             gltf::buffer::Source::Bin => self.decoded.gltf.blob.as_deref(),
             gltf::buffer::Source::Uri(uri) => self.decoded.sources.get(uri).map(|b| &**b),
@@ -60,7 +60,7 @@ impl GltfBuildContext<'_> {
                     )
                     .unwrap();
 
-                    Ok(GltfCollider { shape })
+                    Ok(Collider { shape })
                 }
                 None => Err(GltfLoadingError::InvalidConvexShape),
             },
@@ -78,7 +78,7 @@ impl GltfBuildContext<'_> {
                 let shape = SharedShape::convex_mesh(positions, &indices)
                     .ok_or(GltfLoadingError::InvalidConvexShape)?;
 
-                Ok(GltfCollider { shape })
+                Ok(Collider { shape })
             }
 
             ColliderKind::TriMesh => {
@@ -92,7 +92,7 @@ impl GltfBuildContext<'_> {
                 };
 
                 let shape = SharedShape::trimesh(positions, indices);
-                Ok(GltfCollider { shape })
+                Ok(Collider { shape })
             }
         }
     }

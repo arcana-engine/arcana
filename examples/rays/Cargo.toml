@@ -1,0 +1,18 @@
+[package]
+name = "rays"
+version = "0.1.0"
+edition = "2018"
+authors = ["zaq"]
+license = "MIT OR Apache-2.0"
+documentation = "https://docs.rs/untitled/0.1.0"
+homepage = "https://github.com/zaq/untitled"
+repository = "https://github.com/zaq/untitled"
+publish = false
+
+[dependencies]
+arcana = { path = "../.." }
+color-eyre = "0.5"
+eyre = "0.6"
+hecs = "0.5"
+sierra = { version = "0.1", git = "https://github.com/zakarumych/sierra.git" }
+

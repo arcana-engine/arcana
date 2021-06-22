@@ -1,6 +1,6 @@
 use {
     crate::{
-        clocks::ClockIndex,
+        clocks::{ClockIndex, TimeSpan},
         control::Control,
         graphics::Graphics,
         resources::Res,
@@ -9,7 +9,6 @@ use {
     bumpalo::Bump,
     goods::Loader,
     hecs::World,
-    std::time::{Duration, Instant},
 };
 
 /// Context in which [`System`] runs.
@@ -89,8 +88,8 @@ where
 }
 
 struct FixSystem<S: ?Sized> {
-    step: Duration,
-    next: Instant,
+    step: TimeSpan,
+    next: TimeSpan,
     system: S,
 }
 
@@ -120,26 +119,26 @@ impl Scheduler {
     }
 
     /// Adds fixed-step system to the app.
-    pub fn with_fixed_system(mut self, system: impl System, step: Duration) -> Self {
+    pub fn with_fixed_system(mut self, system: impl System, step: TimeSpan) -> Self {
         self.fix_systems.push(Box::new(FixSystem {
             step,
-            next: Instant::now(),
+            next: TimeSpan::ZERO,
             system,
         }));
         self
     }
 
     /// Adds fixed-step system to the app.
-    pub fn add_fixed_system(&mut self, system: impl System, step: Duration) -> &mut Self {
+    pub fn add_fixed_system(&mut self, system: impl System, step: TimeSpan) -> &mut Self {
         self.fix_systems.push(Box::new(FixSystem {
             step,
-            next: Instant::now(),
+            next: TimeSpan::ZERO,
             system,
         }));
         self
     }
 
-    pub fn start(&mut self, start: Instant) {
+    pub fn start(&mut self, start: TimeSpan) {
         for fixed in &mut self.fix_systems {
             fixed.next = start;
         }
@@ -152,9 +151,9 @@ impl Scheduler {
             let mut cx = cx.reborrow();
 
             if let Some(fixed) = self.fix_systems.iter_mut().min_by_key(|f| f.next) {
-                if fixed.next <= clock.current {
+                if fixed.next <= clock.elapsed {
                     cx.clock.delta = fixed.step;
-                    cx.clock.current = fixed.next;
+                    cx.clock.elapsed = fixed.next;
                     fixed.system.run(cx)?;
 
                     fixed.next += fixed.step;

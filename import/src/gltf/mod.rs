@@ -3,53 +3,42 @@ mod collider;
 mod image;
 mod material;
 mod mesh;
-pub mod prefab;
 mod renderable;
 mod sampler;
+mod scene;
 mod skin;
 
 use {
-    super::{asset::Asset, format::Format, Error, Loader},
-    crate::graphics::{Graphics, Material, Mesh},
-    ::image::ImageError,
-    futures::future::{try_join_all, BoxFuture},
     gltf::accessor::{DataType, Dimensions},
-    sierra::{BufferUsage, ImageInfo, ImageView, OutOfMemory, Sampler},
     std::{
         collections::HashMap,
         fmt::{self, Debug},
         sync::Arc,
     },
-    url::Url,
+    uuid::Uuid,
 };
 
 #[derive(Clone, Debug)]
-pub struct GltfRenderable {
-    pub mesh: Mesh,
-    pub material: Material,
+pub struct Renderable {
+    pub mesh: Uuid,
+    pub material: Uuid,
 }
 
 #[derive(Clone, Debug)]
-pub struct GltfMesh {
-    pub renderables: Option<Arc<[GltfRenderable]>>,
-    pub colliders: Option<Arc<[GltfCollider]>>,
-    pub skin: Option<GltfSkin>,
-}
-
-#[derive(Clone, Copy, Debug)]
-pub struct GltfFormat {
-    pub mesh_vertices_usage: BufferUsage,
-    pub mesh_indices_usage: BufferUsage,
+pub struct Mesh {
+    pub renderables: Option<Arc<[Renderable]>>,
+    pub colliders: Option<Arc<[Collider]>>,
+    pub skin: Option<Skin>,
 }
 
 #[derive(Clone, Debug)]
-pub struct GltfSkin {
+pub struct Skin {
     inverse_binding_matrices: Option<Arc<[na::Matrix4<f32>]>>,
     joints: Arc<[usize]>,
 }
 
 #[derive(Clone, Debug)]
-pub enum GltfSamplerOutput {
+pub enum SamplerOutput {
     Scalar(Arc<[f32]>),
     Vec2(Arc<[[f32; 2]]>),
     Vec3(Arc<[[f32; 3]]>),
@@ -57,17 +46,17 @@ pub enum GltfSamplerOutput {
 }
 
 #[derive(Clone, Debug)]
-pub struct GltfChannel {
+pub struct Channel {
     node: usize,
     property: gltf::animation::Property,
     input: Arc<[f32]>,
-    output: GltfSamplerOutput,
+    output: SamplerOutput,
     interpolation: gltf::animation::Interpolation,
 }
 
 #[derive(Clone, Debug)]
-pub struct GltfAnimation {
-    channels: Arc<[GltfChannel]>,
+pub struct Animation {
+    channels: Arc<[Channel]>,
 }
 
 #[derive(Clone, Copy)]
@@ -78,11 +67,13 @@ pub enum ColliderKind {
 }
 
 #[derive(Clone)]
-pub struct GltfCollider {
-    shape: parry3d::shape::SharedShape,
+pub enum Collider {
+    AABB { extent: na::Vector3<f32> },
+    Convex { poits: Vec<na::Vector3<f32>> },
+    TriMesh { uuid: Uuid },
 }
 
-impl Debug for GltfCollider {
+impl Debug for Collider {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         f.debug_struct("GltfCollider")
             .field("shape", &self.shape.shape_type())
@@ -90,34 +81,12 @@ impl Debug for GltfCollider {
     }
 }
 
-impl Default for GltfFormat {
-    fn default() -> Self {
-        Self::for_raster()
-    }
-}
-
-impl GltfFormat {
-    pub fn for_raster() -> Self {
-        GltfFormat {
-            mesh_indices_usage: BufferUsage::INDEX,
-            mesh_vertices_usage: BufferUsage::VERTEX,
-        }
-    }
-
-    pub fn for_raytracing() -> Self {
-        GltfFormat {
-            mesh_indices_usage: BufferUsage::STORAGE | BufferUsage::DEVICE_ADDRESS,
-            mesh_vertices_usage: BufferUsage::STORAGE | BufferUsage::DEVICE_ADDRESS,
-        }
-    }
-}
-
 /// GLTF scenes with initialized resources.
 #[derive(Clone, Debug)]
 pub struct GltfAsset {
     pub gltf: gltf::Gltf,
-    pub meshes: Arc<[GltfMesh]>,
-    pub animations: Arc<[GltfAnimation]>,
+    pub meshes: Arc<[Mesh]>,
+    pub animations: Arc<[Animation]>,
 }
 
 struct GltfBuildContext<'a> {
@@ -126,7 +95,7 @@ struct GltfBuildContext<'a> {
     images: HashMap<usize, ImageView>,
     samplers: HashMap<Option<usize>, Sampler>,
     materials: HashMap<Option<usize>, Material>,
-    skins: HashMap<usize, GltfSkin>,
+    skins: HashMap<usize, Skin>,
 }
 
 impl Asset for GltfAsset {

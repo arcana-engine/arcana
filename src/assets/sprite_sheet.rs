@@ -1,19 +1,34 @@
 use {
-    crate::graphics::{Rect, Texture},
+    crate::{clocks::TimeSpan, graphics::Texture},
     goods::Asset,
     std::sync::Arc,
 };
 
-#[derive(Clone, Debug, serde::Deserialize)]
-pub struct SpriteFrame {
-    pub src: Rect,
-    pub dst: Rect,
+#[derive(Clone, Copy, Debug, serde::Serialize, serde::Deserialize)]
+pub struct SpriteSize {
+    pub w: u32,
+    pub h: u32,
+}
 
-    #[serde(default)]
-    pub duration_us: u64,
+#[derive(Clone, Copy, Debug, serde::Serialize, serde::Deserialize)]
+pub struct SpriteRect {
+    pub x: u32,
+    pub y: u32,
+    pub w: u32,
+    pub h: u32,
+}
+
+#[derive(Clone, Debug, serde::Serialize, serde::Deserialize)]
+#[serde(rename_all = "kebab-case")]
+pub struct SpriteFrame {
+    pub tex: SpriteRect,
+    pub src: SpriteRect,
+    pub src_size: SpriteSize,
+    pub span: TimeSpan,
 }
 
 #[derive(Clone, Debug, Asset)]
+#[serde(rename_all = "kebab-case")]
 pub struct SpriteSheet {
     pub frames: Arc<[SpriteFrame]>,
 
@@ -22,6 +37,8 @@ pub struct SpriteSheet {
 
     #[serde(default = "default_animations")]
     pub animations: Arc<[SpriteAnimation]>,
+
+    pub tex_size: SpriteSize,
 
     #[container]
     pub texture: Texture,

@@ -1,12 +1,12 @@
 use {
-    super::{mat3_na_to_sierra, Renderer, RendererContext, SparseDescriptors},
+    super::{mat3_na_to_sierra, Renderer, RendererContext},
     crate::{
         camera::Camera2,
         graphics::{
             material::Material,
-            sprite::Sprite,
+            sprite::{Rect, Sprite},
             vertex::{vertex_layouts_for_pipeline, Semantics, VertexLocation, VertexType},
-            Graphics,
+            Graphics, SparseDescriptors,
         },
         scene::Global2,
         viewport::Viewport,
@@ -133,7 +133,9 @@ impl SpriteRenderer {
             };
 
             let instance = SpriteInstance {
-                sprite: *sprite,
+                pos: sprite.src.from_relative_to(&sprite.world),
+                uv: sprite.tex,
+                layer: sprite.layer,
                 albedo,
                 albedo_factor: {
                     let [r, g, b] = mat.albedo_factor;
@@ -285,9 +287,11 @@ impl Renderer for SpriteRenderer {
 }
 
 #[repr(C)]
-#[derive(Clone, Copy, Default)]
+#[derive(Clone, Copy, Debug, Default)]
 struct SpriteInstance {
-    sprite: Sprite,
+    pos: Rect,
+    uv: Rect,
+    layer: u32,
     albedo: u32,
     albedo_factor: [f32; 3],
     transform: [[f32; 3]; 3],

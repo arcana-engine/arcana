@@ -1,5 +1,5 @@
 [package]
-name = "proc"
+name = "arcana-proc"
 version = "0.1.0"
 authors = ["Zakarum <zakarumych@ya.ru>"]
 edition = "2018"
@@ -8,5 +8,4 @@ edition = "2018"
 proc-macro = true
 
 [dependencies]
-syn = "1.0"
-quote = "1.0"
+arcana-timespan = { version = "0.1", path = "../timespan" }

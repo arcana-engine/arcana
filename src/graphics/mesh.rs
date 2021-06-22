@@ -1,10 +1,14 @@
 use {
     super::{
-        vertex::{Position3, Semantics, VertexLayout, VertexLocation, VertexType},
+        vertex::{
+            Color, Normal3, Position3, PositionNormal3, PositionNormal3Color, Semantics,
+            VertexLayout, VertexLocation, VertexType,
+        },
         Graphics,
     },
     bumpalo::{collections::Vec as BVec, Bump},
     bytemuck::cast_slice,
+    goods::{Asset, AssetBuild, Loader},
     sierra::{
         AccelerationStructure, AccelerationStructureBuildFlags,
         AccelerationStructureBuildGeometryInfo, AccelerationStructureGeometry,
@@ -12,7 +16,14 @@ use {
         Buffer, BufferInfo, BufferRange, BufferUsage, Device, Encoder, Format, GeometryFlags,
         IndexData, IndexType, OutOfMemory, PrimitiveTopology, RenderPassEncoder, VertexInputRate,
     },
-    std::{borrow::Cow, convert::TryFrom as _, mem::size_of_val, ops::Range, sync::Arc},
+    std::{
+        borrow::{BorrowMut, Cow},
+        convert::TryFrom as _,
+        future::{ready, Ready},
+        mem::{size_of, size_of_val},
+        ops::Range,
+        sync::Arc,
+    },
 };
 
 #[derive(Clone, Debug, Hash, PartialEq, Eq)]
@@ -449,203 +460,195 @@ fn topology_triangles() -> PrimitiveTopology {
     PrimitiveTopology::TriangleList
 }
 
-#[cfg(feature = "genmesh")]
-mod gm {
-    use genmesh::{
-        generators::{IndexedPolygon, SharedVertex},
-        EmitTriangles, Quad, Vertex,
-    };
-    use std::{convert::TryFrom as _, mem::size_of};
-    use {
-        super::*,
-        crate::renderer::vertex::{
-            Color, Normal3, Position3, PositionNormal3, PositionNormal3Color, VertexType,
-        },
-    };
+impl Mesh {
+    pub fn from_generator_pos<G>(
+        generator: &G,
+        usage: BufferUsage,
+        cx: &mut Graphics,
+        index_type: IndexType,
+    ) -> Result<Self, OutOfMemory>
+    where
+        G: genmesh::generators::SharedVertex<genmesh::Vertex>
+            + genmesh::generators::IndexedPolygon<genmesh::Quad<usize>>,
+    {
+        Self::from_generator(generator, usage, cx, index_type, |v| {
+            Position3(v.pos.into())
+        })
+    }
 
-    impl Mesh {
-        pub fn from_generator_pos<G>(
-            generator: &G,
-            usage: BufferUsage,
-            ctx: &mut Context,
-            index_type: IndexType,
-        ) -> Result<Self, OutOfMemory>
-        where
-            G: SharedVertex<Vertex> + IndexedPolygon<Quad<usize>>,
-        {
-            Self::from_generator(generator, usage, ctx, index_type, Position3::from)
-        }
+    pub fn from_generator_pos_norm<G>(
+        generator: &G,
+        usage: BufferUsage,
+        cx: &mut Graphics,
+        index_type: IndexType,
+    ) -> Result<Self, OutOfMemory>
+    where
+        G: genmesh::generators::SharedVertex<genmesh::Vertex>
+            + genmesh::generators::IndexedPolygon<genmesh::Quad<usize>>,
+    {
+        Self::from_generator(generator, usage, cx, index_type, |v| PositionNormal3 {
+            position: Position3(v.pos.into()),
+            normal: Normal3(v.normal.into()),
+        })
+    }
 
-        pub fn from_generator_pos_norm<G>(
-            generator: &G,
-            usage: BufferUsage,
-            ctx: &mut Context,
-            index_type: IndexType,
-        ) -> Result<Self, OutOfMemory>
-        where
-            G: SharedVertex<Vertex> + IndexedPolygon<Quad<usize>>,
-        {
-            Self::from_generator(generator, usage, ctx, index_type, PositionNormal3::from)
-        }
+    pub fn from_generator_pos_norm_fixed_color<G>(
+        generator: &G,
+        usage: BufferUsage,
+        cx: &mut Graphics,
+        index_type: IndexType,
+        color: Color,
+    ) -> Result<Self, OutOfMemory>
+    where
+        G: genmesh::generators::SharedVertex<genmesh::Vertex>
+            + genmesh::generators::IndexedPolygon<genmesh::Quad<usize>>,
+    {
+        Self::from_generator(generator, usage, cx, index_type, |v| PositionNormal3Color {
+            position: Position3(v.pos.into()),
+            normal: Normal3(v.pos.into()),
+            color,
+        })
+    }
 
-        pub fn from_generator_pos_norm_fixed_color<G>(
-            generator: &G,
-            usage: BufferUsage,
-            ctx: &mut Context,
-            index_type: IndexType,
-            color: Color,
-        ) -> Result<Self, OutOfMemory>
-        where
-            G: SharedVertex<Vertex> + IndexedPolygon<Quad<usize>>,
-        {
-            Self::from_generator(generator, usage, ctx, index_type, |v| {
-                PositionNormal3Color {
-                    position: v.into(),
-                    normal: v.into(),
-                    color,
-                }
-            })
-        }
+    pub fn from_generator<G, V, P>(
+        generator: &G,
+        usage: BufferUsage,
+        cx: &mut Graphics,
+        index_type: IndexType,
+        vertex: impl Fn(genmesh::Vertex) -> V,
+    ) -> Result<Self, OutOfMemory>
+    where
+        G: genmesh::generators::SharedVertex<genmesh::Vertex>
+            + genmesh::generators::IndexedPolygon<P>,
+        V: VertexType,
+        P: genmesh::EmitTriangles<Vertex = usize>,
+    {
+        assert_eq!(size_of::<V>(), usize::try_from(V::layout().stride).unwrap());
 
-        pub fn from_generator<G, V, P>(
-            generator: &G,
-            usage: BufferUsage,
-            ctx: &mut Context,
-            index_type: IndexType,
-            vertex: impl Fn(Vertex) -> V,
-        ) -> Result<Self, OutOfMemory>
-        where
-            G: SharedVertex<Vertex> + IndexedPolygon<P>,
-            V: VertexType,
-            P: EmitTriangles<Vertex = usize>,
-        {
-            assert_eq!(size_of::<V>(), usize::try_from(V::layout().stride).unwrap());
+        let vertices: Vec<_> = generator.shared_vertex_iter().map(vertex).collect();
 
-            let vertices: Vec<_> = generator.shared_vertex_iter().map(vertex).collect();
+        let vertices_size = size_of_val(&vertices[..]);
 
-            let vertices_size = size_of_val(&vertices[..]);
+        let indices_offset = ((vertices_size - 1) | 15) + 1;
 
-            let indices_offset = ((vertices_size - 1) | 15) + 1;
+        let mut data;
 
-            let mut data;
+        let vertex_count = u32::try_from(vertices.len()).map_err(|_| OutOfMemory)?;
 
-            let vertex_count = u32::try_from(vertices.len()).map_err(|_| OutOfMemory)?;
+        let index_count;
 
-            let index_count;
+        let align_data_len = |data_len: usize| ((data_len - 1) | 15) + 1;
 
-            let align_data_len = |data_len: usize| ((data_len - 1) | 15) + 1;
+        match index_type {
+            IndexType::U16 => {
+                let indices: Vec<_> = generator
+                    .indexed_polygon_iter()
+                    .flat_map(|polygon| {
+                        let mut indices = Vec::new();
 
-            match index_type {
-                IndexType::U16 => {
-                    let indices: Vec<_> = generator
-                        .indexed_polygon_iter()
-                        .flat_map(|polygon| {
-                            let mut indices = Vec::new();
+                        polygon.emit_triangles(|triangle| {
+                            indices.push(triangle.x);
 
-                            polygon.emit_triangles(|triangle| {
-                                indices.push(triangle.x);
+                            indices.push(triangle.y);
 
-                                indices.push(triangle.y);
+                            indices.push(triangle.z);
+                        });
 
-                                indices.push(triangle.z);
-                            });
+                        indices
+                    })
+                    .map(|index| u16::try_from(index).unwrap())
+                    .collect();
 
-                            indices
-                        })
-                        .map(|index| u16::try_from(index).unwrap())
-                        .collect();
+                index_count = u32::try_from(indices.len()).map_err(|_| OutOfMemory)?;
 
-                    index_count = u32::try_from(indices.len()).map_err(|_| OutOfMemory)?;
+                let indices_size = size_of_val(&indices[..]);
 
-                    let indices_size = size_of_val(&indices[..]);
+                data = vec![0u8; align_data_len(indices_offset + indices_size)];
 
-                    data = vec![0u8; align_data_len(indices_offset + indices_size)];
+                unsafe {
+                    data[..vertices_size].copy_from_slice(std::slice::from_raw_parts(
+                        &vertices[0] as *const _ as *const _,
+                        vertices_size,
+                    ));
 
-                    unsafe {
-                        data[..vertices_size].copy_from_slice(std::slice::from_raw_parts(
-                            &vertices[0] as *const _ as *const _,
-                            vertices_size,
-                        ));
-
-                        data[indices_offset..indices_offset + indices_size].copy_from_slice(
-                            std::slice::from_raw_parts(
-                                &indices[0] as *const _ as *const _,
-                                indices_size,
-                            ),
-                        );
-                    }
-                }
-
-                IndexType::U32 => {
-                    let indices: Vec<_> = generator
-                        .indexed_polygon_iter()
-                        .flat_map(|polygon| {
-                            let mut indices = Vec::new();
-
-                            polygon.emit_triangles(|triangle| {
-                                indices.push(triangle.x);
-
-                                indices.push(triangle.y);
-
-                                indices.push(triangle.z);
-                            });
-
-                            indices
-                        })
-                        .map(|index| u32::try_from(index).unwrap())
-                        .collect();
-
-                    index_count = u32::try_from(indices.len()).map_err(|_| OutOfMemory)?;
-
-                    let indices_size = size_of_val(&indices[..]);
-
-                    data = vec![0u8; align_data_len(indices_offset + indices_size)];
-
-                    unsafe {
-                        data[..vertices_size].copy_from_slice(std::slice::from_raw_parts(
-                            &vertices[0] as *const _ as *const _,
-                            vertices_size,
-                        ));
-
-                        data[indices_offset..indices_offset + indices_size].copy_from_slice(
-                            std::slice::from_raw_parts(
-                                &indices[0] as *const _ as *const _,
-                                indices_size,
-                            ),
-                        );
-                    }
+                    data[indices_offset..indices_offset + indices_size].copy_from_slice(
+                        std::slice::from_raw_parts(
+                            &indices[0] as *const _ as *const _,
+                            indices_size,
+                        ),
+                    );
                 }
             }
 
-            let buffer = Buffer::from(ctx.create_buffer_static(
-                BufferInfo {
-                    align: 63,
-                    size: u64::try_from(data.len()).map_err(|_| OutOfMemory)?,
-                    usage,
-                },
-                &data[..],
-            )?);
+            IndexType::U32 => {
+                let indices: Vec<_> = generator
+                    .indexed_polygon_iter()
+                    .flat_map(|polygon| {
+                        let mut indices = Vec::new();
 
-            let binding = Binding {
-                buffer: buffer.clone(),
-                offset: 0,
-                layout: V::layout(),
-            };
+                        polygon.emit_triangles(|triangle| {
+                            indices.push(triangle.x);
 
-            let indices = Indices {
-                buffer,
-                offset: u64::try_from(indices_offset).unwrap(),
-                index_type,
-            };
+                            indices.push(triangle.y);
 
-            Ok(Mesh {
-                bindings: Arc::new([binding]),
-                indices: Some(indices),
-                count: index_count,
-                topology: PrimitiveTopology::TriangleList,
-                vertex_count,
-            })
+                            indices.push(triangle.z);
+                        });
+
+                        indices
+                    })
+                    .map(|index| u32::try_from(index).unwrap())
+                    .collect();
+
+                index_count = u32::try_from(indices.len()).map_err(|_| OutOfMemory)?;
+
+                let indices_size = size_of_val(&indices[..]);
+
+                data = vec![0u8; align_data_len(indices_offset + indices_size)];
+
+                unsafe {
+                    data[..vertices_size].copy_from_slice(std::slice::from_raw_parts(
+                        &vertices[0] as *const _ as *const _,
+                        vertices_size,
+                    ));
+
+                    data[indices_offset..indices_offset + indices_size].copy_from_slice(
+                        std::slice::from_raw_parts(
+                            &indices[0] as *const _ as *const _,
+                            indices_size,
+                        ),
+                    );
+                }
+            }
         }
+
+        let buffer = Buffer::from(cx.create_buffer_static(
+            BufferInfo {
+                align: 63,
+                size: u64::try_from(data.len()).map_err(|_| OutOfMemory)?,
+                usage,
+            },
+            &data[..],
+        )?);
+
+        let binding = Binding {
+            buffer: buffer.clone(),
+            offset: 0,
+            layout: V::layout(),
+        };
+
+        let indices = Indices {
+            buffer,
+            offset: u64::try_from(indices_offset).unwrap(),
+            index_type,
+        };
+
+        Ok(Mesh {
+            bindings: Arc::new([binding]),
+            indices: Some(indices),
+            count: index_count,
+            topology: PrimitiveTopology::TriangleList,
+            vertex_count,
+        })
     }
 }
 
@@ -790,4 +793,153 @@ fn build_triangles_blas<'a>(
     }]);
 
     Ok(blas)
+}
+
+#[derive(serde::Serialize, serde::Deserialize)]
+pub struct BindingFileHeader {
+    pub data: Range<usize>,
+    pub layout: VertexLayout,
+}
+
+#[derive(serde::Serialize, serde::Deserialize)]
+pub struct IndicesFileHeader {
+    pub data: Range<usize>,
+    pub index_type: IndexType,
+}
+
+/// Header for internal mesh file format.
+#[derive(serde::Serialize, serde::Deserialize)]
+pub struct MeshFileHeader {
+    pub magic: u32,
+    pub bindings: Vec<BindingFileHeader>,
+    pub indices: Option<IndicesFileHeader>,
+    pub topology: PrimitiveTopology,
+}
+
+const ARCANA_MESH_FILE_HEADER_MAGIC: u32 = u32::from_le_bytes(*b"msha");
+
+pub struct MeshFile {
+    pub header: MeshFileHeader,
+    pub bytes: Box<[u8]>,
+}
+
+#[derive(Debug, thiserror::Error)]
+pub enum MeshFileDecodeError {
+    #[error("Failed to verify magic number")]
+    MagicError,
+
+    #[error("Failed to deserialize magic file header")]
+    HeaderError { source: bincode::Error },
+}
+
+impl Asset for Mesh {
+    type Decoded = MeshFile;
+    type DecodeError = MeshFileDecodeError;
+    type BuildError = OutOfMemory;
+    type Fut = Ready<Result<MeshFile, Self::DecodeError>>;
+
+    fn decode(bytes: Box<[u8]>, _loader: &Loader) -> Self::Fut {
+        match &*bytes {
+            [a, b, c, d, ..] => {
+                let magic = u32::from_le_bytes([*a, *b, *c, *d]);
+                if magic != ARCANA_MESH_FILE_HEADER_MAGIC {
+                    tracing::error!(
+                        "Mesh blob contains wrong magic number '{:X}'. Expected '{:X}'",
+                        magic,
+                        ARCANA_MESH_FILE_HEADER_MAGIC
+                    );
+                    return ready(Err(MeshFileDecodeError::MagicError));
+                }
+            }
+            _ => {
+                tracing::error!("Mesh blob is too small");
+                return ready(Err(MeshFileDecodeError::MagicError));
+            }
+        }
+
+        match bincode::deserialize::<MeshFileHeader>(&*bytes) {
+            Ok(header) => {
+                debug_assert_eq!(header.magic, ARCANA_MESH_FILE_HEADER_MAGIC);
+                ready(Ok(MeshFile { header, bytes }))
+            }
+            Err(err) => ready(Err(MeshFileDecodeError::HeaderError { source: err })),
+        }
+    }
+}
+
+impl<B> AssetBuild<B> for Mesh
+where
+    B: BorrowMut<Graphics>,
+{
+    fn build(decoded: MeshFile, builder: &mut B) -> Result<Self, OutOfMemory> {
+        let graphics = builder.borrow_mut();
+
+        let mut min_vertex_count = !0u32;
+
+        let bindings: Arc<[Binding]> = decoded
+            .header
+            .bindings
+            .iter()
+            .map(|binding| -> Result<_, OutOfMemory> {
+                let vertex_count = u64::try_from(binding.data.len()).map_err(|_| OutOfMemory)?
+                    / u64::from(binding.layout.stride);
+
+                let vertex_count = u32::try_from(vertex_count).map_err(|_| OutOfMemory)?;
+
+                min_vertex_count = min_vertex_count.min(vertex_count);
+
+                Ok(Binding {
+                    buffer: graphics
+                        .create_buffer_static(
+                            BufferInfo {
+                                align: 255,
+                                size: u64::try_from(binding.data.len()).map_err(|_| OutOfMemory)?,
+                                usage: BufferUsage::VERTEX,
+                            },
+                            &decoded.bytes[binding.data.clone()],
+                        )?
+                        .into(),
+                    offset: 0,
+                    layout: binding.layout.clone(),
+                })
+            })
+            .collect::<Result<_, _>>()?;
+
+        let mut count = min_vertex_count;
+
+        let indices = decoded
+            .header
+            .indices
+            .as_ref()
+            .map(|indices| -> Result<_, OutOfMemory> {
+                let index_count = u64::try_from(indices.data.len()).map_err(|_| OutOfMemory)?
+                    / u64::from(indices.index_type.size());
+
+                count = u32::try_from(index_count).map_err(|_| OutOfMemory)?;
+
+                Ok(Indices {
+                    buffer: graphics
+                        .create_buffer_static(
+                            BufferInfo {
+                                align: 255,
+                                size: u64::try_from(indices.data.len()).map_err(|_| OutOfMemory)?,
+                                usage: BufferUsage::INDEX,
+                            },
+                            &decoded.bytes[indices.data.clone()],
+                        )?
+                        .into(),
+                    offset: 0,
+                    index_type: indices.index_type,
+                })
+            })
+            .transpose()?;
+
+        Ok(Mesh {
+            bindings,
+            indices,
+            topology: decoded.header.topology,
+            count,
+            vertex_count: min_vertex_count,
+        })
+    }
 }

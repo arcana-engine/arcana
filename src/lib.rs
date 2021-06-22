@@ -33,8 +33,10 @@ mod viewport;
 
 pub use {bumpalo, hecs, na, sierra};
 
+pub use arcana_proc::timespan;
+
 pub use self::{
-    clocks::{ClockIndex, Clocks, FixedClockStepIter},
+    clocks::{/* , FixedClockStepIter*/ ClockIndex, Clocks, TimeSpan, TimeSpanParseErr},
     control::{AssumeControlError, Control, ControlResult, InputController},
     debug::{DebugInfo, EntityDebugInfo, EntityDispay, EntityRefDebugInfo, EntityRefDisplay},
     funnel::Funnel,

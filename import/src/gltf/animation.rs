@@ -1,8 +1,5 @@
 use {
-    super::{
-        read_accessor, GltfAnimation, GltfBuildContext, GltfChannel, GltfLoadingError,
-        GltfSamplerOutput,
-    },
+    super::{read_accessor, Animation, Channel, GltfBuildContext, GltfLoadingError, SamplerOutput},
     byteorder::{ByteOrder as _, LittleEndian},
     gltf::accessor::{DataType, Dimensions},
     std::mem::size_of,
@@ -12,7 +9,7 @@ impl GltfBuildContext<'_> {
     pub fn create_animation(
         &mut self,
         animation: gltf::Animation,
-    ) -> Result<GltfAnimation, GltfLoadingError> {
+    ) -> Result<Animation, GltfLoadingError> {
         let channels = animation
             .channels()
             .map(|channel| {
@@ -82,7 +79,7 @@ impl GltfBuildContext<'_> {
                                 }))
                             }
 
-                            GltfSamplerOutput::Scalar(output_vec.into())
+                            SamplerOutput::Scalar(output_vec.into())
                         }
                         Dimensions::Vec2 => {
                             let (bytes, stride) = read_accessor(output.clone(), &self.decoded)?;
@@ -108,7 +105,7 @@ impl GltfBuildContext<'_> {
                                 }))
                             }
 
-                            GltfSamplerOutput::Vec2(output_vec.into())
+                            SamplerOutput::Vec2(output_vec.into())
                         }
                         Dimensions::Vec3 => {
                             let (bytes, stride) = read_accessor(output.clone(), &self.decoded)?;
@@ -134,7 +131,7 @@ impl GltfBuildContext<'_> {
                                 }))
                             }
 
-                            GltfSamplerOutput::Vec3(output_vec.into())
+                            SamplerOutput::Vec3(output_vec.into())
                         }
                         Dimensions::Vec4 => {
                             let (bytes, stride) = read_accessor(output.clone(), &self.decoded)?;
@@ -160,7 +157,7 @@ impl GltfBuildContext<'_> {
                                 }))
                             }
 
-                            GltfSamplerOutput::Vec4(output_vec.into())
+                            SamplerOutput::Vec4(output_vec.into())
                         }
                         dim => {
                             return Err(GltfLoadingError::UnexpectedDimensions {
@@ -175,7 +172,7 @@ impl GltfBuildContext<'_> {
                         }
                     };
 
-                Ok(GltfChannel {
+                Ok(Channel {
                     input: input_vec.into(),
                     output,
                     interpolation: sampler.interpolation(),
@@ -186,6 +183,6 @@ impl GltfBuildContext<'_> {
             })
             .collect::<Result<_, _>>()?;
 
-        Ok(GltfAnimation { channels })
+        Ok(Animation { channels })
     }
 }

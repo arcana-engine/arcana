@@ -1,17 +1,12 @@
 use {
-    crate::sprite_sheet::{SpriteAnimation, SpriteFrame, SpriteRect, SpriteSheet},
+    crate::sprite_sheet::{SpriteAnimation, SpriteFrame, SpriteRect, SpriteSheet, SpriteSize},
+    arcana_timespan::TimeSpan,
     eyre::WrapErr,
     std::path::Path,
     treasury_import::{Importer, Registry},
 };
 
 pub struct SpriteSheetImporter;
-
-#[derive(serde::Deserialize)]
-struct SpriteSize {
-    w: u32,
-    h: u32,
-}
 
 #[derive(serde::Deserialize)]
 struct Frame {
@@ -105,19 +100,10 @@ impl Importer for SpriteSheetImporter {
                 }
 
                 Ok(SpriteFrame {
-                    tex: SpriteRect {
-                        x: frame.frame.x,
-                        y: frame.frame.y,
-                        w: frame.frame.w,
-                        h: frame.frame.h,
-                    },
-                    src: SpriteRect {
-                        x: frame.sprite_source_size.x,
-                        y: frame.sprite_source_size.y,
-                        w: frame.source_size.w,
-                        h: frame.source_size.h,
-                    },
-                    duration_us: frame.duration_ms * 1000,
+                    tex: frame.frame,
+                    src: frame.sprite_source_size,
+                    src_size: frame.source_size,
+                    span: frame.duration_ms * TimeSpan::MILLISECOND,
                 })
             })
             .collect::<Result<_, _>>()?;
@@ -142,6 +128,7 @@ impl Importer for SpriteSheetImporter {
         )?;
 
         let sprite_sheet = SpriteSheet {
+            tex_size: sprite_sheet.meta.size,
             frames,
             animations,
             texture,
@@ -150,6 +137,7 @@ impl Importer for SpriteSheetImporter {
 
         let mut output = std::fs::File::create(native_path)
             .wrap_err_with(|| format!("Failed to open file: '{}'", native_path.display()))?;
+
         serde_json::to_writer(&mut output, &sprite_sheet).wrap_err_with(|| {
             format!(
                 "Failed to write SpriteSheet into file: '{}'",

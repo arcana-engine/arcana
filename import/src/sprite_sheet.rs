@@ -1,4 +1,5 @@
 use {
+    arcana_timespan::TimeSpan,
     eyre::WrapErr,
     image::GenericImageView,
     std::{convert::TryFrom as _, path::Path},
@@ -6,7 +7,13 @@ use {
     uuid::Uuid,
 };
 
-#[derive(serde::Serialize, serde::Deserialize)]
+#[derive(Clone, Copy, serde::Serialize, serde::Deserialize)]
+pub struct SpriteSize {
+    pub w: u32,
+    pub h: u32,
+}
+
+#[derive(Clone, Copy, serde::Serialize, serde::Deserialize)]
 pub struct SpriteRect {
     pub x: u32,
     pub y: u32,
@@ -19,7 +26,8 @@ pub struct SpriteRect {
 pub struct SpriteFrame {
     pub tex: SpriteRect,
     pub src: SpriteRect,
-    pub duration_us: u64,
+    pub src_size: SpriteSize,
+    pub span: TimeSpan,
 }
 
 #[derive(serde::Serialize, serde::Deserialize)]
@@ -35,6 +43,7 @@ pub struct SpriteAnimation {
 #[derive(serde::Serialize, serde::Deserialize)]
 #[serde(rename_all = "kebab-case")]
 pub struct SpriteSheet {
+    pub tex_size: SpriteSize,
     pub frames: Vec<SpriteFrame>,
     #[serde(skip_serializing_if = "Vec::is_empty", default)]
     pub frame_distances: Vec<f32>,

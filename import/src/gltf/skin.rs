@@ -1,12 +1,12 @@
 use {
-    super::{read_accessor, GltfBuildContext, GltfLoadingError, GltfSkin},
+    super::{read_accessor, GltfBuildContext, GltfLoadingError, Skin},
     byteorder::{ByteOrder as _, LittleEndian},
     gltf::accessor::Dimensions,
     std::{collections::hash_map::Entry, mem::size_of},
 };
 
 impl GltfBuildContext<'_> {
-    pub fn get_skin(&mut self, skin: gltf::Skin) -> Result<GltfSkin, GltfLoadingError> {
+    pub fn get_skin(&mut self, skin: gltf::Skin) -> Result<Skin, GltfLoadingError> {
         let skin_index = skin.index();
         match self.skins.entry(skin_index) {
             Entry::Occupied(entry) => Ok(entry.get().clone()),
@@ -17,7 +17,7 @@ impl GltfBuildContext<'_> {
         }
     }
 
-    fn create_skin(&mut self, skin: gltf::Skin) -> Result<GltfSkin, GltfLoadingError> {
+    fn create_skin(&mut self, skin: gltf::Skin) -> Result<Skin, GltfLoadingError> {
         match skin.inverse_bind_matrices() {
             Some(accessor) => {
                 if accessor.dimensions() != Dimensions::Mat4 {
@@ -63,12 +63,12 @@ impl GltfBuildContext<'_> {
                     }
                 }
 
-                Ok(GltfSkin {
+                Ok(Skin {
                     inverse_binding_matrices: Some(inverse_binding_matrices.into()),
                     joints: skin.joints().map(|j| j.index()).collect(),
                 })
             }
-            None => Ok(GltfSkin {
+            None => Ok(Skin {
                 inverse_binding_matrices: None,
                 joints: skin.joints().map(|j| j.index()).collect(),
             }),

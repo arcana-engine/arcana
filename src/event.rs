@@ -19,6 +19,7 @@ pub use winit::event::{
 };
 
 /// Describes a generic event.
+#[derive(Debug)]
 pub enum Event {
     /// Emitted when the OS sends an event to a winit window.
     WindowEvent {
@@ -169,9 +170,12 @@ impl Loop {
         F: FnOnce(Self) -> Fut,
         Fut: Future<Output = eyre::Result<()>> + 'static,
     {
+        tracing::debug!("Starting event loop");
+
         let event_loop = winit::event_loop::EventLoop::new();
         let shared = Rc::new(shared::Shared::new());
 
+        tracing::debug!("Starting tokio runtime");
         let runtime = tokio::runtime::Builder::new_current_thread()
             .enable_all()
             .build()
@@ -182,6 +186,7 @@ impl Loop {
             shared: shared.clone(),
         });
 
+        tracing::debug!("Execute App closure");
         let mut fut = Box::pin(fut);
         let result = runtime.block_on(futures::future::poll_fn(|ctx| {
             match fut.as_mut().poll(ctx) {
@@ -204,6 +209,7 @@ impl Loop {
 
         drop(guard);
 
+        tracing::debug!("Run async App");
         let mut fut_opt = Some(fut);
         event_loop.run(move |event, proxy, flow| match Event::from_winit(event) {
             Some(event) => {

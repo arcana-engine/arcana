@@ -6,6 +6,6 @@ pub mod tiles;
 
 pub use self::{
     image::ImageAsset,
-    sprite_sheet::{SpriteAnimation, SpriteFrame, SpriteSheet},
+    sprite_sheet::{SpriteAnimation, SpriteFrame, SpriteRect, SpriteSheet, SpriteSize},
     tiles::{Tile, TileMap, TileSet},
 };
