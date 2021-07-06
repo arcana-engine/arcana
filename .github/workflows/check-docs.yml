@@ -1,0 +1,28 @@
+name: check-docs
+
+on:
+  push:
+    branches: [ check-docs ]
+
+env:
+  CARGO_TERM_COLOR: always
+
+jobs:
+  tokei:
+    runs-on: ubuntu-latest
+    outputs:
+      result: ${{ steps.tokei.outputs.result }}
+    steps:
+    - uses: actions/checkout@v2
+    - name: Install tokei
+      uses: actions-rs/install@v0.1
+      with:
+        crate: tokei
+        version: latest
+    - name: Run tokei
+      id: result
+      run: tokei -tRust -ojson > tokei.json
+    - name: Echo result
+      run: echo "Code:$(cat tokei.json | jq \".Rust.code\")\nComments:$(cat tokei.json | jq \".Rust.comments\")"
+    - name: Check result
+      run: "[$(cat tokei.json | jq \".Rust.code\") < $(cat tokei.json | jq \".Rust.comments\")]"
