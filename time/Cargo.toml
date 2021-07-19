@@ -1,5 +1,5 @@
 [package]
-name = "arcana-timespan"
+name = "arcana-time"
 version = "0.1.0"
 authors = ["Zakarum <zakarumych@ya.ru>"]
 edition = "2018"

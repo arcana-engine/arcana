@@ -1,0 +1,13 @@
+{
+  "tiles": [
+    {
+      "name": "wall",
+      "collider": "wall",
+      "texture": "b73a6dcf-0b5c-4626-b8e2-fbd1bfe429e7"
+    },
+    {
+      "name": "dirt",
+      "texture": "5fa7b605-6dea-4f27-837d-0e120c7caf4a"
+    }
+  ]
+}

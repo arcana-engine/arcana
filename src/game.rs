@@ -4,13 +4,16 @@ use {
         clocks::{Clocks, TimeSpan},
         control::Control,
         event::{Event, Loop, WindowEvent},
+        fps::FpsMeter,
         funnel::Funnel,
         graphics::{
             renderer::{basic::BasicRenderer, sprite::SpriteRenderer},
             Graphics, Renderer, RendererContext,
         },
+        lifespan::LifeSpanSystem,
         resources::Res,
         scene::{Global2, Global3, SceneSystem},
+        // session::ClientSession,
         system::{Scheduler, SystemContext},
         task::{Executor, Spawner, TaskContext},
         viewport::Viewport,
@@ -19,7 +22,7 @@ use {
     eyre::WrapErr,
     goods::Loader,
     hecs::{DynamicBundle, World},
-    std::{collections::VecDeque, future::Future, path::Path, time::Duration},
+    std::{future::Future, path::Path, time::Duration},
     winit::window::Window,
 };
 
@@ -185,14 +188,19 @@ where
         let mut clocks = Clocks::new();
 
         // Schedule default systems.
+        scheduler.add_system(LifeSpanSystem);
         scheduler.add_system(SceneSystem);
 
-        scheduler.start(TimeSpan::ZERO);
+        res.insert(FpsMeter::new());
+        scheduler.add_fixed_system(
+            |cx: SystemContext<'_>| {
+                let fps = cx.res.get::<FpsMeter>().unwrap();
+                println!("FPS: {}", fps.fps());
+            },
+            TimeSpan::SECOND,
+        );
 
         let mut executor = Executor::new();
-
-        let mut frames = VecDeque::new();
-        let mut last_fps_report = TimeSpan::ZERO;
 
         // Init bumpalo allocator.
         let mut bump = bumpalo::Bump::new();
@@ -245,23 +253,7 @@ where
                 }
             }
 
-            let clock = clocks.step();
-
-            frames.push_back(clock.elapsed);
-
-            while let Some(frame) = frames.pop_front() {
-                if frame + 5 * TimeSpan::SECOND > clock.elapsed || frames.len() < 300 {
-                    frames.push_front(frame);
-                    break;
-                }
-            }
-
-            if last_fps_report + TimeSpan::SECOND < clock.elapsed && frames.len() > 10 {
-                last_fps_report = clock.elapsed;
-                let window = (*frames.back().unwrap() - *frames.front().unwrap()).as_secs_f32();
-                let fps = frames.len() as f32 / window;
-                tracing::info!("FPS: {}", fps);
-            }
+            let clock = clocks.advance();
 
             scheduler
                 .run(SystemContext {
@@ -292,6 +284,10 @@ where
             graphics
                 .flush_uploads(&bump)
                 .wrap_err_with(|| "Uploads failed")?;
+
+            res.get_mut::<FpsMeter>()
+                .unwrap()
+                .add_frame_time(clock.delta);
 
             renderer
                 .render(

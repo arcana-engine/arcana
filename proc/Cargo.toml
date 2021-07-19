@@ -1,11 +1,15 @@
 [package]
 name = "arcana-proc"
 version = "0.1.0"
-authors = ["Zakarum <zakarumych@ya.ru>"]
 edition = "2018"
+authors = ["Zakarum <zakarumych@ya.ru>"]
+license = "MIT OR Apache-2.0"
+documentation = "https://docs.rs/arcana-proc"
+homepage = "https://github.com/zakarumych/arcana"
+repository = "https://github.com/zakarumych/arcana"
 
 [lib]
 proc-macro = true
 
 [dependencies]
-arcana-timespan = { version = "0.1", path = "../timespan" }
+arcana-time = { version = "0.1", path = "../time" }

@@ -195,7 +195,6 @@ impl BasicRenderer {
                 if drawn {
                     tracing::info!("Mesh drawn");
                 } else {
-                    dbg!(mesh);
                     tracing::warn!("Mesh is not drawn");
                 }
             }

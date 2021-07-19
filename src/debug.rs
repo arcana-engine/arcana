@@ -95,13 +95,13 @@ impl WorldExt for World {
     }
 }
 
-pub trait EntityDispay {
+pub trait EntityDisplay {
     fn display_ref<'a>(&self, entity_ref: EntityRef<'a>) -> EntityRefDebugInfo<'a>;
 
     fn display<'a>(&self, info: &'a DebugInfo) -> EntityDebugInfo<'a>;
 }
 
-impl EntityDispay for Entity {
+impl EntityDisplay for Entity {
     fn display_ref<'a>(&self, entity_ref: EntityRef<'a>) -> EntityRefDebugInfo<'a> {
         EntityRefDebugInfo {
             entity: *self,

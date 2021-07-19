@@ -12,18 +12,19 @@
 //! Then start writing prefab implementations and input controls, implement custom rendering logic when required.
 //!
 
-pub mod camera;
-pub mod event;
-pub mod graphics;
-
 pub mod anim;
 pub mod assets;
 mod bitset;
+pub mod camera;
 mod clocks;
 mod control;
 mod debug;
+pub mod event;
+pub mod fps;
 mod funnel;
 mod game;
+pub mod graphics;
+pub mod lifespan;
 mod physics2;
 mod resources;
 mod scene;
@@ -37,8 +38,11 @@ pub use arcana_proc::timespan;
 
 pub use self::{
     clocks::{/* , FixedClockStepIter*/ ClockIndex, Clocks, TimeSpan, TimeSpanParseErr},
-    control::{AssumeControlError, Control, ControlResult, InputController},
-    debug::{DebugInfo, EntityDebugInfo, EntityDispay, EntityRefDebugInfo, EntityRefDisplay},
+    control::{
+        AssumeControlError, CommandQueue, Control, ControlResult, Controlled, EntityController,
+        InputCommander, InputController,
+    },
+    debug::{DebugInfo, EntityDebugInfo, EntityDisplay, EntityRefDebugInfo, EntityRefDisplay},
     funnel::Funnel,
     game::{game2, game3, Game},
     physics2::{ContactQueue2, Physics2, PhysicsData2},

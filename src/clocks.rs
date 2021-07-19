@@ -2,7 +2,7 @@
 //!
 //! `TimeSpan` type is suitable for measuring difference between instances.
 
-pub use arcana_timespan::{TimeSpan, TimeSpanParseErr};
+pub use arcana_time::{TimeSpan, TimeSpanParseErr, TimeStamp};
 use std::time::Instant;
 
 /// Clocks for tracking current time, update delta time, global start time etc.
@@ -13,8 +13,8 @@ pub struct Clocks {
     /// Instant of clocks start.
     start: Instant,
 
-    /// Time elasped from `start`.
-    elapsed: TimeSpan,
+    /// TimeStamp relative to `start`.
+    now: TimeStamp,
 }
 
 /// Collection of clock measurements.
@@ -26,10 +26,7 @@ pub struct ClockIndex {
     pub delta: TimeSpan,
 
     /// Time elapsed from `start`.
-    pub elapsed: TimeSpan,
-
-    /// Instant of clocks start.
-    pub start: Instant,
+    pub now: TimeStamp,
 }
 
 impl Clocks {
@@ -41,7 +38,7 @@ impl Clocks {
         let now = Instant::now();
         Clocks {
             start: now,
-            elapsed: TimeSpan::ZERO,
+            now: TimeStamp::ORIGIN,
         }
     }
 
@@ -50,22 +47,22 @@ impl Clocks {
     /// # Panics
     ///
     /// This function panics if `start` is in future.
-    /// This function panics if `start` is in too distant past (hundreds of thousands of years).
+    /// This function panics if `start` is in too distant past (hundreds of years).
     pub fn restart_from(&mut self, start: Instant) {
         let now = Instant::now();
         assert!(now >= start);
 
-        let elapsed = (now - start).as_micros();
+        let elapsed = (now - start).as_nanos();
         assert!(elapsed < u64::MAX as u128);
 
-        self.elapsed = TimeSpan::from_micros(elapsed as u64);
+        self.now = TimeStamp::ORIGIN + TimeSpan::from_nanos(elapsed as u64);
         self.start = start;
     }
 
     /// Restarts clocks from current instant.
     pub fn restart(&mut self) {
         self.start = Instant::now();
-        self.elapsed = TimeSpan::ZERO;
+        self.now = TimeStamp::ORIGIN;
     }
 
     /// Returns clocks starting instance.
@@ -74,7 +71,7 @@ impl Clocks {
     }
 
     /// Advances clocks step.
-    /// Step timestamp monotonically increases.
+    /// Timestamp monotonically increases.
     /// It  case it can be the same as previous step.
     ///
     /// # Panics
@@ -90,23 +87,22 @@ impl Clocks {
     /// loop {
     ///   let next = clocks.step();
     ///   assert!(next.step >= last.step, "Next step is never earlier than previous");
-    ///   assert!(next.step >= next.start, "Step is never eariler than clock start time");
+    ///   assert!(next.step >= next.start, "Step is never earlier than clock start time");
     ///   assert_eq!(next.start, last.start, "All steps from same `Clock` has same `start` value");
     ///   last = next;
     /// }
     /// ```
-    pub fn step(&mut self) -> ClockIndex {
-        let now = Instant::now();
-        let elapsed = (now - self.start).as_micros();
+    pub fn advance(&mut self) -> ClockIndex {
+        let elapsed = self.start.elapsed().as_nanos();
         assert!(elapsed < u64::MAX as u128);
-        let elapsed = TimeSpan::from_micros(elapsed as u64);
 
-        let delta = elapsed - self.elapsed;
-        self.elapsed = elapsed;
-        ClockIndex {
-            delta,
-            elapsed: self.elapsed,
-            start: self.start,
-        }
+        let elapsed = TimeSpan::from_nanos(elapsed as u64);
+
+        let now = TimeStamp::ORIGIN + elapsed;
+        let delta = now.elapsed_since(self.now);
+
+        self.now = now;
+
+        ClockIndex { delta, now }
     }
 }

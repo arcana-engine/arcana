@@ -1,37 +1,48 @@
 use {
     crate::{
-        clocks::{ClockIndex, TimeSpan},
+        clocks::{ClockIndex, TimeSpan, TimeStamp},
         control::Control,
         graphics::Graphics,
         resources::Res,
         task::{Spawner, TaskContext},
     },
     bumpalo::Bump,
+    eyre::WrapErr as _,
     goods::Loader,
     hecs::World,
 };
 
+/// Default value for fixed systems tick_span
+pub const DEFAULT_TICK_SPAN: TimeSpan = TimeSpan::from_micros(20_000);
+
 /// Context in which [`System`] runs.
+///
+/// `System::run` accepts this struct as argument.
+/// `SystemContext` contains everything system would need to run.
 pub struct SystemContext<'a> {
-    /// Main world.
+    /// World on which systems are run.
     pub world: &'a mut World,
 
     /// Resources map.
+    /// All singleton values are stored here and accessible by type.
     pub res: &'a mut Res,
 
-    /// Input controllers.
+    /// Control hub to make entities controlled.
     pub control: &'a mut Control,
 
-    /// Task spawner,
+    /// Spawns tasks that will be executed asynchronously.
     pub spawner: &'a mut Spawner,
 
     /// Graphics context.
     pub graphics: &'a mut Graphics,
 
-    /// Asset loader
+    /// Asset loader.
+    /// Assets are loaded asynchronously,
+    /// result can be awaited in task. See `spawner` field.
     pub loader: &'a Loader,
 
     /// Bump allocator.
+    /// Reduce allocation
     pub bump: &'a Bump,
 
     /// Clock index.
@@ -53,6 +64,7 @@ impl<'a> SystemContext<'a> {
         }
     }
 
+    /// Reborrow as task context.
     pub fn task(&mut self) -> TaskContext<'_> {
         TaskContext {
             world: self.world,
@@ -68,11 +80,15 @@ impl<'a> SystemContext<'a> {
 
 /// System trait for the ECS.
 pub trait System: 'static {
+    /// Name of the system.
+    /// Used for debug purposes.
     fn name(&self) -> &str;
 
+    /// Run system with provided context.
     fn run(&mut self, cx: SystemContext<'_>) -> eyre::Result<()>;
 }
 
+/// Functions are systems.
 impl<F> System for F
 where
     F: for<'a> FnMut(SystemContext<'a>) + 'static,
@@ -87,23 +103,39 @@ where
     }
 }
 
-struct FixSystem<S: ?Sized> {
+struct FixSystem {
+    system: Box<dyn System>,
     step: TimeSpan,
-    next: TimeSpan,
-    system: S,
+    next: TimeStamp,
 }
 
 pub struct Scheduler {
     var_systems: Vec<Box<dyn System>>,
-    fix_systems: Vec<Box<FixSystem<dyn System>>>,
+    fixed_systems: Vec<FixSystem>,
+    tick_systems: Vec<Box<dyn System>>,
+    tick_span: TimeSpan,
+    next_tick: TimeStamp,
 }
 
 impl Scheduler {
+    /// Creates new scheduler instance with default tick step: [`DEFAULT_TICK_SPAN`].
     pub fn new() -> Self {
+        Scheduler::with_tick_span(DEFAULT_TICK_SPAN)
+    }
+
+    /// Creates new scheduler with specified tick step.
+    pub fn with_tick_span(tick_span: TimeSpan) -> Self {
         Scheduler {
             var_systems: Vec::new(),
-            fix_systems: Vec::new(),
+            fixed_systems: Vec::new(),
+            tick_systems: Vec::new(),
+            next_tick: TimeStamp::ORIGIN,
+            tick_span,
         }
+    }
+
+    pub fn set_tick_span(&mut self, tick_span: TimeSpan) {
+        self.tick_span = tick_span;
     }
 
     /// Adds system to the app.
@@ -120,26 +152,40 @@ impl Scheduler {
 
     /// Adds fixed-step system to the app.
     pub fn with_fixed_system(mut self, system: impl System, step: TimeSpan) -> Self {
-        self.fix_systems.push(Box::new(FixSystem {
+        self.fixed_systems.push(FixSystem {
+            system: Box::new(system),
+            next: TimeStamp::ORIGIN,
             step,
-            next: TimeSpan::ZERO,
-            system,
-        }));
+        });
         self
     }
 
     /// Adds fixed-step system to the app.
     pub fn add_fixed_system(&mut self, system: impl System, step: TimeSpan) -> &mut Self {
-        self.fix_systems.push(Box::new(FixSystem {
+        self.fixed_systems.push(FixSystem {
+            system: Box::new(system),
+            next: TimeStamp::ORIGIN,
             step,
-            next: TimeSpan::ZERO,
-            system,
-        }));
+        });
         self
     }
 
-    pub fn start(&mut self, start: TimeSpan) {
-        for fixed in &mut self.fix_systems {
+    /// Adds ticking system to the app.
+    pub fn with_ticking_system(mut self, system: impl System) -> Self {
+        self.tick_systems.push(Box::new(system));
+        self
+    }
+
+    /// Adds ticking system to the app.
+    pub fn add_ticking_system(&mut self, system: impl System) -> &mut Self {
+        self.tick_systems.push(Box::new(system));
+        self
+    }
+
+    pub fn start(&mut self, start: TimeStamp) {
+        self.next_tick = start;
+
+        for fixed in &mut self.fixed_systems {
             fixed.next = start;
         }
     }
@@ -147,28 +193,56 @@ impl Scheduler {
     pub fn run(&mut self, mut cx: SystemContext<'_>) -> eyre::Result<()> {
         let clock = cx.clock;
 
-        'fixed: loop {
-            let mut cx = cx.reborrow();
+        // Run systems for game ticks.
+        while self.next_tick <= clock.now {
+            cx.clock.delta = self.tick_span;
+            cx.clock.now = self.next_tick;
 
-            if let Some(fixed) = self.fix_systems.iter_mut().min_by_key(|f| f.next) {
-                if fixed.next <= clock.elapsed {
-                    cx.clock.delta = fixed.step;
-                    cx.clock.elapsed = fixed.next;
-                    fixed.system.run(cx)?;
-
-                    fixed.next += fixed.step;
-                    continue 'fixed;
-                }
+            for system in self.tick_systems.iter_mut() {
+                let cx = cx.reborrow();
+                system.run(cx).wrap_err_with(|| SystemFailure {
+                    name: system.name().to_owned(),
+                })?;
             }
 
-            break;
+            self.next_tick += self.tick_span;
         }
+
+        // Run systems with fixed step.
+        loop {
+            match self.fixed_systems.iter_mut().min_by_key(|fixed| fixed.next) {
+                None => break,
+                Some(fixed) if fixed.next > clock.now => break,
+                Some(fixed) => {
+                    cx.clock.delta = fixed.step;
+                    cx.clock.now = fixed.next;
+
+                    let cx = cx.reborrow();
+                    fixed.system.run(cx).wrap_err_with(|| SystemFailure {
+                        name: fixed.system.name().to_owned(),
+                    })?;
+
+                    fixed.next += fixed.step;
+                }
+            }
+        }
+
+        // Run variable rate systems.
+        cx.clock = clock;
 
         for system in self.var_systems.iter_mut() {
             let cx = cx.reborrow();
-            system.run(cx)?;
+            system.run(cx).wrap_err_with(|| SystemFailure {
+                name: system.name().to_owned(),
+            })?;
         }
 
         Ok(())
     }
+}
+
+#[derive(Clone, Debug, thiserror::Error)]
+#[error("System {name} execution failed")]
+pub struct SystemFailure {
+    name: String,
 }

@@ -5,7 +5,7 @@ use {
         resources::Res,
         scene::{Global2, Local2},
     },
-    goods::{Asset, AssetField, AssetResult},
+    goods::{Asset, AssetField, Loader},
     hecs::{Entity, World},
     na,
     ordered_float::OrderedFloat,
@@ -14,6 +14,7 @@ use {
         geometry::{ColliderBuilder, SharedShape},
     },
     std::{collections::HashMap, sync::Arc},
+    uuid::Uuid,
 };
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash, serde::Deserialize)]
@@ -63,23 +64,17 @@ pub struct TileMap {
 }
 
 impl TileMap {
-    pub fn spawn(
-        mut result: AssetResult<TileMap>,
-        res: &mut Res,
-        world: &mut World,
-        graphics: &mut Graphics,
-        entity: Entity,
-    ) -> eyre::Result<()> {
-        let tilemap = result.get(graphics)?;
-
-        let cell_size = tilemap.cell_size;
-        let cells = tilemap.cells.clone();
+    pub fn spawn(&self, res: &mut Res, world: &mut World) -> Entity {
+        let cell_size = self.cell_size;
+        let cells = self.cells.clone();
 
         let hc = cell_size * 0.5;
 
-        for (j, row) in cells.chunks(tilemap.width).enumerate() {
+        let entity = world.spawn((Global2::identity(),));
+
+        for (j, row) in cells.chunks(self.width).enumerate() {
             for (i, &cell) in row.iter().enumerate() {
-                let tile = match tilemap.set.tiles.get(cell) {
+                let tile = match self.set.tiles.get(cell) {
                     None => {
                         tracing::error!("Missing tile in the tileset");
                         None
@@ -122,7 +117,7 @@ impl TileMap {
                             .bodies
                             .insert(RigidBodyBuilder::new_static().build());
 
-                        physics.colliders.insert(
+                        physics.colliders.insert_with_parent(
                             ColliderBuilder::new(shape).build(),
                             body,
                             &mut physics.bodies,
@@ -153,7 +148,18 @@ impl TileMap {
             }
         }
 
-        world.insert_one(entity, Global2::identity())?;
-        Ok(())
+        entity
+    }
+
+    pub async fn load_and_spawn(
+        uuid: &Uuid,
+        loader: &Loader,
+        res: &mut Res,
+        world: &mut World,
+        graphics: &mut Graphics,
+    ) -> eyre::Result<Entity> {
+        let mut map = loader.load::<Self>(uuid).await;
+        let map = map.get(graphics)?;
+        Ok(map.spawn(res, world))
     }
 }

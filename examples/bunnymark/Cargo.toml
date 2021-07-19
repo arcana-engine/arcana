@@ -1,5 +1,5 @@
 [package]
-name = "rays"
+name = "bunnymark"
 version = "0.1.0"
 edition = "2018"
 authors = ["Zakarum <zakarumych@ya.ru>"]
@@ -9,7 +9,8 @@ publish = false
 [dependencies]
 arcana = { path = "../.." }
 color-eyre = "0.5"
-eyre = "0.6"
 hecs = "0.5"
-sierra = { version = "0.1", git = "https://github.com/zakarumych/sierra.git" }
-
+rapier2d = "0.10"
+eyre = "0.6"
+futures = "0.3"
+rand = "0.8"

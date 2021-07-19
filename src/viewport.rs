@@ -38,7 +38,7 @@ impl Viewport {
             surface,
             swapchain,
             needs_redraw: true,
-            focused: false,
+            focused: true,
         })
     }
 

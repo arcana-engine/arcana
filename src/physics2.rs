@@ -1,14 +1,21 @@
 use {
     crate::{
+        clocks::TimeSpan,
         scene::Global2,
-        system::{System, SystemContext},
+        system::{System, SystemContext, DEFAULT_TICK_SPAN},
     },
+    approx::relative_ne,
+    bumpalo::collections::Vec as BVec,
     flume::{unbounded, Sender},
     hecs::Entity,
     rapier2d::{
-        dynamics::{CCDSolver, IntegrationParameters, JointSet, RigidBodyHandle, RigidBodySet},
+        dynamics::{
+            CCDSolver, IntegrationParameters, IslandManager, JointSet, RigidBodyHandle,
+            RigidBodySet,
+        },
         geometry::{
-            BroadPhase, ColliderHandle, ColliderSet, ContactEvent, IntersectionEvent, NarrowPhase,
+            BroadPhase, ColliderHandle, ColliderSet, ContactEvent, ContactPair, IntersectionEvent,
+            NarrowPhase,
         },
         na,
         pipeline::{EventHandler, PhysicsPipeline},
@@ -48,6 +55,7 @@ pub struct Physics2 {
 pub struct PhysicsData2 {
     pub bodies: RigidBodySet,
     pub colliders: ColliderSet,
+    pub islands: IslandManager,
     pub joints: JointSet,
     pub gravity: na::Vector2<f32>,
 }
@@ -57,6 +65,7 @@ impl PhysicsData2 {
         PhysicsData2 {
             bodies: RigidBodySet::new(),
             colliders: ColliderSet::new(),
+            islands: IslandManager::new(),
             joints: JointSet::new(),
             gravity: na::Vector2::default(),
         }
@@ -71,9 +80,16 @@ impl Default for PhysicsData2 {
 
 impl Physics2 {
     pub fn new() -> Self {
+        Physics2::with_tick_span(DEFAULT_TICK_SPAN)
+    }
+
+    pub fn with_tick_span(tick_span: TimeSpan) -> Self {
         Physics2 {
             pipeline: PhysicsPipeline::new(),
-            integration_parameters: IntegrationParameters::default(),
+            integration_parameters: IntegrationParameters {
+                dt: tick_span.as_secs_f32(),
+                ..IntegrationParameters::default()
+            },
             broad_phase: BroadPhase::new(),
             narrow_phase: NarrowPhase::new(),
             ccd_solver: CCDSolver::new(),
@@ -89,11 +105,26 @@ impl System for Physics2 {
     fn run(&mut self, cx: SystemContext<'_>) -> eyre::Result<()> {
         let data = cx.res.with(PhysicsData2::new);
 
-        for (entity, (global, body)) in cx.world.query_mut::<(&Global2, &RigidBodyHandle)>() {
-            let body = data.bodies.get_mut(*body).unwrap();
-            if *body.position() != global.iso {
-                body.set_position(global.iso, true);
+        let mut remove_bodies = BVec::with_capacity_in(data.bodies.len(), cx.bump);
+        let world = &*cx.world;
+        data.bodies.iter().for_each(|(handle, body)| {
+            let e = Entity::from_bits(body.user_data as u64);
+            if !world.contains(e) {
+                remove_bodies.push(handle);
             }
+        });
+        for handle in remove_bodies {
+            data.bodies.remove(
+                handle,
+                &mut data.islands,
+                &mut data.colliders,
+                &mut data.joints,
+            );
+        }
+
+        for (entity, body) in cx.world.query_mut::<&RigidBodyHandle>() {
+            let body = data.bodies.get_mut(*body).unwrap();
+
             if body.user_data == 0 {
                 body.user_data = entity.to_bits().into();
 
@@ -104,13 +135,21 @@ impl System for Physics2 {
             }
         }
 
+        for (_entity, (global, body)) in cx.world.query_mut::<(&Global2, &RigidBodyHandle)>() {
+            let body = data.bodies.get_mut(*body).unwrap();
+
+            if relative_ne!(*body.position(), global.iso) {
+                body.set_position(global.iso, true);
+            }
+        }
+
         struct SenderEventHandler {
             tx: Sender<ContactEvent>,
         }
 
         impl EventHandler for SenderEventHandler {
             fn handle_intersection_event(&self, _event: IntersectionEvent) {}
-            fn handle_contact_event(&self, event: ContactEvent) {
+            fn handle_contact_event(&self, event: ContactEvent, _pair: &ContactPair) {
                 self.tx.send(event).unwrap();
             }
         }
@@ -120,6 +159,7 @@ impl System for Physics2 {
         self.pipeline.step(
             &data.gravity,
             &self.integration_parameters,
+            &mut data.islands,
             &mut self.broad_phase,
             &mut self.narrow_phase,
             &mut data.bodies,

@@ -5,7 +5,7 @@
   "assets": [
     {
       "uuid": "7406ddc2-5331-4988-b138-86b7ef93793e",
-      "source": "C:\\code\\arcana\\examples\\assets/tank.png",
+      "source": "C:\\code\\arcana\\examples\\assets\\tank.png",
       "source_format": "image",
       "native_format": "rgba.png",
       "tags": [
@@ -14,9 +14,60 @@
     },
     {
       "uuid": "a6ba2179-d4d5-4a86-bd33-e82e97bb30aa",
-      "source": "C:\\code\\arcana\\examples\\assets/tank.json",
+      "source": "C:\\code\\arcana\\examples\\assets\\tank.json",
       "source_format": "aseprite.spritesheet",
       "native_format": "arcana.spritesheet",
+      "tags": []
+    },
+    {
+      "uuid": "b4f3f88e-0fcf-4f51-8b07-a3ae5db1afbb",
+      "source": "C:\\code\\arcana\\examples\\assets\\bunny.png",
+      "source_format": "image",
+      "native_format": "rgba.png",
+      "tags": []
+    },
+    {
+      "uuid": "42e2670c-33c3-4b4d-abe2-4ce99dd3a64c",
+      "source": "C:\\code\\arcana\\examples\\assets\\tanks-tiles.png",
+      "source_format": "image",
+      "native_format": "rgba.png",
+      "tags": [
+        "texture"
+      ]
+    },
+    {
+      "uuid": "a6dabe88-d68f-4eee-872c-d8a15c6e9a3d",
+      "source": "C:\\code\\arcana\\examples\\assets\\tanks-tiles.json",
+      "source_format": "aseprite.spritesheet",
+      "native_format": "arcana.spritesheet",
+      "tags": []
+    },
+    {
+      "uuid": "b73a6dcf-0b5c-4626-b8e2-fbd1bfe429e7",
+      "source": "C:\\code\\arcana\\examples\\assets\\tanks.wall.png",
+      "source_format": "image",
+      "native_format": "rgba.png",
+      "tags": []
+    },
+    {
+      "uuid": "5fa7b605-6dea-4f27-837d-0e120c7caf4a",
+      "source": "C:\\code\\arcana\\examples\\assets\\tanks.dirt.png",
+      "source_format": "image",
+      "native_format": "rgba.png",
+      "tags": []
+    },
+    {
+      "uuid": "423f05bf-636e-42a9-aafe-35f2b650321c",
+      "source": "C:\\code\\arcana\\examples\\assets\\tanks-tiles.json",
+      "source_format": "arcana.tile-set",
+      "native_format": "arcana.tile-set",
+      "tags": []
+    },
+    {
+      "uuid": "55f1799c-303a-480f-b156-5b51fab18ae5",
+      "source": "C:\\code\\arcana\\examples\\assets\\tanks-map.json",
+      "source_format": "arcana.tile-map",
+      "native_format": "arcana.tile-map",
       "tags": []
     }
   ]

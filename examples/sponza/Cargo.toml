@@ -2,11 +2,8 @@
 name = "untitled"
 version = "0.1.0"
 edition = "2018"
-authors = ["zaq"]
+authors = ["Zakarum <zakarumych@ya.ru>"]
 license = "MIT OR Apache-2.0"
-documentation = "https://docs.rs/untitled/0.1.0"
-homepage = "https://github.com/zaq/untitled"
-repository = "https://github.com/zaq/untitled"
 publish = false
 
 [dependencies]

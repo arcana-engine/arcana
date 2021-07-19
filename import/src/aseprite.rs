@@ -1,9 +1,9 @@
 use {
     crate::sprite_sheet::{SpriteAnimation, SpriteFrame, SpriteRect, SpriteSheet, SpriteSize},
-    arcana_timespan::TimeSpan,
+    arcana_time::TimeSpan,
     eyre::WrapErr,
+    goods_treasury_import::{Importer, Registry},
     std::path::Path,
-    treasury_import::{Importer, Registry},
 };
 
 pub struct SpriteSheetImporter;
@@ -43,7 +43,7 @@ struct SpriteSheetMeta {
     image: String,
     size: SpriteSize,
 
-    #[serde(rename = "frameTags")]
+    #[serde(rename = "frameTags", default)]
     frame_tags: Vec<FrameTag>,
 }
 

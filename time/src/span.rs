@@ -1,6 +1,3 @@
-#![cfg_attr(not(feature = "std"), no_std)]
-
-//! Contains types for time measurement and ticking.
 use core::{
     fmt,
     iter::Sum,
@@ -9,16 +6,16 @@ use core::{
     time::Duration,
 };
 
-/// Duration-like containing number of microseconds.
-/// Named diffeerently to avoid confusion with std type.
+/// Duration-like value containing number of nanoseconds.
+/// Named differently to avoid confusion with std type.
 /// Underlying value is `u64`.
 ///
-/// For most game operations microsecond precision deemed to be enough.
-/// This type can contain duration larger than 1000 years.
+/// For most game operations nanosecond precision deemed to be enough.
+/// This type can contain durations larger than 292 years.
 ///
-/// `TimeSpan` can be displalyed and parsed from string.
-/// `TimeSpan` is serializable with same string format for human-readable serializers.
-/// `TimeSpan` is serializable as number of microseconds for binary serializers.
+/// `TimeSpan` can be displayed and parsed from string.
+/// `TimeSpan` is serializable with same string format for human-readable serializer.
+/// `TimeSpan` is serializable as number of microseconds for binary serializer.
 ///
 /// # Example
 ///
@@ -41,7 +38,7 @@ use core::{
 #[derive(Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
 #[repr(transparent)]
 pub struct TimeSpan {
-    micros: u64,
+    nanos: u64,
 }
 
 impl Default for TimeSpan {
@@ -54,126 +51,152 @@ impl TimeSpan {
     /// Zero time span.
     ///
     /// This is also default value.
-    pub const ZERO: Self = TimeSpan { micros: 0 };
+    pub const ZERO: Self = TimeSpan { nanos: 0 };
+
+    /// One nanosecond.
+    /// Defined as one billionth of a seconds.
+    ///
+    /// This is smallest positive time span representable by this type.
+    pub const NANOSECOND: Self = TimeSpan { nanos: 1 };
 
     /// One microsecond.
     /// Defined as one millionth of a seconds.
-    ///
-    /// This is smallest positive time span representable by this type.
-    pub const MICROSECOND: Self = TimeSpan { micros: 1 };
+    pub const MICROSECOND: Self = TimeSpan { nanos: 1_000 };
 
     /// One millisecond.
     /// Defined as one thousandth of a seconds.
-    pub const MILLISECOND: Self = TimeSpan { micros: 1_000 };
+    pub const MILLISECOND: Self = TimeSpan { nanos: 1_000_000 };
 
     /// One second.
     /// Defined as 9'192'631'770 periods of the radiation corresponding to the transition between two hyperfine levels of the ground state of the caesium 133 atom.
-    pub const SECOND: Self = TimeSpan { micros: 1_000_000 };
+    pub const SECOND: Self = TimeSpan {
+        nanos: 1_000_000_000,
+    };
 
     /// One minute.
     /// Defined as 60 seconds.
-    pub const MINUTE: Self = TimeSpan { micros: 60_000_000 };
+    pub const MINUTE: Self = TimeSpan {
+        nanos: 60_000_000_000,
+    };
 
     /// One hour.
     /// Defined as 60 minutes.
     pub const HOUR: Self = TimeSpan {
-        micros: 3_600_000_000,
+        nanos: 3_600_000_000_000,
     };
 
     /// One SI day.
     /// Defined as exactly 24 hours. Differs from astronomical day.
     pub const DAY: Self = TimeSpan {
-        micros: 86_400_000_000,
+        nanos: 86_400_000_000_000,
     };
 
     /// One week.
-    /// Defiend as 7 days.
+    /// Defined as 7 days.
     pub const WEEK: Self = TimeSpan {
-        micros: 604_800_000_000,
+        nanos: 604_800_000_000_000,
     };
 
     /// One Julian year.
     /// Defined as 365.25 days.
     pub const JULIAN_YEAR: Self = TimeSpan {
-        micros: 31_557_600_000_000,
+        nanos: 31_557_600_000_000_000,
     };
 
     /// One Gregorian year.
     /// Defined as 365.24219 days.
+
     pub const GREGORIAN_YEAR: Self = TimeSpan {
-        micros: 31_556_925_216_000,
+        nanos: 31_556_925_216_000_000,
     };
 
-    /// Convert number of microseconds into `TimeSpan`.
-    pub fn from_micros(micros: u64) -> Self {
-        TimeSpan { micros }
-    }
+    /// One Gregorian year.
+    pub const YEAR: Self = Self::GREGORIAN_YEAR;
 
-    /// Convert number of microseconds into `TimeSpan`.
-    pub fn from_millis(millis: u64) -> Self {
+    /// Convert number of nanoseconds into `TimeSpan`.
+    pub const fn from_nanos(nanos: u64) -> Self {
         TimeSpan {
-            micros: millis * 1_000,
+            nanos: nanos * Self::NANOSECOND.nanos,
         }
     }
 
     /// Convert number of microseconds into `TimeSpan`.
-    pub fn from_seconds(seconds: u64) -> Self {
+    pub const fn from_micros(micros: u64) -> Self {
         TimeSpan {
-            micros: seconds * 1_000_000,
+            nanos: micros * Self::MICROSECOND.nanos,
         }
+    }
+
+    /// Convert number of microseconds into `TimeSpan`.
+    pub const fn from_millis(millis: u64) -> Self {
+        TimeSpan {
+            nanos: millis * Self::MILLISECOND.nanos,
+        }
+    }
+
+    /// Convert number of microseconds into `TimeSpan`.
+    pub const fn from_seconds(seconds: u64) -> Self {
+        TimeSpan {
+            nanos: seconds * Self::SECOND.nanos,
+        }
+    }
+
+    /// Returns number of nanoseconds this value represents.
+    pub const fn as_nanos(&self) -> u64 {
+        self.nanos
     }
 
     /// Returns number of microseconds this value represents.
-    pub fn as_micros(&self) -> u64 {
-        self.micros
+    pub const fn as_micros(&self) -> u64 {
+        self.nanos / Self::MICROSECOND.nanos
     }
 
     /// Returns number of whole milliseconds this value represents.
-    pub fn as_millis(&self) -> u64 {
-        *self / Self::MILLISECOND
+    pub const fn as_millis(&self) -> u64 {
+        self.nanos / Self::MILLISECOND.nanos
     }
 
     /// Returns number of whole seconds this value represents.
-    pub fn as_seconds(&self) -> u64 {
-        *self / Self::SECOND
+    pub const fn as_seconds(&self) -> u64 {
+        self.nanos / Self::SECOND.nanos
     }
 
     /// Returns number of whole minutes this value represents.
-    pub fn as_minutes(&self) -> u64 {
-        *self / Self::MINUTE
+    pub const fn as_minutes(&self) -> u64 {
+        self.nanos / Self::MINUTE.nanos
     }
 
     /// Returns number of whole hours this value represents.
-    pub fn as_hours(&self) -> u64 {
-        *self / Self::HOUR
+    pub const fn as_hours(&self) -> u64 {
+        self.nanos / Self::HOUR.nanos
     }
 
     /// Returns number of whole days this value represents.
-    pub fn as_days(&self) -> u64 {
-        *self / Self::DAY
+    pub const fn as_days(&self) -> u64 {
+        self.nanos / Self::DAY.nanos
     }
 
     /// Returns number of whole weeks this value represents.
-    pub fn as_weeks(&self) -> u64 {
-        *self / Self::WEEK
+    pub const fn as_weeks(&self) -> u64 {
+        self.nanos / Self::WEEK.nanos
     }
 
     /// Returns number of seconds as floating point value.
     /// This function should be used for small-ish spans when high precision is not required.
     pub fn as_secs_f32(&self) -> f32 {
-        self.micros as f32 / 1_000_000.0
+        self.nanos as f32 / Self::SECOND.nanos as f32
     }
 
     /// Returns number of seconds as high precision floating point value.
     pub fn as_secs_f64(&self) -> f64 {
-        self.micros as f64 / 1_000_000.0
+        self.nanos as f64 / Self::SECOND.nanos as f64
     }
 
     /// Returns `true` if this is zero span.
     /// That is, it equals `TimeSpan::ZERO`.
     /// Returns false otherwise.
-    pub fn is_zero(&self) -> bool {
-        self.micros == 0
+    pub const fn is_zero(&self) -> bool {
+        self.nanos == 0
     }
 }
 
@@ -182,14 +205,14 @@ impl Add for TimeSpan {
 
     fn add(self, rhs: Self) -> Self {
         TimeSpan {
-            micros: self.micros + rhs.micros,
+            nanos: self.nanos + rhs.nanos,
         }
     }
 }
 
 impl AddAssign for TimeSpan {
     fn add_assign(&mut self, rhs: Self) {
-        self.micros += rhs.micros;
+        self.nanos += rhs.nanos;
     }
 }
 
@@ -198,14 +221,14 @@ impl Sub for TimeSpan {
 
     fn sub(self, rhs: Self) -> Self {
         TimeSpan {
-            micros: self.micros - rhs.micros,
+            nanos: self.nanos - rhs.nanos,
         }
     }
 }
 
 impl SubAssign for TimeSpan {
     fn sub_assign(&mut self, rhs: Self) {
-        self.micros -= rhs.micros;
+        self.nanos -= rhs.nanos;
     }
 }
 
@@ -214,7 +237,7 @@ impl Mul<u64> for TimeSpan {
 
     fn mul(self, rhs: u64) -> Self {
         TimeSpan {
-            micros: self.micros * rhs,
+            nanos: self.nanos * rhs,
         }
     }
 }
@@ -224,14 +247,14 @@ impl Mul<TimeSpan> for u64 {
 
     fn mul(self, rhs: TimeSpan) -> TimeSpan {
         TimeSpan {
-            micros: self * rhs.micros,
+            nanos: self * rhs.nanos,
         }
     }
 }
 
 impl MulAssign<u64> for TimeSpan {
     fn mul_assign(&mut self, rhs: u64) {
-        self.micros *= rhs;
+        self.nanos *= rhs;
     }
 }
 
@@ -240,7 +263,7 @@ impl Div<u64> for TimeSpan {
 
     fn div(self, rhs: u64) -> Self {
         TimeSpan {
-            micros: self.micros / rhs,
+            nanos: self.nanos / rhs,
         }
     }
 }
@@ -249,13 +272,13 @@ impl Div<Self> for TimeSpan {
     type Output = u64;
 
     fn div(self, rhs: Self) -> u64 {
-        self.micros / rhs.micros
+        self.nanos / rhs.nanos
     }
 }
 
 impl DivAssign<u64> for TimeSpan {
     fn div_assign(&mut self, rhs: u64) {
-        self.micros /= rhs;
+        self.nanos /= rhs;
     }
 }
 
@@ -264,38 +287,32 @@ impl Rem for TimeSpan {
 
     fn rem(self, rhs: Self) -> Self {
         TimeSpan {
-            micros: self.micros % rhs.micros,
+            nanos: self.nanos % rhs.nanos,
         }
     }
 }
 
 impl RemAssign for TimeSpan {
     fn rem_assign(&mut self, rhs: Self) {
-        self.micros %= rhs.micros;
+        self.nanos %= rhs.nanos;
     }
 }
 
 impl Sum<TimeSpan> for TimeSpan {
     fn sum<I: Iterator<Item = Self>>(iter: I) -> Self {
         TimeSpan {
-            micros: iter.map(|span| span.micros).sum(),
+            nanos: iter.map(|span| span.nanos).sum(),
         }
     }
 }
 
 impl From<Duration> for TimeSpan {
     fn from(duration: Duration) -> Self {
-        let micros = duration.as_micros();
-        debug_assert!(u64::MAX as u128 > micros);
+        let nanos = duration.as_nanos();
+        debug_assert!(u64::MAX as u128 > nanos);
         TimeSpan {
-            micros: micros as u64,
+            nanos: nanos as u64,
         }
-    }
-}
-
-impl From<TimeSpan> for Duration {
-    fn from(span: TimeSpan) -> Self {
-        Duration::from_micros(span.micros)
     }
 }
 
@@ -698,7 +715,7 @@ impl serde::Serialize for TimeSpan {
         if serializer.is_human_readable() {
             serializer.serialize_str(&format!("{}", *self))
         } else {
-            serializer.serialize_u64(self.micros)
+            serializer.serialize_u64(self.nanos)
         }
     }
 }
@@ -719,7 +736,20 @@ impl<'de> serde::Deserialize<'de> for TimeSpan {
             }
 
             fn visit_u64<E>(self, v: u64) -> Result<Self::Value, E> {
-                Ok(TimeSpan { micros: v })
+                Ok(TimeSpan { nanos: v })
+            }
+
+            fn visit_i64<E>(self, v: i64) -> Result<Self::Value, E>
+            where
+                E: serde::de::Error,
+            {
+                if v < 0 {
+                    Err(E::custom(
+                        "Negative integer cannot be deserialized into TimeSpan",
+                    ))
+                } else {
+                    Ok(TimeSpan { nanos: v as u64 })
+                }
             }
 
             fn visit_str<E>(self, v: &str) -> Result<Self::Value, E>

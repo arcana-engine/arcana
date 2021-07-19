@@ -1,5 +1,3 @@
-use arcana::TaskContext;
-
 use {
     arcana::{
         anim::{
@@ -11,13 +9,16 @@ use {
         event::{DeviceEvent, ElementState, KeyboardInput, VirtualKeyCode},
         graphics::{Material, Rect, Sprite},
         hecs::Entity,
-        AsyncTaskContext, ContactQueue2, ControlResult, Global2, InputController, PhysicsData2,
-        System, SystemContext,
+        lifespan::LifeSpan,
+        AsyncTaskContext, CommandQueue, ContactQueue2, Global2, InputCommander, PhysicsData2,
+        System, SystemContext, TaskContext, TimeSpan,
     },
+    eyre::WrapErr as _,
     ordered_float::OrderedFloat,
     rapier2d::{
         dynamics::{RigidBodyBuilder, RigidBodyHandle},
         geometry::{Collider, ColliderBuilder},
+        pipeline::ActiveEvents,
     },
     uuid::Uuid,
 };
@@ -28,7 +29,11 @@ struct BulletCollider(Collider);
 
 impl BulletCollider {
     fn new() -> Self {
-        BulletCollider(ColliderBuilder::ball(0.1).build())
+        BulletCollider(
+            ColliderBuilder::ball(0.1)
+                .active_events(ActiveEvents::CONTACT_EVENTS)
+                .build(),
+        )
     }
 }
 
@@ -52,7 +57,7 @@ impl AnimTransitionRule<TankState> for TankAnimTransitionRule {
 }
 
 fn tank_graph_animation(sheet: &SpriteSheet) -> SpriteGraphAnimation<TankAnimTransitionRule> {
-    dbg!(SpriteGraphAnimation::new(
+    SpriteGraphAnimation::new(
         0,
         sheet,
         vec![
@@ -62,7 +67,7 @@ fn tank_graph_animation(sheet: &SpriteSheet) -> SpriteGraphAnimation<TankAnimTra
             (TankAnimTransitionRule::Broken, vec![0, 1], 2),
             (TankAnimTransitionRule::Idle, vec![1], 0),
         ],
-    ))
+    )
 }
 
 pub struct Tank {
@@ -87,12 +92,17 @@ impl Tank {
         let physics = cx.res.with(PhysicsData2::new);
         let hs = self.size * 0.5;
 
-        let body = physics
-            .bodies
-            .insert(RigidBodyBuilder::new_dynamic().build());
+        let body = physics.bodies.insert(
+            RigidBodyBuilder::new_dynamic()
+                .linear_damping(0.3)
+                .angular_damping(0.3)
+                .build(),
+        );
 
-        physics.colliders.insert(
-            ColliderBuilder::cuboid(hs.x, hs.y).build(),
+        physics.colliders.insert_with_parent(
+            ColliderBuilder::cuboid(hs.x * 0.625, hs.y * 0.6875)
+                .active_events(ActiveEvents::CONTACT_EVENTS)
+                .build(),
             body,
             &mut physics.bodies,
         );
@@ -127,7 +137,9 @@ impl Tank {
             let mut cx = AsyncTaskContext::new();
             let mut sprite_sheet = sprite_sheet.await;
             let cx = cx.get();
-            let sprite_sheet = sprite_sheet.get(cx.graphics)?;
+            let sprite_sheet = sprite_sheet
+                .get(cx.graphics)
+                .wrap_err_with(|| "Failed to load tank spritesheet")?;
             cx.world.insert(
                 entity,
                 (
@@ -154,7 +166,7 @@ impl Tank {
 }
 
 #[derive(Debug)]
-pub struct TankController {
+pub struct TankComander {
     forward: VirtualKeyCode,
     backward: VirtualKeyCode,
     left: VirtualKeyCode,
@@ -165,11 +177,12 @@ pub struct TankController {
     backward_pressed: bool,
     left_pressed: bool,
     right_pressed: bool,
+    fire_pressed: bool,
 }
 
-impl TankController {
+impl TankComander {
     pub fn main() -> Self {
-        TankController {
+        TankComander {
             forward: VirtualKeyCode::W,
             backward: VirtualKeyCode::S,
             left: VirtualKeyCode::A,
@@ -180,21 +193,23 @@ impl TankController {
             backward_pressed: false,
             left_pressed: false,
             right_pressed: false,
+            fire_pressed: false,
         }
     }
 
     pub fn alt() -> Self {
-        TankController {
+        TankComander {
             forward: VirtualKeyCode::Up,
             backward: VirtualKeyCode::Down,
             left: VirtualKeyCode::Left,
             right: VirtualKeyCode::Right,
-            fire: VirtualKeyCode::Insert,
+            fire: VirtualKeyCode::Numpad0,
 
             forward_pressed: false,
             backward_pressed: false,
             left_pressed: false,
             right_pressed: false,
+            fire_pressed: false,
         }
     }
 }
@@ -207,56 +222,100 @@ pub struct TankState {
     alive: bool,
 }
 
-#[derive(Debug)]
-pub struct ControlledTank {
-    drive: i8,
-    rotate: i8,
-    fire: bool,
-}
-
-impl InputController for TankController {
-    type Controlled = ControlledTank;
-
-    fn controlled(&self) -> ControlledTank {
-        ControlledTank {
-            drive: 0,
-            rotate: 0,
-            fire: false,
+impl TankState {
+    pub fn set_commands(&mut self, commands: impl Iterator<Item = TankCommand>) {
+        for cmd in commands {
+            match cmd {
+                TankCommand::Drive(i) => self.drive += i,
+                TankCommand::Rotate(i) => self.rotate += i,
+                TankCommand::Fire(fire) => self.fire = fire,
+            }
         }
     }
+}
 
-    fn control(&mut self, event: DeviceEvent, tank: &mut ControlledTank) -> ControlResult {
+#[derive(Debug)]
+pub enum TankCommand {
+    Drive(i8),
+    Rotate(i8),
+    Fire(bool),
+}
+
+impl InputCommander for TankComander {
+    type Command = TankCommand;
+
+    fn translate(&mut self, event: DeviceEvent) -> Option<TankCommand> {
         match event {
             DeviceEvent::Key(KeyboardInput {
                 state,
                 virtual_keycode: Some(key),
                 ..
             }) => {
-                let pressed = match state {
-                    ElementState::Pressed => true,
-                    ElementState::Released => false,
-                };
-
                 if key == self.forward {
-                    self.forward_pressed = pressed;
+                    match state {
+                        ElementState::Pressed if !self.forward_pressed => {
+                            self.forward_pressed = true;
+                            Some(TankCommand::Drive(1))
+                        }
+                        ElementState::Released if self.forward_pressed => {
+                            self.forward_pressed = false;
+                            Some(TankCommand::Drive(-1))
+                        }
+                        _ => None,
+                    }
                 } else if key == self.backward {
-                    self.backward_pressed = pressed;
+                    match state {
+                        ElementState::Pressed if !self.backward_pressed => {
+                            self.backward_pressed = true;
+                            Some(TankCommand::Drive(-1))
+                        }
+                        ElementState::Released if self.backward_pressed => {
+                            self.backward_pressed = false;
+                            Some(TankCommand::Drive(1))
+                        }
+                        _ => None,
+                    }
                 } else if key == self.left {
-                    self.left_pressed = pressed;
+                    match state {
+                        ElementState::Pressed if !self.left_pressed => {
+                            self.left_pressed = true;
+                            Some(TankCommand::Rotate(-1))
+                        }
+                        ElementState::Released if self.left_pressed => {
+                            self.left_pressed = false;
+                            Some(TankCommand::Rotate(1))
+                        }
+                        _ => None,
+                    }
                 } else if key == self.right {
-                    self.right_pressed = pressed;
+                    match state {
+                        ElementState::Pressed if !self.right_pressed => {
+                            self.right_pressed = true;
+                            Some(TankCommand::Rotate(1))
+                        }
+                        ElementState::Released if self.right_pressed => {
+                            self.right_pressed = false;
+                            Some(TankCommand::Rotate(-1))
+                        }
+                        _ => None,
+                    }
                 } else if key == self.fire {
-                    tank.fire = state == ElementState::Pressed;
+                    match state {
+                        ElementState::Pressed if !self.fire_pressed => {
+                            self.fire_pressed = true;
+                            Some(TankCommand::Fire(true))
+                        }
+                        ElementState::Released if self.fire_pressed => {
+                            self.fire_pressed = false;
+                            Some(TankCommand::Fire(false))
+                        }
+                        _ => None,
+                    }
                 } else {
-                    return ControlResult::Ignored;
+                    None
                 }
-
-                tank.drive = self.forward_pressed as i8 - self.backward_pressed as i8;
-                tank.rotate = self.right_pressed as i8 - self.left_pressed as i8;
-
-                ControlResult::Consumed
             }
-            _ => ControlResult::Ignored,
+            _ => None,
         }
     }
 }
@@ -273,51 +332,43 @@ impl System for TankSystem {
 
         let mut bullets = BVec::new_in(cx.bump);
 
-        for (entity, (body, global, tank, control, contacts)) in cx
+        for (_entity, (body, global, tank, commands, contacts)) in cx
             .world
             .query::<(
                 &RigidBodyHandle,
                 &Global2,
                 &mut TankState,
-                &mut ControlledTank,
+                &mut CommandQueue<TankCommand>,
                 &mut ContactQueue2,
             )>()
             .with::<Tank>()
             .iter()
         {
-            tank.fire = false;
-
             for collider in contacts.drain_contacts_started() {
                 let bits = physics.colliders.get(collider).unwrap().user_data as u64;
                 let bullet = cx.world.get::<Bullet>(Entity::from_bits(bits)).is_ok();
 
                 if bullet {
                     tank.alive = false;
-
-                    physics
-                        .bodies
-                        .remove(*body, &mut physics.colliders, &mut physics.joints);
                 }
             }
 
             if tank.alive {
-                tank.drive = control.drive;
-                tank.rotate = control.rotate;
+                tank.set_commands(commands.drain());
 
                 if let Some(body) = physics.bodies.get_mut(*body) {
                     let vel = na::Vector2::new(0.0, -tank.drive as f32);
                     let vel = global.iso.rotation.transform_vector(&vel);
 
-                    body.set_linvel(vel, true);
+                    body.set_linvel(vel, false);
                     body.set_angvel(tank.rotate as f32 * 3.0, true);
                 }
 
-                if control.fire {
+                if tank.fire {
                     let pos = global.iso.transform_point(&na::Point2::new(0.0, -0.6));
                     let dir = global.iso.transform_vector(&na::Vector2::new(0.0, -10.0));
                     bullets.push((pos, dir));
-                    tank.fire = true;
-                    control.fire = false;
+                    tank.fire = false;
                 }
             }
         }
@@ -329,12 +380,10 @@ impl System for TankSystem {
             for (pos, dir) in bullets {
                 let body = physics
                     .bodies
-                    .insert(RigidBodyBuilder::new_dynamic().build());
+                    .insert(RigidBodyBuilder::new_dynamic().linvel(dir).build());
                 physics
                     .colliders
-                    .insert(collider.clone(), body, &mut physics.bodies);
-
-                physics.bodies.get_mut(body).unwrap().set_linvel(dir, true);
+                    .insert_with_parent(collider.clone(), body, &mut physics.bodies);
 
                 cx.world.spawn((
                     Global2::new(na::Translation2::new(pos.x, pos.y).into()),
@@ -356,6 +405,7 @@ impl System for TankSystem {
                         ..Default::default()
                     },
                     ContactQueue2::new(),
+                    LifeSpan::new(TimeSpan::SECOND),
                 ));
             }
         }
@@ -372,20 +422,11 @@ impl System for BulletSystem {
     }
 
     fn run(&mut self, cx: SystemContext<'_>) -> eyre::Result<()> {
-        let physics = cx.res.with(PhysicsData2::new);
         let mut despawn = BVec::new_in(cx.bump);
 
-        for (e, (queue, body)) in cx
-            .world
-            .query_mut::<(&mut ContactQueue2, &RigidBodyHandle)>()
-            .with::<Bullet>()
-        {
+        for (e, queue) in cx.world.query_mut::<&mut ContactQueue2>().with::<Bullet>() {
             if queue.drain_contacts_started().count() > 0 {
                 despawn.push(e);
-
-                physics
-                    .bodies
-                    .remove(*body, &mut physics.colliders, &mut physics.joints);
             }
             queue.drain_contacts_stopped();
         }
@@ -409,6 +450,7 @@ impl System for BulletSystem {
                         albedo_factor: [OrderedFloat(1.0), OrderedFloat(0.3), OrderedFloat(0.1)],
                         ..Default::default()
                     },
+                    LifeSpan::new(TimeSpan::SECOND * 5),
                 ));
             }
             let _ = cx.world.despawn(e);

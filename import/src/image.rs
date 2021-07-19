@@ -1,7 +1,7 @@
 use {
     eyre::WrapErr,
+    goods_treasury_import::{Importer, Registry},
     std::{io::Read, path::Path},
-    treasury_import::{Importer, Registry},
 };
 
 pub struct ImageImporter;

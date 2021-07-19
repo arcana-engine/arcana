@@ -1,7 +1,7 @@
 //! Provides types and functions to deal with various types of cameras.
 
 use crate::{
-    control::{ControlResult, InputController},
+    control::{CommandQueue, InputCommander},
     event::{DeviceEvent, ElementState, KeyboardInput, VirtualKeyCode},
     scene::Global3,
     system::{System, SystemContext},
@@ -150,10 +150,10 @@ impl Camera3 {
     }
 }
 
-#[derive(Debug, Default)]
-pub struct FreeCamera3 {
-    rot: na::UnitQuaternion<f32>,
-    speed: na::Vector3<f32>,
+#[derive(Debug)]
+pub enum FreeCamera3Command {
+    RotateTo(na::UnitQuaternion<f32>),
+    Move(na::Vector3<f32>),
 }
 
 pub struct FreeCamera3Controller {
@@ -170,10 +170,10 @@ impl FreeCamera3Controller {
     }
 }
 
-impl InputController for FreeCamera3Controller {
-    type Controlled = FreeCamera3;
+impl InputCommander for FreeCamera3Controller {
+    type Command = FreeCamera3Command;
 
-    fn control(&mut self, event: DeviceEvent, free_camera: &mut FreeCamera3) -> ControlResult {
+    fn translate(&mut self, event: DeviceEvent) -> Option<FreeCamera3Command> {
         match event {
             DeviceEvent::MouseMotion { delta: (x, y) } => {
                 self.pitch -= (x * 0.01) as f32;
@@ -192,10 +192,10 @@ impl InputController for FreeCamera3Controller {
                     self.pitch -= std::f32::consts::TAU
                 }
 
-                free_camera.rot = na::UnitQuaternion::from_euler_angles(0.0, self.pitch, 0.0)
-                    * na::UnitQuaternion::from_euler_angles(self.yaw, 0.0, 0.0);
-
-                ControlResult::Consumed
+                Some(FreeCamera3Command::RotateTo(
+                    na::UnitQuaternion::from_euler_angles(0.0, self.pitch, 0.0)
+                        * na::UnitQuaternion::from_euler_angles(self.yaw, 0.0, 0.0),
+                ))
             }
             DeviceEvent::Key(KeyboardInput {
                 virtual_keycode: Some(key),
@@ -207,26 +207,20 @@ impl InputController for FreeCamera3Controller {
                     ElementState::Released => -1.0,
                 };
 
-                let dir = match key {
+                let mov = match key {
                     VirtualKeyCode::W => -na::Vector3::z() * s,
                     VirtualKeyCode::S => na::Vector3::z() * s,
                     VirtualKeyCode::A => -na::Vector3::x() * s,
                     VirtualKeyCode::D => na::Vector3::x() * s,
                     VirtualKeyCode::Space => na::Vector3::y() * s,
                     VirtualKeyCode::LControl => -na::Vector3::y() * s,
-                    _ => return ControlResult::Ignored,
+                    _ => return None,
                 };
 
-                free_camera.speed += dir;
-
-                ControlResult::Consumed
+                Some(FreeCamera3Command::Move(mov))
             }
-            _ => ControlResult::Ignored,
+            _ => None,
         }
-    }
-
-    fn controlled(&self) -> Self::Controlled {
-        FreeCamera3::default()
     }
 }
 
@@ -240,27 +234,41 @@ impl System for FreeCameraSystem {
     fn run(&mut self, cx: SystemContext<'_>) -> eyre::Result<()> {
         const MAX_ROTATION_SPEED: f32 = 0.1;
 
-        let query = cx.world.query_mut::<(&mut Global3, &mut FreeCamera3)>();
-        for (_, (global, free_camera)) in query {
-            global.iso.translation.vector +=
-                free_camera.rot * free_camera.speed * cx.clock.delta.as_secs_f32() * 5.0;
-
-            let rot = global.iso.rotation.rotation_to(&free_camera.rot);
-
-            let max_rotation = MAX_ROTATION_SPEED * cx.clock.delta.as_secs_f32();
-            debug_assert!(max_rotation >= 0.0);
-
-            let angle = rot.angle();
-            if angle > max_rotation {
-                let a = (angle - max_rotation).powi(2) * angle.signum()
-                    / ((angle - max_rotation).abs() + 0.1);
-
-                let rot =
-                    na::UnitQuaternion::from_axis_angle(&rot.axis().unwrap(), a + max_rotation);
-                global.iso.append_rotation_wrt_center_mut(&rot);
-            } else {
-                global.iso.rotation = free_camera.rot;
+        let query = cx
+            .world
+            .query_mut::<(&mut Global3, &mut CommandQueue<FreeCamera3Command>)>();
+        for (_, (global, commands)) in query {
+            for cmd in commands.drain() {
+                match cmd {
+                    FreeCamera3Command::RotateTo(rot) => {
+                        global.iso.rotation = rot;
+                    }
+                    FreeCamera3Command::Move(mov) => {
+                        global.iso.translation.vector +=
+                            global.iso.rotation * mov * cx.clock.delta.as_secs_f32();
+                    }
+                }
             }
+
+            // global.iso.translation.vector +=
+            //     free_camera.rot * free_camera.speed * cx.clock.delta.as_secs_f32() * 5.0;
+
+            // let rot = global.iso.rotation.rotation_to(&free_camera.rot);
+
+            // let max_rotation = MAX_ROTATION_SPEED * cx.clock.delta.as_secs_f32();
+            // debug_assert!(max_rotation >= 0.0);
+
+            // let angle = rot.angle();
+            // if angle > max_rotation {
+            //     let a = (angle - max_rotation).powi(2) * angle.signum()
+            //         / ((angle - max_rotation).abs() + 0.1);
+
+            //     let rot =
+            //         na::UnitQuaternion::from_axis_angle(&rot.axis().unwrap(), a + max_rotation);
+            //     global.iso.append_rotation_wrt_center_mut(&rot);
+            // } else {
+            //     global.iso.rotation = free_camera.rot;
+            // }
         }
         Ok(())
     }

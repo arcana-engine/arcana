@@ -3,33 +3,21 @@ use {
         event::{DeviceEvent, DeviceId, Event},
         funnel::Funnel,
         resources::Res,
+        // session::{ClientSession, NetId},
     },
     hecs::{Entity, World},
-    std::collections::hash_map::{Entry, HashMap},
+    std::collections::{
+        hash_map::{Entry, HashMap},
+        VecDeque,
+    },
 };
 
+/// Device is already associated with a controller.
 #[derive(Clone, Copy, Debug, PartialEq, Eq, thiserror::Error)]
-pub enum AssumeControlError {
-    /// Failed to assume control of non-existing entity.
-    #[error("Failed to assume control of non-existing entity ({entity:?})")]
-    NoSuchEntity { entity: Entity },
-
-    /// Entity is already controlled
-    #[error("Entity ({entity:?}) is already controlled")]
-    AlreadyControlled { entity: Entity },
-
-    /// Device is already used by controller
-    #[error("Device ({device_id:?}) is already used by controller")]
-    DeviceUsed { device_id: DeviceId },
+#[error("Device ({device_id:?}) is already associated with a controller")]
+pub struct DeviceUsed {
+    device_id: DeviceId,
 }
-
-/// Marker component. Marks that entity is being controlled.
-pub struct Controlled {
-    // Forbid construction outside of this module.
-    __: (),
-}
-
-const CONTROLLED: Controlled = Controlled { __: () };
 
 /// Result of `InputController::control` method
 pub enum ControlResult {
@@ -41,140 +29,75 @@ pub enum ControlResult {
     /// It should be propagated further.
     Ignored,
 
-    /// Controller detached from entity.
+    /// Controller detached and should be removed.
     /// Event should be propagated further.
     ControlLost,
 }
 
-/// A controller.
+/// An input controller.
+/// Receives device events from `Control` hub.
 pub trait InputController: Send + 'static {
-    /// Component that receives command from this controller.
-    type Controlled: Send + Sync + 'static;
-
-    /// Create new component for command receiving.
-    /// Called once control of an entity is assumed.
-    fn controlled(&self) -> Self::Controlled;
-
     /// Translates device event into controls.
-    fn control(&mut self, event: DeviceEvent, controlled: &mut Self::Controlled) -> ControlResult;
+    fn control(&mut self, event: DeviceEvent, res: &mut Res, world: &mut World) -> ControlResult;
 }
 
-/// Collection of entity controllers mapped to device id.
+/// Collection of controllers.
 pub struct Control {
-    global: HashMap<Entity, Box<dyn ControllerEntryErased>>,
-    devices: HashMap<DeviceId, Box<dyn ControllerEntryErased>>,
+    /// Controllers bound to specific devices.
+    devices: HashMap<DeviceId, Box<dyn InputController>>,
+
+    /// Global controller that receives all events unhandled by device specific controllers.
+    global: slab::Slab<Box<dyn InputController>>,
+}
+
+/// Identifier of the controller set in global slot.
+/// See [`Control::add_global_controller`].
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
+#[repr(transparent)]
+pub struct GlobalControllerId {
+    idx: usize,
 }
 
 impl Control {
+    /// Returns empty collection of controllers
     pub fn new() -> Control {
         Control {
-            global: HashMap::new(),
             devices: HashMap::new(),
+            global: slab::Slab::new(),
         }
     }
 
-    pub fn assume_control(
+    /// Assign global controller.
+    pub fn add_global_controller(
         &mut self,
-        entity: Entity,
         controller: impl InputController,
-        world: &mut World,
-    ) -> Result<(), AssumeControlError> {
-        match world.get::<Controlled>(entity).map(|_| ()) {
-            Ok(()) => Err(AssumeControlError::AlreadyControlled { entity }),
-            Err(hecs::ComponentError::MissingComponent(_)) => {
-                world
-                    .insert(entity, (CONTROLLED, controller.controlled()))
-                    .unwrap();
-
-                self.global
-                    .insert(entity, Box::new(ControllerEntry { entity, controller }));
-
-                Ok(())
-            }
-            Err(hecs::ComponentError::NoSuchEntity) => {
-                Err(AssumeControlError::NoSuchEntity { entity })
-            }
-        }
+    ) -> GlobalControllerId {
+        let idx = self.global.insert(Box::new(controller));
+        GlobalControllerId { idx }
     }
 
-    pub fn assume_device_control(
+    /// Assign global controller to specific device.
+    pub fn set_device_control(
         &mut self,
         device_id: DeviceId,
-        entity: Entity,
         controller: impl InputController,
-        world: &mut World,
-    ) -> Result<(), AssumeControlError> {
+    ) -> Result<(), DeviceUsed> {
         match self.devices.entry(device_id) {
-            Entry::Occupied(_) => Err(AssumeControlError::DeviceUsed { device_id }),
-            Entry::Vacant(entry) => match world.get::<Controlled>(entity).map(|_| ()) {
-                Ok(()) => Err(AssumeControlError::AlreadyControlled { entity }),
-                Err(hecs::ComponentError::MissingComponent(_)) => {
-                    world
-                        .insert(entity, (CONTROLLED, controller.controlled()))
-                        .unwrap();
-                    entry.insert(Box::new(ControllerEntry { entity, controller }));
-                    Ok(())
-                }
-                Err(hecs::ComponentError::NoSuchEntity) => {
-                    Err(AssumeControlError::NoSuchEntity { entity })
-                }
-            },
-        }
-    }
-}
-
-struct ControllerEntry<T> {
-    entity: Entity,
-    controller: T,
-}
-
-trait ControllerEntryErased: Send {
-    fn control(&mut self, world: &mut World, event: DeviceEvent) -> ControlResult;
-}
-
-impl<T> ControllerEntryErased for ControllerEntry<T>
-where
-    T: InputController,
-{
-    fn control(&mut self, world: &mut World, event: DeviceEvent) -> ControlResult {
-        match world.query_one_mut::<(Option<&Controlled>, Option<&mut T::Controlled>)>(self.entity)
-        {
-            Ok((None, None)) => {
-                // Both control components were removed.
-                ControlResult::ControlLost
-            }
-            Ok((None, Some(_))) => {
-                let _ = world.remove_one::<T::Controlled>(self.entity);
-                ControlResult::ControlLost
-            }
-            Ok((Some(_), None)) => {
-                let _ = world.remove_one::<Controlled>(self.entity);
-                ControlResult::ControlLost
-            }
-            Ok((Some(_), Some(controlled))) => match self.controller.control(event, controlled) {
-                ControlResult::Consumed => ControlResult::Consumed,
-                ControlResult::Ignored => ControlResult::Ignored,
-                ControlResult::ControlLost => {
-                    world
-                        .remove::<(Controlled, T::Controlled)>(self.entity)
-                        .unwrap();
-                    ControlResult::ControlLost
-                }
-            },
-            Err(_) => {
-                // Entity was despawned, as it is impossible to not satisfy pair of options query.
-                ControlResult::ControlLost
+            Entry::Occupied(_) => Err(DeviceUsed { device_id }),
+            Entry::Vacant(entry) => {
+                entry.insert(Box::new(controller));
+                Ok(())
             }
         }
     }
 }
 
 impl Funnel<Event> for Control {
-    fn filter(&mut self, _res: &mut Res, world: &mut World, event: Event) -> Option<Event> {
+    fn filter(&mut self, res: &mut Res, world: &mut World, event: Event) -> Option<Event> {
         match event {
             Event::DeviceEvent { device_id, event } => {
                 let mut event_opt = match self.devices.get_mut(&device_id) {
-                    Some(controller) => match controller.control(world, event.clone()) {
+                    Some(controller) => match controller.control(event.clone(), res, world) {
                         ControlResult::ControlLost => {
                             self.devices.remove(&device_id);
                             Some(event)
@@ -185,25 +108,21 @@ impl Funnel<Event> for Control {
                     None => Some(event),
                 };
 
-                let mut lost_control = Vec::new();
-
-                for (&e, controller) in self.global.iter_mut() {
+                for idx in 0..self.global.len() {
                     if let Some(event) = event_opt.take() {
-                        match controller.control(world, event.clone()) {
-                            ControlResult::ControlLost => {
-                                lost_control.push(e);
-                                event_opt = Some(event);
+                        if let Some(controller) = self.global.get_mut(idx) {
+                            match controller.control(event.clone(), res, world) {
+                                ControlResult::ControlLost => {
+                                    self.global.remove(idx);
+                                    event_opt = Some(event);
+                                }
+                                ControlResult::Consumed => {}
+                                ControlResult::Ignored => event_opt = Some(event),
                             }
-                            ControlResult::Consumed => {}
-                            ControlResult::Ignored => event_opt = Some(event),
                         }
                     } else {
                         break;
                     }
-                }
-
-                for lost_control in lost_control {
-                    self.global.remove(&lost_control);
                 }
 
                 event_opt.map(|event| Event::DeviceEvent { device_id, event })
@@ -212,3 +131,159 @@ impl Funnel<Event> for Control {
         }
     }
 }
+
+/// A queue of commands.
+/// It should be used as a component on controlled entity.
+pub struct CommandQueue<T> {
+    commands: VecDeque<T>,
+}
+
+impl<T> CommandQueue<T> {
+    pub fn drain(&mut self) -> impl Iterator<Item = T> + '_ {
+        self.commands.drain(..)
+    }
+}
+
+/// Translates device events into commands and
+pub trait InputCommander {
+    type Command;
+
+    fn translate(&mut self, event: DeviceEvent) -> Option<Self::Command>;
+}
+
+/// Error that can occur when assuming control over an entity.
+#[derive(Clone, Copy, Debug, PartialEq, Eq, thiserror::Error)]
+pub enum AssumeControlError {
+    /// Failed to assume control of non-existing entity.
+    #[error("Failed to assume control of non-existing entity ({entity:?})")]
+    NoSuchEntity { entity: Entity },
+
+    /// Entity is already controlled
+    #[error("Entity ({entity:?}) is already controlled")]
+    AlreadyControlled { entity: Entity },
+}
+
+/// Marker component. Marks that entity is being controlled.
+pub struct Controlled {
+    // Forbid construction outside of this module.
+    __: (),
+}
+
+const CONTROLLED: Controlled = Controlled { __: () };
+
+/// A kind of [`InputController`]s that yield commands and sends them to a command queue of an entity.
+pub struct EntityController<T> {
+    commander: T,
+    entity: Entity,
+}
+
+impl<T> EntityController<T>
+where
+    T: InputCommander,
+    T::Command: Send + Sync + 'static,
+{
+    pub fn assume_control(
+        commander: T,
+        queue_cap: usize,
+        entity: Entity,
+        world: &mut World,
+    ) -> Result<Self, AssumeControlError> {
+        match world.query_one_mut::<&Controlled>(entity).is_ok() {
+            true => Err(AssumeControlError::AlreadyControlled { entity }),
+            false => {
+                world
+                    .insert(
+                        entity,
+                        (
+                            CONTROLLED,
+                            CommandQueue::<T::Command> {
+                                commands: VecDeque::with_capacity(queue_cap),
+                            },
+                        ),
+                    )
+                    .map_err(|hecs::NoSuchEntity| AssumeControlError::NoSuchEntity { entity })?;
+                Ok(EntityController { commander, entity })
+            }
+        }
+    }
+}
+
+impl<T> InputController for EntityController<T>
+where
+    T: InputCommander + Send + 'static,
+    T::Command: Send + Sync + 'static,
+{
+    fn control(&mut self, event: DeviceEvent, _res: &mut Res, world: &mut World) -> ControlResult {
+        match world.query_one_mut::<&mut CommandQueue<T::Command>>(self.entity) {
+            Ok(queue) => match self.commander.translate(event) {
+                None => ControlResult::Ignored,
+                Some(command) => {
+                    if queue.commands.capacity() == queue.commands.len() {
+                        queue.commands.pop_front();
+                    }
+                    queue.commands.push_back(command);
+                    ControlResult::Consumed
+                }
+            },
+            Err(_err) => ControlResult::ControlLost,
+        }
+    }
+}
+
+// /// A kind of [`InputController`]s that yield commands and sends them to a server and a command queue of an entity.
+// pub struct ClientEntityController<T> {
+//     commander: T,
+//     entity: Entity,
+//     netid: NetId,
+// }
+
+// impl<T> ClientEntityController<T>
+// where
+//     T: InputCommander,
+//     T::Command: Send + Sync + 'static,
+// {
+//     pub fn assume_control(
+//         commander: T,
+//         queue_cap: usize,
+//         entity: Entity,
+//         world: &mut World,
+//     ) -> Result<Self, AssumeControlError> {
+//         match world.query_one_mut::<Controlled>(entity).is_ok() {
+//             true => Err(AssumeControlError::AlreadyControlled { entity }),
+//             false => {
+//                 world.insert(
+//                     entity,
+//                     (
+//                         CONTROLLED,
+//                         CommandQueue::<T::Command> {
+//                             commands: VecDeque::with_capacity(queue_cap),
+//                         },
+//                     ),
+//                 );
+//                 Ok(ClientEntityController { commander, entity })
+//             }
+//         }
+//     }
+// }
+
+// impl<T> InputController for ClientEntityController<T>
+// where
+//     T: InputCommander + Send + 'static,
+//     T::Command: Send + Sync + 'static,
+// {
+//     fn control(&mut self, event: DeviceEvent, _res: &mut Res, world: &mut World) -> ControlResult {
+//         match world.query_one_mut::<&mut CommandQueue<T::Command>>(self.entity) {
+//             Ok(queue) => match self.commander.translate(event) {
+//                 None => ControlResult::Ignored,
+//                 Some(command) => {
+//                     if queue.commands.capacity() == queue.commands.len() {
+//                         queue.commands.pop_front();
+//                     }
+//                     queue.commands.push_back(command);
+//                     ControlResult::Consumed
+//                 }
+//             },
+//             Err(err) => ControlResult::ControlLost,
+//         }
+//     }
+// }

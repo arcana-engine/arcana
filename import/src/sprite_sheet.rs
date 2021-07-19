@@ -1,9 +1,9 @@
 use {
-    arcana_timespan::TimeSpan,
+    arcana_time::TimeSpan,
     eyre::WrapErr,
+    goods_treasury_import::{Importer, Registry},
     image::GenericImageView,
     std::{convert::TryFrom as _, path::Path},
-    treasury_import::{Importer, Registry},
     uuid::Uuid,
 };
 
@@ -54,7 +54,7 @@ pub struct SpriteSheet {
 #[derive(serde::Deserialize)]
 #[serde(rename_all = "kebab-case")]
 struct SpriteSheetEnrichInfo {
-    /// Source format for spritesheets
+    /// Source format for spritesheet
     source_format: String,
 
     /// Relative path to spritesheet
