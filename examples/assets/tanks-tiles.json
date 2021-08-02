@@ -3,11 +3,11 @@
     {
       "name": "wall",
       "collider": "wall",
-      "texture": "b73a6dcf-0b5c-4626-b8e2-fbd1bfe429e7"
+      "texture": "c20c25d3-9d7b-4b66-833c-4541bf5263d9"
     },
     {
       "name": "dirt",
-      "texture": "5fa7b605-6dea-4f27-837d-0e120c7caf4a"
+      "texture": "b3f60902-78b8-443f-b3a0-8766c8a52027"
     }
   ]
 }

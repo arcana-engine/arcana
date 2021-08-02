@@ -8,7 +8,7 @@ mod tank;
 fn main() {
     game2(|mut game| async move {
         let _map = TileMap::load_and_spawn(
-            &"55f1799c-303a-480f-b156-5b51fab18ae5".parse().unwrap(),
+            &"a20280d4-a3e8-4a2a-8c51-381f021c11a7".parse().unwrap(),
             &game.loader,
             &mut game.res,
             &mut game.world,
@@ -19,13 +19,13 @@ fn main() {
         let tank1 = Tank::new(
             na::Vector2::new(1.0, 1.0),
             [0.8, 0.4, 0.1],
-            "a6ba2179-d4d5-4a86-bd33-e82e97bb30aa".parse().unwrap(),
+            "e12e16cd-9faf-4d61-b8cd-667ddecc823b".parse().unwrap(),
         );
 
         let tank2 = Tank::new(
             na::Vector2::new(1.0, 1.0),
             [0.1, 0.4, 0.8],
-            "a6ba2179-d4d5-4a86-bd33-e82e97bb30aa".parse().unwrap(),
+            "e12e16cd-9faf-4d61-b8cd-667ddecc823b".parse().unwrap(),
         );
 
         let tank1 = tank1.spawn(game.cx());

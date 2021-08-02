@@ -4,8 +4,8 @@
   ],
   "assets": [
     {
-      "uuid": "7406ddc2-5331-4988-b138-86b7ef93793e",
-      "source": "C:\\code\\arcana\\examples\\assets\\tank.png",
+      "uuid": "cd28c616-f847-4230-8e2d-1da0d764d329",
+      "source": "tank.png",
       "source_format": "image",
       "native_format": "rgba.png",
       "tags": [
@@ -13,61 +13,73 @@
       ]
     },
     {
-      "uuid": "a6ba2179-d4d5-4a86-bd33-e82e97bb30aa",
-      "source": "C:\\code\\arcana\\examples\\assets\\tank.json",
+      "uuid": "e12e16cd-9faf-4d61-b8cd-667ddecc823b",
+      "source": "tank.json",
       "source_format": "aseprite.spritesheet",
       "native_format": "arcana.spritesheet",
       "tags": []
     },
     {
-      "uuid": "b4f3f88e-0fcf-4f51-8b07-a3ae5db1afbb",
-      "source": "C:\\code\\arcana\\examples\\assets\\bunny.png",
-      "source_format": "image",
-      "native_format": "rgba.png",
-      "tags": []
-    },
-    {
-      "uuid": "42e2670c-33c3-4b4d-abe2-4ce99dd3a64c",
-      "source": "C:\\code\\arcana\\examples\\assets\\tanks-tiles.png",
-      "source_format": "image",
-      "native_format": "rgba.png",
-      "tags": [
-        "texture"
-      ]
-    },
-    {
-      "uuid": "a6dabe88-d68f-4eee-872c-d8a15c6e9a3d",
-      "source": "C:\\code\\arcana\\examples\\assets\\tanks-tiles.json",
-      "source_format": "aseprite.spritesheet",
-      "native_format": "arcana.spritesheet",
-      "tags": []
-    },
-    {
-      "uuid": "b73a6dcf-0b5c-4626-b8e2-fbd1bfe429e7",
-      "source": "C:\\code\\arcana\\examples\\assets\\tanks.wall.png",
-      "source_format": "image",
-      "native_format": "rgba.png",
-      "tags": []
-    },
-    {
-      "uuid": "5fa7b605-6dea-4f27-837d-0e120c7caf4a",
-      "source": "C:\\code\\arcana\\examples\\assets\\tanks.dirt.png",
-      "source_format": "image",
-      "native_format": "rgba.png",
-      "tags": []
-    },
-    {
-      "uuid": "423f05bf-636e-42a9-aafe-35f2b650321c",
-      "source": "C:\\code\\arcana\\examples\\assets\\tanks-tiles.json",
+      "uuid": "ca79570a-0438-4728-95a6-1b42ba327c3b",
+      "source": "tanks-tiles.json",
       "source_format": "arcana.tile-set",
       "native_format": "arcana.tile-set",
       "tags": []
     },
     {
-      "uuid": "55f1799c-303a-480f-b156-5b51fab18ae5",
-      "source": "C:\\code\\arcana\\examples\\assets\\tanks-map.json",
+      "uuid": "a20280d4-a3e8-4a2a-8c51-381f021c11a7",
+      "source": "tanks-map.json",
       "source_format": "arcana.tile-map",
       "native_format": "arcana.tile-map",
+      "tags": []
+    },
+    {
+      "uuid": "c20c25d3-9d7b-4b66-833c-4541bf5263d9",
+      "source": "tanks.wall.png",
+      "source_format": "image",
+      "native_format": "rgba.png",
+      "tags": []
+    },
+    {
+      "uuid": "b3f60902-78b8-443f-b3a0-8766c8a52027",
+      "source": "tanks.dirt.png",
+      "source_format": "image",
+      "native_format": "rgba.png",
+      "tags": []
+    },
+    {
+      "uuid": "507cc7c3-44dd-47c7-a86b-a2585f199e3d",
+      "source": "test.png",
+      "source_format": "image",
+      "native_format": "rgba.png",
+      "tags": [
+        "texture",
+        "gltf"
+      ]
+    },
+    {
+      "uuid": "98417a15-066a-4768-9447-b1345aed868f",
+      "source": "test.gltf.primitive.0",
+      "source_format": "arcana.mesh",
+      "native_format": "arcana.mesh",
+      "tags": [
+        "gltf"
+      ]
+    },
+    {
+      "uuid": "8a8178ef-9ab4-4206-a9db-89107d10cb24",
+      "source": "test.gltf.primitive.1",
+      "source_format": "arcana.mesh",
+      "native_format": "arcana.mesh",
+      "tags": [
+        "gltf"
+      ]
+    },
+    {
+      "uuid": "9054d348-31ad-428c-9a58-7bbc8a5907da",
+      "source": "test.gltf",
+      "source_format": "gltf",
+      "native_format": "arcana.object",
       "tags": []
     }
   ]
