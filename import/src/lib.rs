@@ -1,8 +1,9 @@
 mod aseprite;
-// mod gltf;
+mod gltf;
 mod image;
+mod material;
+mod sampler;
 mod sprite_sheet;
-mod tiles;
 
 #[cfg(target_os = "wasi")]
 pub use goods_treasury_import::ffi::{
@@ -14,6 +15,9 @@ goods_treasury_import::generate_imports_and_exports! {
     &aseprite::SpriteSheetImporter,
     &image::ImageImporter,
     &sprite_sheet::SpriteSheetEnrich,
-    &tiles::TileSetImporter,
-    &tiles::TileMapImporter,
+    &gltf::GltfObjectImporter,
+}
+
+fn is_default<T: Default + PartialEq>(value: &T) -> bool {
+    *value == T::default()
 }

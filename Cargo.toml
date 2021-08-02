@@ -11,6 +11,10 @@ repository = "https://github.com/zakarumych/arcana"
 [dependencies]
 arcana-time = { version = "0.1", path = "time", features = ["serde"] }
 arcana-proc = { version = "0.1", path = "proc" }
+arcana-mesh-file = { version = "0.1", path = "mesh-file" }
+
+# Animation
+skelly = { version = "0.4", features = ["serde-1"] }
 
 # Windowing
 winit = { version = "0.25", features = ["serde"] }
@@ -20,7 +24,7 @@ raw-window-handle = "0.3"
 sierra = { version = "0.2", features = ["serde-1"] }
 
 # Ecs
-hecs = "0.5"
+hecs = "0.6"
 
 # Logging
 tracing = "0.1"
@@ -76,4 +80,4 @@ lazy_static = "1.0"
 slab = "0.4"
 
 [workspace]
-members = ["examples/blocks", "examples/tanks", "examples/bunnymark", "import"]
+members = ["import", "examples/blocks", "examples/tanks", "examples/bunnymark", "examples/gltf-test"]

@@ -1,11 +1,13 @@
 use {
     super::{
         vertex::{
-            Color, Normal3, Position3, PositionNormal3, PositionNormal3Color, Semantics,
-            VertexLayout, VertexLocation, VertexType,
+            Color, Joints, Normal3, Position3, PositionNormal3, PositionNormal3Color,
+            PositionNormal3UV, PositionNormalTangent3, PositionNormalTangent3UV, Semantics, Skin,
+            Tangent3, VertexLayout, VertexLocation, VertexType, Weights, UV,
         },
         Graphics,
     },
+    arcana_mesh_file::{BindingFileHeader, MeshFile, MeshFileHeader},
     bumpalo::{collections::Vec as BVec, Bump},
     bytemuck::cast_slice,
     goods::{Asset, AssetBuild, Loader},
@@ -795,34 +797,6 @@ fn build_triangles_blas<'a>(
     Ok(blas)
 }
 
-#[derive(serde::Serialize, serde::Deserialize)]
-pub struct BindingFileHeader {
-    pub data: Range<usize>,
-    pub layout: VertexLayout,
-}
-
-#[derive(serde::Serialize, serde::Deserialize)]
-pub struct IndicesFileHeader {
-    pub data: Range<usize>,
-    pub index_type: IndexType,
-}
-
-/// Header for internal mesh file format.
-#[derive(serde::Serialize, serde::Deserialize)]
-pub struct MeshFileHeader {
-    pub magic: u32,
-    pub bindings: Vec<BindingFileHeader>,
-    pub indices: Option<IndicesFileHeader>,
-    pub topology: PrimitiveTopology,
-}
-
-const ARCANA_MESH_FILE_HEADER_MAGIC: u32 = u32::from_le_bytes(*b"msha");
-
-pub struct MeshFile {
-    pub header: MeshFileHeader,
-    pub bytes: Box<[u8]>,
-}
-
 #[derive(Debug, thiserror::Error)]
 pub enum MeshFileDecodeError {
     #[error("Failed to verify magic number")]
@@ -842,11 +816,11 @@ impl Asset for Mesh {
         match &*bytes {
             [a, b, c, d, ..] => {
                 let magic = u32::from_le_bytes([*a, *b, *c, *d]);
-                if magic != ARCANA_MESH_FILE_HEADER_MAGIC {
+                if magic != MeshFileHeader::MAGIC {
                     tracing::error!(
                         "Mesh blob contains wrong magic number '{:X}'. Expected '{:X}'",
                         magic,
-                        ARCANA_MESH_FILE_HEADER_MAGIC
+                        MeshFileHeader::MAGIC
                     );
                     return ready(Err(MeshFileDecodeError::MagicError));
                 }
@@ -859,7 +833,7 @@ impl Asset for Mesh {
 
         match bincode::deserialize::<MeshFileHeader>(&*bytes) {
             Ok(header) => {
-                debug_assert_eq!(header.magic, ARCANA_MESH_FILE_HEADER_MAGIC);
+                debug_assert_eq!(header.magic, MeshFileHeader::MAGIC);
                 ready(Ok(MeshFile { header, bytes }))
             }
             Err(err) => ready(Err(MeshFileDecodeError::HeaderError { source: err })),
@@ -874,62 +848,84 @@ where
     fn build(decoded: MeshFile, builder: &mut B) -> Result<Self, OutOfMemory> {
         let graphics = builder.borrow_mut();
 
-        let mut min_vertex_count = !0u32;
-
         let bindings: Arc<[Binding]> = decoded
             .header
             .bindings
             .iter()
             .map(|binding| -> Result<_, OutOfMemory> {
-                let vertex_count = u64::try_from(binding.data.len()).map_err(|_| OutOfMemory)?
-                    / u64::from(binding.layout.stride);
+                let layout = match binding.layout {
+                    arcana_mesh_file::VertexLayout::Position3 => Position3::layout(),
+                    arcana_mesh_file::VertexLayout::Normal3 => Normal3::layout(),
+                    arcana_mesh_file::VertexLayout::Tangent3 => Tangent3::layout(),
+                    arcana_mesh_file::VertexLayout::UV => UV::layout(),
+                    arcana_mesh_file::VertexLayout::PositionNormal3 => PositionNormal3::layout(),
+                    arcana_mesh_file::VertexLayout::PositionNormal3UV => {
+                        PositionNormal3UV::layout()
+                    }
+                    arcana_mesh_file::VertexLayout::PositionNormalTangent3 => {
+                        PositionNormalTangent3::layout()
+                    }
+                    arcana_mesh_file::VertexLayout::PositionNormalTangent3UV => {
+                        PositionNormalTangent3UV::layout()
+                    }
+                    arcana_mesh_file::VertexLayout::Joints => Joints::layout(),
+                    arcana_mesh_file::VertexLayout::Weights => Weights::layout(),
+                    arcana_mesh_file::VertexLayout::Skin => Skin::layout(),
+                };
 
-                let vertex_count = u32::try_from(vertex_count).map_err(|_| OutOfMemory)?;
-
-                min_vertex_count = min_vertex_count.min(vertex_count);
+                let size = u64::from(layout.stride) * u64::from(decoded.header.vertex_count);
+                let size_usize = usize::try_from(size).map_err(|_| OutOfMemory)?;
 
                 Ok(Binding {
                     buffer: graphics
                         .create_buffer_static(
                             BufferInfo {
                                 align: 255,
-                                size: u64::try_from(binding.data.len()).map_err(|_| OutOfMemory)?,
+                                size,
                                 usage: BufferUsage::VERTEX,
                             },
-                            &decoded.bytes[binding.data.clone()],
+                            &decoded.bytes[binding.offset..][..size_usize],
                         )?
                         .into(),
                     offset: 0,
-                    layout: binding.layout.clone(),
+                    layout,
                 })
             })
             .collect::<Result<_, _>>()?;
 
-        let mut count = min_vertex_count;
+        let mut count = decoded.header.vertex_count;
 
         let indices = decoded
             .header
             .indices
             .as_ref()
             .map(|indices| -> Result<_, OutOfMemory> {
-                let index_count = u64::try_from(indices.data.len()).map_err(|_| OutOfMemory)?
-                    / u64::from(indices.index_type.size());
+                count = indices.count;
 
-                count = u32::try_from(index_count).map_err(|_| OutOfMemory)?;
+                let stride = match indices.index_type {
+                    arcana_mesh_file::IndexType::U16 => 2,
+                    arcana_mesh_file::IndexType::U32 => 4,
+                };
+
+                let size = stride * u64::from(indices.count);
+                let size_usize = usize::try_from(size).map_err(|_| OutOfMemory)?;
 
                 Ok(Indices {
                     buffer: graphics
                         .create_buffer_static(
                             BufferInfo {
                                 align: 255,
-                                size: u64::try_from(indices.data.len()).map_err(|_| OutOfMemory)?,
+                                size,
                                 usage: BufferUsage::INDEX,
                             },
-                            &decoded.bytes[indices.data.clone()],
+                            &decoded.bytes[indices.offset..][..size_usize],
                         )?
                         .into(),
                     offset: 0,
-                    index_type: indices.index_type,
+                    index_type: match indices.index_type {
+                        arcana_mesh_file::IndexType::U16 => IndexType::U16,
+                        arcana_mesh_file::IndexType::U32 => IndexType::U32,
+                    },
                 })
             })
             .transpose()?;
@@ -937,9 +933,20 @@ where
         Ok(Mesh {
             bindings,
             indices,
-            topology: decoded.header.topology,
+            topology: match decoded.header.topology {
+                arcana_mesh_file::PrimitiveTopology::PointList => PrimitiveTopology::PointList,
+                arcana_mesh_file::PrimitiveTopology::LineList => PrimitiveTopology::LineList,
+                arcana_mesh_file::PrimitiveTopology::LineStrip => PrimitiveTopology::LineStrip,
+                arcana_mesh_file::PrimitiveTopology::TriangleList => {
+                    PrimitiveTopology::TriangleList
+                }
+                arcana_mesh_file::PrimitiveTopology::TriangleStrip => {
+                    PrimitiveTopology::TriangleStrip
+                }
+                arcana_mesh_file::PrimitiveTopology::TriangleFan => PrimitiveTopology::TriangleFan,
+            },
             count,
-            vertex_count: min_vertex_count,
+            vertex_count: decoded.header.vertex_count,
         })
     }
 }

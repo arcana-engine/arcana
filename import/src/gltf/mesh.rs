@@ -1,73 +1,103 @@
-use {
-    super::{ColliderKind, GltfBuildContext, GltfLoadingError, Mesh},
-    std::sync::Arc,
+use std::{collections::HashMap, path::Path};
+
+use gltf::Gltf;
+use goods_treasury_import::Registry;
+
+use super::{
+    collider::{load_collider, Collider, ColliderKind},
+    primitive::{load_primitive, Primitive},
 };
 
-impl GltfBuildContext<'_> {
-    pub fn create_mesh(&mut self, mesh: gltf::Mesh) -> Result<Mesh, GltfLoadingError> {
-        let purpose = mesh_purpose(&mesh);
-        let mut gltf_mesh = Mesh {
-            renderables: None,
-            colliders: None,
-            skin: None,
-        };
-
-        if purpose.render {
-            gltf_mesh.renderables = Some(
-                mesh.primitives()
-                    .map(|prim| self.create_primitive(prim))
-                    .collect::<Result<Arc<[_]>, _>>()?,
-            );
-        }
-        if let Some(collider) = purpose.collider {
-            gltf_mesh.colliders = Some(
-                mesh.primitives()
-                    .map(|prim| self.create_collider(prim, collider))
-                    .collect::<Result<Arc<[_]>, _>>()?,
-            );
-        }
-        Ok(gltf_mesh)
-    }
+pub struct Mesh {
+    pub primitives: Vec<Primitive>,
+    pub colliders: Vec<Collider>,
 }
 
+pub fn load_mesh(
+    mesh: gltf::Mesh,
+    gltf: &Gltf,
+    sources: &HashMap<usize, Box<[u8]>>,
+    path: &Path,
+    registry: &mut dyn Registry,
+) -> eyre::Result<Mesh> {
+    let purpose = purpose(&mesh);
+
+    let mut output = Mesh {
+        primitives: Vec::new(),
+        colliders: Vec::new(),
+    };
+
+    if purpose.render {
+        output.primitives = mesh
+            .primitives()
+            .map(|prim| load_primitive(prim, gltf, sources, path, registry))
+            .collect::<Result<_, _>>()?;
+    }
+    if let Some(collider) = purpose.collider {
+        output.colliders = mesh
+            .primitives()
+            .map(|prim| load_collider(prim, collider, gltf, sources))
+            .collect::<Result<_, _>>()?;
+    }
+    Ok(output)
+}
+
+#[derive(Clone, Copy)]
 struct MeshPurpose {
     render: bool,
     collider: Option<ColliderKind>,
 }
 
-fn mesh_purpose(mesh: &gltf::Mesh) -> MeshPurpose {
-    match mesh.name() {
-        Some("draw") => MeshPurpose {
+fn purpose(mesh: &gltf::Mesh) -> MeshPurpose {
+    if let Some(name) = mesh.name() {
+        match name.rfind('.') {
+            Some(pos) => {
+                let ext = name[pos + 1..].trim();
+
+                match ext {
+                    "draw" => MeshPurpose {
+                        render: true,
+                        collider: None,
+                    },
+                    "aabb" => MeshPurpose {
+                        render: false,
+                        collider: Some(ColliderKind::AABB),
+                    },
+                    "convex" => MeshPurpose {
+                        render: false,
+                        collider: Some(ColliderKind::Convex),
+                    },
+                    "trimesh" => MeshPurpose {
+                        render: false,
+                        collider: Some(ColliderKind::TriMesh),
+                    },
+                    "draw+aabb" => MeshPurpose {
+                        render: true,
+                        collider: Some(ColliderKind::AABB),
+                    },
+                    "draw+convex" => MeshPurpose {
+                        render: true,
+                        collider: Some(ColliderKind::Convex),
+                    },
+                    "draw+trimesh" => MeshPurpose {
+                        render: true,
+                        collider: Some(ColliderKind::TriMesh),
+                    },
+                    _ => MeshPurpose {
+                        render: true,
+                        collider: None,
+                    },
+                }
+            }
+            None => MeshPurpose {
+                render: true,
+                collider: None,
+            },
+        }
+    } else {
+        MeshPurpose {
             render: true,
             collider: None,
-        },
-        Some("aabb") => MeshPurpose {
-            render: false,
-            collider: Some(ColliderKind::AABB),
-        },
-        Some("convex") => MeshPurpose {
-            render: false,
-            collider: Some(ColliderKind::Convex),
-        },
-        Some("trimesh") => MeshPurpose {
-            render: false,
-            collider: Some(ColliderKind::TriMesh),
-        },
-        Some("draw+aabb") => MeshPurpose {
-            render: true,
-            collider: Some(ColliderKind::AABB),
-        },
-        Some("draw+convex") => MeshPurpose {
-            render: true,
-            collider: Some(ColliderKind::Convex),
-        },
-        Some("draw+trimesh") => MeshPurpose {
-            render: true,
-            collider: Some(ColliderKind::TriMesh),
-        },
-        _ => MeshPurpose {
-            render: true,
-            collider: None,
-        },
+        }
     }
 }

@@ -1,77 +1,121 @@
-use {
-    super::{read_accessor, GltfBuildContext, GltfLoadingError, Skin},
-    byteorder::{ByteOrder as _, LittleEndian},
-    gltf::accessor::Dimensions,
-    std::{collections::hash_map::Entry, mem::size_of},
-};
+use std::{collections::HashMap, f32::EPSILON, mem::size_of};
 
-impl GltfBuildContext<'_> {
-    pub fn get_skin(&mut self, skin: gltf::Skin) -> Result<Skin, GltfLoadingError> {
-        let skin_index = skin.index();
-        match self.skins.entry(skin_index) {
-            Entry::Occupied(entry) => Ok(entry.get().clone()),
-            Entry::Vacant(_) => {
-                let gltf_skin = self.create_skin(skin)?;
-                Ok(self.skins.entry(skin_index).or_insert(gltf_skin).clone())
-            }
-        }
-    }
+use byteorder::{ByteOrder, LittleEndian};
+use gltf::{accessor::Dimensions, Gltf};
+use skelly::Skelly;
 
-    fn create_skin(&mut self, skin: gltf::Skin) -> Result<Skin, GltfLoadingError> {
-        match skin.inverse_bind_matrices() {
-            Some(accessor) => {
-                if accessor.dimensions() != Dimensions::Mat4 {
-                    return Err(GltfLoadingError::UnexpectedDimensions {
-                        unexpected: accessor.dimensions(),
-                        expected: &[Dimensions::Mat4],
-                    });
+use crate::gltf::{read_accessor, Error};
+
+#[derive(serde::Serialize)]
+pub struct Skin {
+    inverse_binding_matrices: Option<Vec<na::Matrix4<f32>>>,
+    skelly: Skelly<f32, String>,
+}
+
+pub fn load_skin(
+    skin: gltf::Skin,
+    gltf: &Gltf,
+    sources: &HashMap<usize, Box<[u8]>>,
+) -> eyre::Result<Skin> {
+    let inverse_binding_matrices = match skin.inverse_bind_matrices() {
+        Some(accessor) => {
+            if accessor.dimensions() != Dimensions::Mat4 {
+                return Err(Error::UnexpectedDimensions {
+                    unexpected: accessor.dimensions(),
+                    expected: &[Dimensions::Mat4],
                 }
+                .into());
+            }
 
-                assert_eq!(accessor.size(), size_of::<na::Matrix4<f32>>());
+            assert_eq!(
+                accessor.size(),
+                size_of::<na::Matrix4<f32>>(),
+                "Accessor to inverse binding matrices has invalid size"
+            );
 
-                let (bytes, stride) = read_accessor(accessor.clone(), &self.decoded)?;
+            let (bytes, stride) = read_accessor(accessor.clone(), gltf, sources)?;
 
-                let mut inverse_binding_matrices = Vec::new();
+            let mut inverse_binding_matrices = Vec::new();
 
-                if cfg!(target_endian = "little") && stride == size_of::<na::Matrix4<f32>>() {
-                    debug_assert_eq!(
-                        accessor.count() * size_of::<na::Matrix4<f32>>(),
-                        bytes.len()
+            if cfg!(target_endian = "little") && stride == size_of::<na::Matrix4<f32>>() {
+                debug_assert_eq!(
+                    accessor.count() * size_of::<na::Matrix4<f32>>(),
+                    bytes.len()
+                );
+                inverse_binding_matrices.reserve(accessor.count());
+                unsafe {
+                    std::ptr::copy_nonoverlapping(
+                        bytes.as_ptr(),
+                        inverse_binding_matrices.as_mut_ptr() as *mut u8,
+                        bytes.len(),
                     );
-                    inverse_binding_matrices.reserve(accessor.count());
-                    unsafe {
-                        std::ptr::copy_nonoverlapping(
-                            bytes.as_ptr(),
-                            inverse_binding_matrices.as_mut_ptr() as *mut u8,
-                            bytes.len(),
-                        );
-                        inverse_binding_matrices.set_len(accessor.count());
-                    }
-                } else {
-                    for bytes in bytes.chunks(stride) {
-                        let mut a = [0.0; 16];
-                        LittleEndian::read_f32_into(bytes, &mut a);
-
-                        let m = [
-                            [a[0], a[1], a[2], a[3]],
-                            [a[4], a[5], a[6], a[7]],
-                            [a[8], a[9], a[10], a[11]],
-                            [a[12], a[13], a[14], a[15]],
-                        ];
-
-                        inverse_binding_matrices.push(na::Matrix4::from(m));
-                    }
+                    inverse_binding_matrices.set_len(accessor.count());
                 }
+            } else {
+                for bytes in bytes.chunks(stride) {
+                    let mut a = [0.0; 16];
+                    LittleEndian::read_f32_into(bytes, &mut a);
 
-                Ok(Skin {
-                    inverse_binding_matrices: Some(inverse_binding_matrices.into()),
-                    joints: skin.joints().map(|j| j.index()).collect(),
-                })
+                    let m = [
+                        [a[0], a[1], a[2], a[3]],
+                        [a[4], a[5], a[6], a[7]],
+                        [a[8], a[9], a[10], a[11]],
+                        [a[12], a[13], a[14], a[15]],
+                    ];
+
+                    inverse_binding_matrices.push(na::Matrix4::from(m));
+                }
             }
-            None => Ok(Skin {
-                inverse_binding_matrices: None,
-                joints: skin.joints().map(|j| j.index()).collect(),
-            }),
+            Some(inverse_binding_matrices)
         }
+        None => None,
+    };
+
+    let mut skelly = Skelly::new();
+
+    for (idx, joint) in skin.joints().enumerate() {
+        let parent = skin
+            .joints()
+            .take(idx)
+            .position(|j| j.children().any(|c| c.index() == joint.index()));
+
+        let (pos, rot, scale) = joint.transform().decomposed();
+        assert!(
+            scale[0] > 1.0 - EPSILON && scale[0] < 1.0 + EPSILON,
+            "Joint nodes scale must be [1, 1, 1]"
+        );
+        assert!(
+            scale[1] > 1.0 - EPSILON && scale[1] < 1.0 + EPSILON,
+            "Joint nodes scale must be [1, 1, 1]"
+        );
+        assert!(
+            scale[2] > 1.0 - EPSILON && scale[2] < 1.0 + EPSILON,
+            "Joint nodes scale must be [1, 1, 1]"
+        );
+
+        let rotation = na::Unit::new_normalize(na::Quaternion::new(rot[0], rot[1], rot[2], rot[3]));
+        let name = joint.name().unwrap_or("unnamed").to_owned();
+
+        let bone = match parent {
+            None => skelly.add_root_with(na::Point3::new(pos[0], pos[1], pos[2]), name),
+            Some(parent) => {
+                skelly.attach_with(na::Vector3::new(pos[0], pos[1], pos[2]), parent, name)
+            }
+        };
+        assert_eq!(bone, idx);
+        skelly.set_orientation(idx, rotation);
     }
+
+    for (idx, joint) in skin.joints().enumerate() {
+        assert_eq!(
+            joint.children().len(),
+            skelly.iter_children(idx).count(),
+            "All children of a joint must be joints of the same skeleton"
+        );
+    }
+
+    Ok(Skin {
+        inverse_binding_matrices,
+        skelly,
+    })
 }

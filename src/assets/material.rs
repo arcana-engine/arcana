@@ -3,7 +3,6 @@ use {
     crate::graphics::{Graphics, Material, Texture},
     ordered_float::OrderedFloat,
     sierra::SamplerInfo,
-    url::Url,
 };
 
 #[derive(Clone, Debug, Default, serde::Deserialize)]

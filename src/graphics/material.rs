@@ -1,6 +1,6 @@
-use {super::texture::Texture, goods::Asset, ordered_float::OrderedFloat};
+use {super::texture::Texture, goods::AssetField, ordered_float::OrderedFloat};
 
-#[derive(Clone, Debug, PartialEq, Eq, Hash, Asset)]
+#[derive(Clone, Debug, PartialEq, Eq, Hash, AssetField)]
 pub struct Material {
     #[container]
     pub albedo_coverage: Option<Texture>,

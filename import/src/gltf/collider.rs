@@ -1,99 +1,82 @@
-use {
-    super::{ColliderKind, GltfBuildContext, Collider, GltfLoadingError},
-    parry3d::shape::SharedShape,
-};
+use std::collections::HashMap;
 
-impl GltfBuildContext<'_> {
-    pub fn create_collider(
-        &mut self,
-        prim: gltf::Primitive,
-        kind: ColliderKind,
-    ) -> Result<Collider, GltfLoadingError> {
-        let reader = prim.reader(|buffer| match buffer.source() {
-            gltf::buffer::Source::Bin => self.decoded.gltf.blob.as_deref(),
-            gltf::buffer::Source::Uri(uri) => self.decoded.sources.get(uri).map(|b| &**b),
-        });
+use gltf::Gltf;
 
-        let mut positions = reader
-            .read_positions()
-            .ok_or(GltfLoadingError::MissingSource)?;
+use super::Error;
 
-        match kind {
-            ColliderKind::AABB => match positions.next() {
-                Some([x, y, z]) => {
-                    let mut xx = [x, x];
-                    let mut yy = [y, y];
-                    let mut zz = [z, z];
+#[derive(Clone, Copy)]
+pub enum ColliderKind {
+    AABB,
+    Convex,
+    TriMesh,
+}
 
-                    for [x, y, z] in positions {
-                        xx[0] = xx[0].min(x);
-                        xx[1] = xx[1].max(x);
+#[derive(serde::Serialize)]
+pub enum Collider {
+    AABB {
+        extent: na::Vector3<f32>,
+    },
+    Convex {
+        points: Vec<na::Point3<f32>>,
+    },
+    TriMesh {
+        vertices: Vec<na::Point3<f32>>,
+        indices: Vec<[u32; 3]>,
+    },
+}
 
-                        yy[0] = yy[0].min(y);
-                        yy[1] = yy[1].max(y);
+pub fn load_collider(
+    prim: gltf::Primitive,
+    kind: ColliderKind,
+    gltf: &Gltf,
+    sources: &HashMap<usize, Box<[u8]>>,
+) -> eyre::Result<Collider> {
+    let reader = prim.reader(|buffer| match buffer.source() {
+        gltf::buffer::Source::Bin => gltf.blob.as_deref(),
+        gltf::buffer::Source::Uri(_) => sources.get(&buffer.index()).map(|b| &**b),
+    });
 
-                        zz[0] = zz[0].min(z);
-                        zz[1] = zz[1].max(z);
-                    }
+    let mut positions = reader.read_positions().ok_or(Error::MissingSource)?;
 
-                    let shape = SharedShape::convex_mesh(
-                        vec![
-                            na::Point3::new(xx[0], yy[0], zz[0]),
-                            na::Point3::new(xx[0], yy[0], zz[1]),
-                            na::Point3::new(xx[0], yy[1], zz[0]),
-                            na::Point3::new(xx[0], yy[1], zz[1]),
-                            na::Point3::new(xx[1], yy[0], zz[0]),
-                            na::Point3::new(xx[1], yy[0], zz[1]),
-                            na::Point3::new(xx[1], yy[1], zz[0]),
-                            na::Point3::new(xx[1], yy[1], zz[1]),
-                        ],
-                        &[
-                            [0, 1, 2],
-                            [2, 1, 3],
-                            [0, 4, 1],
-                            [1, 4, 5],
-                            [2, 3, 6],
-                            [6, 3, 7],
-                            [4, 6, 5],
-                            [5, 6, 7],
-                        ],
-                    )
-                    .unwrap();
+    match kind {
+        ColliderKind::AABB => match positions.next() {
+            Some([x, y, z]) => {
+                let mut mx = x.abs();
+                let mut my = y.abs();
+                let mut mz = z.abs();
 
-                    Ok(Collider { shape })
+                for [x, y, z] in positions {
+                    mx = mx.max(x.abs());
+                    my = my.max(y.abs());
+                    mz = mz.max(z.abs());
                 }
-                None => Err(GltfLoadingError::InvalidConvexShape),
-            },
 
-            ColliderKind::Convex => {
-                let positions: Vec<_> = positions
-                    .map(|[x, y, z]| na::Point3::new(x, y, z))
-                    .collect();
-
-                let indices: Vec<_> = match reader.read_indices() {
-                    Some(indices) => triplets(indices.into_u32()),
-                    None => triplets(0u32..positions.len() as u32),
-                };
-
-                let shape = SharedShape::convex_mesh(positions, &indices)
-                    .ok_or(GltfLoadingError::InvalidConvexShape)?;
-
-                Ok(Collider { shape })
+                Ok(Collider::AABB {
+                    extent: na::Vector3::new(mx, my, mz),
+                })
             }
+            None => Err(Error::InvalidConvexShape.into()),
+        },
 
-            ColliderKind::TriMesh => {
-                let positions: Vec<_> = positions
-                    .map(|[x, y, z]| na::Point3::new(x, y, z))
-                    .collect();
+        ColliderKind::Convex => {
+            let points: Vec<_> = positions
+                .map(|[x, y, z]| na::Point3::new(x, y, z))
+                .collect();
 
-                let indices: Vec<_> = match reader.read_indices() {
-                    Some(indices) => triplets(indices.into_u32()),
-                    None => triplets(0u32..positions.len() as u32),
-                };
+            Ok(Collider::Convex { points })
+        }
 
-                let shape = SharedShape::trimesh(positions, indices);
-                Ok(Collider { shape })
-            }
+        ColliderKind::TriMesh => {
+            let vertices: Vec<_> = positions
+                .map(|[x, y, z]| na::Point3::new(x, y, z))
+                .collect();
+
+            let indices: Vec<_> = match reader.read_indices() {
+                Some(indices) => triplets(indices.into_u32()),
+                None => triplets(0u32..vertices.len() as u32),
+            };
+
+            Ok(Collider::TriMesh { vertices, indices })
         }
     }
 }
