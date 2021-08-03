@@ -1,5 +1,6 @@
 pub mod basic;
 pub mod sprite;
+pub mod vcolor;
 
 use {
     super::Graphics,
