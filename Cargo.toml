@@ -8,6 +8,9 @@ documentation = "https://docs.rs/arcana"
 homepage = "https://github.com/zakarumych/arcana"
 repository = "https://github.com/zakarumych/arcana"
 
+[features]
+asset-reimport = ["goods/fetch-reimport"]
+
 [dependencies]
 arcana-time = { version = "0.1", path = "time", features = ["serde"] }
 arcana-proc = { version = "0.1", path = "proc" }
