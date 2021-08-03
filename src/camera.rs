@@ -159,6 +159,13 @@ pub enum FreeCamera3Command {
 pub struct FreeCamera3Controller {
     pitch: f32,
     yaw: f32,
+
+    forward_pressed: bool,
+    backward_pressed: bool,
+    left_pressed: bool,
+    right_pressed: bool,
+    up_pressed: bool,
+    down_pressed: bool,
 }
 
 impl FreeCamera3Controller {
@@ -166,6 +173,13 @@ impl FreeCamera3Controller {
         FreeCamera3Controller {
             pitch: 0.0,
             yaw: 0.0,
+
+            forward_pressed: false,
+            backward_pressed: false,
+            left_pressed: false,
+            right_pressed: false,
+            up_pressed: false,
+            down_pressed: false,
         }
     }
 }
@@ -176,8 +190,8 @@ impl InputCommander for FreeCamera3Controller {
     fn translate(&mut self, event: DeviceEvent) -> Option<FreeCamera3Command> {
         match event {
             DeviceEvent::MouseMotion { delta: (x, y) } => {
-                self.pitch -= (x * 0.01) as f32;
-                self.yaw -= (y * 0.01) as f32;
+                self.pitch -= (x * 0.001) as f32;
+                self.yaw -= (y * 0.001) as f32;
 
                 self.yaw = self.yaw.clamp(
                     std::f32::consts::FRAC_PI_2 * (f32::EPSILON - 1.0),
@@ -201,25 +215,88 @@ impl InputCommander for FreeCamera3Controller {
                 virtual_keycode: Some(key),
                 state,
                 ..
-            }) => {
-                let s = match state {
-                    ElementState::Pressed => 1.0,
-                    ElementState::Released => -1.0,
-                };
-
-                let mov = match key {
-                    VirtualKeyCode::W => -na::Vector3::z() * s,
-                    VirtualKeyCode::S => na::Vector3::z() * s,
-                    VirtualKeyCode::A => -na::Vector3::x() * s,
-                    VirtualKeyCode::D => na::Vector3::x() * s,
-                    VirtualKeyCode::Space => na::Vector3::y() * s,
-                    VirtualKeyCode::LControl => -na::Vector3::y() * s,
-                    _ => return None,
-                };
-
-                Some(FreeCamera3Command::Move(mov))
-            }
+            }) => match key {
+                VirtualKeyCode::W => match state {
+                    ElementState::Pressed if !self.forward_pressed => {
+                        self.forward_pressed = true;
+                        Some(FreeCamera3Command::Move(-na::Vector3::z()))
+                    }
+                    ElementState::Released if self.forward_pressed => {
+                        self.forward_pressed = false;
+                        Some(FreeCamera3Command::Move(na::Vector3::z()))
+                    }
+                    _ => None,
+                },
+                VirtualKeyCode::S => match state {
+                    ElementState::Pressed if !self.backward_pressed => {
+                        self.backward_pressed = true;
+                        Some(FreeCamera3Command::Move(na::Vector3::z()))
+                    }
+                    ElementState::Released if self.backward_pressed => {
+                        self.backward_pressed = false;
+                        Some(FreeCamera3Command::Move(-na::Vector3::z()))
+                    }
+                    _ => None,
+                },
+                VirtualKeyCode::A => match state {
+                    ElementState::Pressed if !self.left_pressed => {
+                        self.left_pressed = true;
+                        Some(FreeCamera3Command::Move(-na::Vector3::x()))
+                    }
+                    ElementState::Released if self.left_pressed => {
+                        self.left_pressed = false;
+                        Some(FreeCamera3Command::Move(na::Vector3::x()))
+                    }
+                    _ => None,
+                },
+                VirtualKeyCode::D => match state {
+                    ElementState::Pressed if !self.right_pressed => {
+                        self.right_pressed = true;
+                        Some(FreeCamera3Command::Move(na::Vector3::x()))
+                    }
+                    ElementState::Released if self.right_pressed => {
+                        self.right_pressed = false;
+                        Some(FreeCamera3Command::Move(-na::Vector3::x()))
+                    }
+                    _ => None,
+                },
+                VirtualKeyCode::Space => match state {
+                    ElementState::Pressed if !self.up_pressed => {
+                        self.up_pressed = true;
+                        Some(FreeCamera3Command::Move(na::Vector3::y()))
+                    }
+                    ElementState::Released if self.up_pressed => {
+                        self.up_pressed = false;
+                        Some(FreeCamera3Command::Move(-na::Vector3::y()))
+                    }
+                    _ => None,
+                },
+                VirtualKeyCode::LControl => match state {
+                    ElementState::Pressed if !self.down_pressed => {
+                        self.down_pressed = true;
+                        Some(FreeCamera3Command::Move(-na::Vector3::y()))
+                    }
+                    ElementState::Released if self.down_pressed => {
+                        self.down_pressed = false;
+                        Some(FreeCamera3Command::Move(na::Vector3::y()))
+                    }
+                    _ => None,
+                },
+                _ => None,
+            },
             _ => None,
+        }
+    }
+}
+
+pub struct FreeCamera {
+    mov: na::Vector3<f32>,
+}
+
+impl FreeCamera {
+    pub fn new() -> Self {
+        FreeCamera {
+            mov: na::Vector3::zeros(),
         }
     }
 }
@@ -232,43 +309,24 @@ impl System for FreeCameraSystem {
     }
 
     fn run(&mut self, cx: SystemContext<'_>) -> eyre::Result<()> {
-        const MAX_ROTATION_SPEED: f32 = 0.1;
-
-        let query = cx
-            .world
-            .query_mut::<(&mut Global3, &mut CommandQueue<FreeCamera3Command>)>();
-        for (_, (global, commands)) in query {
+        let query = cx.world.query_mut::<(
+            &mut Global3,
+            &mut FreeCamera,
+            &mut CommandQueue<FreeCamera3Command>,
+        )>();
+        for (_, (global, camera, commands)) in query {
             for cmd in commands.drain() {
                 match cmd {
                     FreeCamera3Command::RotateTo(rot) => {
                         global.iso.rotation = rot;
                     }
                     FreeCamera3Command::Move(mov) => {
-                        global.iso.translation.vector +=
-                            global.iso.rotation * mov * cx.clock.delta.as_secs_f32();
+                        camera.mov += mov;
                     }
                 }
             }
-
-            // global.iso.translation.vector +=
-            //     free_camera.rot * free_camera.speed * cx.clock.delta.as_secs_f32() * 5.0;
-
-            // let rot = global.iso.rotation.rotation_to(&free_camera.rot);
-
-            // let max_rotation = MAX_ROTATION_SPEED * cx.clock.delta.as_secs_f32();
-            // debug_assert!(max_rotation >= 0.0);
-
-            // let angle = rot.angle();
-            // if angle > max_rotation {
-            //     let a = (angle - max_rotation).powi(2) * angle.signum()
-            //         / ((angle - max_rotation).abs() + 0.1);
-
-            //     let rot =
-            //         na::UnitQuaternion::from_axis_angle(&rot.axis().unwrap(), a + max_rotation);
-            //     global.iso.append_rotation_wrt_center_mut(&rot);
-            // } else {
-            //     global.iso.rotation = free_camera.rot;
-            // }
+            global.iso.translation.vector +=
+                global.iso.rotation * camera.mov * cx.clock.delta.as_secs_f32();
         }
         Ok(())
     }
