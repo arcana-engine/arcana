@@ -185,12 +185,7 @@ impl BasicRenderer {
 
                 render_pass.bind_graphics_descriptors(&self.pipeline_layout, updated);
 
-                let drawn = mesh.draw(
-                    0..1,
-                    &[Position3::layout(), Normal3::layout(), UV::layout()],
-                    &mut render_pass,
-                    cx.bump,
-                );
+                let drawn = mesh.draw(0..1, &[Position3::layout()], &mut render_pass, cx.bump);
 
                 if drawn {
                     tracing::info!("Mesh drawn");

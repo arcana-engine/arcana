@@ -81,4 +81,4 @@ lazy_static = "1.0"
 slab = "0.4"
 
 [workspace]
-members = ["import", "examples/blocks", "examples/tanks", "examples/bunnymark", "examples/gltf-test"]
+members = ["import", "examples/blocks", "examples/tanks", "examples/bunnymark", "examples/gltf-test", "examples/sponza"]
