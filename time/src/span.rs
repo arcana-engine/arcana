@@ -20,20 +20,12 @@ use core::{
 /// # Example
 ///
 /// ```
-/// # use arcana::TimeSpan;
+/// # use arcana_time::TimeSpan;
 /// let span = 143559835041 * TimeSpan::MILLISECOND;
 /// let span_str = span.to_string();
 /// let parsed = span_str.parse().unwrap();
 /// assert_eq!(span, parsed);
 ///
-/// ```
-///
-/// # Example
-///
-/// ```
-/// # use arcana::{timespan, TimeSpan};
-///
-/// assert_eq!(timespan!(10), 10 * TimeSpan::SECOND);
 /// ```
 #[derive(Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
 #[repr(transparent)]

@@ -83,12 +83,11 @@ impl Clocks {
     /// ```
     /// # use arcana::Clocks;
     /// let mut clocks = Clocks::new();
-    /// let mut last = clocks.step();
-    /// loop {
-    ///   let next = clocks.step();
-    ///   assert!(next.step >= last.step, "Next step is never earlier than previous");
-    ///   assert!(next.step >= next.start, "Step is never earlier than clock start time");
-    ///   assert_eq!(next.start, last.start, "All steps from same `Clock` has same `start` value");
+    /// let mut last = clocks.advance();
+    /// for _ in 0 .. 10 {
+    ///   let next = clocks.advance();
+    ///   assert!(next.now >= last.now, "Next step is never earlier than previous");
+    ///   assert_eq!(next.now, last.now + next.delta, "`now` equals previous `now` + current `delta` ");
     ///   last = next;
     /// }
     /// ```
