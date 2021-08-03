@@ -95,6 +95,13 @@ pub fn load_primitive(
         });
     }
 
+    if let Some(colors) = vertices.colors {
+        bindings.push(BindingFileHeader {
+            offset: colors.start,
+            layout: VertexLayout::Color,
+        });
+    }
+
     if let Some(joints) = vertices.joints {
         bindings.push(BindingFileHeader {
             offset: joints.start,
@@ -260,6 +267,7 @@ enum VertexAttribute {
     Normal3,
     Tangent3,
     UV,
+    Color,
     Joints,
     Weights,
 }
@@ -270,6 +278,7 @@ fn dimensions(attribute: VertexAttribute) -> &'static [Dimensions] {
         VertexAttribute::Normal3 => &[Dimensions::Vec3],
         VertexAttribute::Tangent3 => &[Dimensions::Vec4],
         VertexAttribute::UV => &[Dimensions::Vec2],
+        VertexAttribute::Color => &[Dimensions::Vec4],
         VertexAttribute::Joints => &[Dimensions::Vec4],
         VertexAttribute::Weights => &[Dimensions::Vec4],
     }
@@ -367,6 +376,64 @@ fn attribute_from_bytes(
                     let mut a = [0; 2];
                     LittleEndian::read_u32_into(&bytes[..size_of_val(&a)], &mut a);
                     output.extend_from_slice(bytemuck::bytes_of(&[u32_norm(a[0]), u32_norm(a[1])]));
+                }
+                Ok(())
+            }
+            _ => Err(Error::UnexpectedDataType {
+                unexpected: data_type,
+                expected: &[DataType::F32],
+            }),
+        },
+        VertexAttribute::Color => match data_type {
+            DataType::F32 if cfg!(target_endian = "little") && stride == size_of::<[f32; 4]>() => {
+                output.extend_from_slice(bytes);
+                Ok(())
+            }
+            DataType::F32 => {
+                for bytes in bytes.chunks(stride) {
+                    let mut a = [0.0; 4];
+                    LittleEndian::read_f32_into(&bytes[..size_of_val(&a)], &mut a);
+                    output.extend_from_slice(bytemuck::bytes_of(&a));
+                }
+                Ok(())
+            }
+            DataType::U8 => {
+                debug_assert!(stride >= size_of::<[u8; 4]>());
+                for bytes in bytes.chunks(stride) {
+                    output.extend_from_slice(bytemuck::bytes_of(&[
+                        u8_norm(bytes[0]),
+                        u8_norm(bytes[1]),
+                        u8_norm(bytes[2]),
+                        u8_norm(bytes[3]),
+                    ]));
+                }
+                Ok(())
+            }
+            DataType::U16 => {
+                debug_assert!(stride >= size_of::<[u16; 4]>());
+                for bytes in bytes.chunks(stride) {
+                    let mut a = [0; 4];
+                    LittleEndian::read_u16_into(&bytes[..size_of_val(&a)], &mut a);
+                    output.extend_from_slice(bytemuck::bytes_of(&[
+                        u16_norm(a[0]),
+                        u16_norm(a[1]),
+                        u16_norm(a[2]),
+                        u16_norm(a[3]),
+                    ]));
+                }
+                Ok(())
+            }
+            DataType::U32 => {
+                debug_assert!(stride >= size_of::<[u32; 4]>());
+                for bytes in bytes.chunks(stride) {
+                    let mut a = [0; 4];
+                    LittleEndian::read_u32_into(&bytes[..size_of_val(&a)], &mut a);
+                    output.extend_from_slice(bytemuck::bytes_of(&[
+                        u32_norm(a[0]),
+                        u32_norm(a[1]),
+                        u32_norm(a[2]),
+                        u32_norm(a[3]),
+                    ]));
                 }
                 Ok(())
             }
@@ -485,6 +552,7 @@ struct Vertices {
     normals: Option<Range<usize>>,
     tangents: Option<Range<usize>>,
     uvs: Option<Range<usize>>,
+    colors: Option<Range<usize>>,
     joints: Option<Range<usize>>,
     weights: Option<Range<usize>>,
     count: usize,
@@ -533,6 +601,15 @@ fn load_vertices(
         .transpose()?;
 
     align_vec(output, 15);
+    let colors = primitive
+        .get(&gltf::Semantic::Colors(0))
+        .map(|accessor| {
+            count = count.min(accessor.count());
+            load_vertex_attribute(VertexAttribute::Color, gltf, sources, accessor, output)
+        })
+        .transpose()?;
+
+    align_vec(output, 15);
     let joints = primitive
         .get(&gltf::Semantic::Joints(0))
         .map(|accessor| {
@@ -555,6 +632,7 @@ fn load_vertices(
         normals,
         tangents,
         uvs,
+        colors,
         joints,
         weights,
         count,

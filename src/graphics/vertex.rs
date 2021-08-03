@@ -421,6 +421,47 @@ impl VertexType for PositionNormal3Color {
 
 #[derive(Clone, Copy, Debug, serde::Serialize, serde::Deserialize)]
 #[repr(C)]
+pub struct PositionNormalTangent3Color {
+    pub position: Position3,
+    pub normal: Normal3,
+    pub tangent: Tangent3,
+    pub color: Color,
+}
+
+unsafe impl Zeroable for PositionNormalTangent3Color {}
+unsafe impl Pod for PositionNormalTangent3Color {}
+
+impl VertexType for PositionNormalTangent3Color {
+    const LOCATIONS: &'static [VertexLocation] = &[
+        VertexLocation {
+            format: Format::RGB32Sfloat,
+            offset: 0,
+            semantics: Semantics::Position3,
+        },
+        VertexLocation {
+            format: Format::RGB32Sfloat,
+            offset: size_of::<Position3>() as u32,
+            semantics: Semantics::Normal3,
+        },
+        VertexLocation {
+            format: Format::RGBA32Sfloat,
+            offset: size_of::<Position3>() as u32 + size_of::<Normal3>() as u32,
+            semantics: Semantics::Tangent3,
+        },
+        VertexLocation {
+            format: Format::RGBA32Sfloat,
+            offset: size_of::<Position3>() as u32
+                + size_of::<Normal3>() as u32
+                + size_of::<Tangent3>() as u32,
+            semantics: Semantics::Color,
+        },
+    ];
+    const NAME: &'static str = "PositionNormalTangent3Color";
+    const RATE: VertexInputRate = VertexInputRate::Vertex;
+}
+
+#[derive(Clone, Copy, Debug, serde::Serialize, serde::Deserialize)]
+#[repr(C)]
 pub struct Skin {
     pub joints: Joints,
     pub weights: Weights,

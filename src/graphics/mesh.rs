@@ -2,8 +2,9 @@ use {
     super::{
         vertex::{
             Color, Joints, Normal3, Position3, PositionNormal3, PositionNormal3Color,
-            PositionNormal3UV, PositionNormalTangent3, PositionNormalTangent3UV, Semantics, Skin,
-            Tangent3, VertexLayout, VertexLocation, VertexType, Weights, UV,
+            PositionNormal3UV, PositionNormalTangent3, PositionNormalTangent3Color,
+            PositionNormalTangent3UV, Semantics, Skin, Tangent3, VertexLayout, VertexLocation,
+            VertexType, Weights, UV,
         },
         Graphics,
     },
@@ -858,15 +859,22 @@ where
                     arcana_mesh_file::VertexLayout::Normal3 => Normal3::layout(),
                     arcana_mesh_file::VertexLayout::Tangent3 => Tangent3::layout(),
                     arcana_mesh_file::VertexLayout::UV => UV::layout(),
+                    arcana_mesh_file::VertexLayout::Color => Color::layout(),
                     arcana_mesh_file::VertexLayout::PositionNormal3 => PositionNormal3::layout(),
                     arcana_mesh_file::VertexLayout::PositionNormal3UV => {
                         PositionNormal3UV::layout()
+                    }
+                    arcana_mesh_file::VertexLayout::PositionNormal3Color => {
+                        PositionNormal3Color::layout()
                     }
                     arcana_mesh_file::VertexLayout::PositionNormalTangent3 => {
                         PositionNormalTangent3::layout()
                     }
                     arcana_mesh_file::VertexLayout::PositionNormalTangent3UV => {
                         PositionNormalTangent3UV::layout()
+                    }
+                    arcana_mesh_file::VertexLayout::PositionNormalTangent3Color => {
+                        PositionNormalTangent3Color::layout()
                     }
                     arcana_mesh_file::VertexLayout::Joints => Joints::layout(),
                     arcana_mesh_file::VertexLayout::Weights => Weights::layout(),
