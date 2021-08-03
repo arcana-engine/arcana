@@ -26,6 +26,7 @@ mod game;
 pub mod graphics;
 pub mod lifespan;
 mod physics2;
+mod physics3;
 mod resources;
 mod scene;
 mod system;
@@ -46,6 +47,7 @@ pub use self::{
     funnel::Funnel,
     game::{game2, game3, Game},
     physics2::{ContactQueue2, Physics2, PhysicsData2},
+    physics3::{ContactQueue3, Physics3, PhysicsData3},
     // prefab::{prefab_pipe, Prefab, PrefabLoader, PrefabSpawner},
     resources::Res,
     scene::{Global2, Global3, Local2, Local3, SceneSystem},
