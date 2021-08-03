@@ -8,9 +8,8 @@ publish = false
 
 [dependencies]
 arcana = { path = "../.." }
-goods = { git = "https://github.com/zakarumych/goods" }
 color-eyre = "0.5"
-hecs = "0.5"
+hecs = "0.6"
 rapier2d = "0.10"
 eyre = "0.6"
 futures = "0.3"
