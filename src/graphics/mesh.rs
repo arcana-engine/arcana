@@ -464,6 +464,59 @@ fn topology_triangles() -> PrimitiveTopology {
 }
 
 impl Mesh {
+    pub fn cube<V>(
+        extent: na::Vector3<f32>,
+        usage: BufferUsage,
+        cx: &mut Graphics,
+        index_type: IndexType,
+        vertex: impl Fn(genmesh::Vertex) -> V,
+    ) -> Result<Self, OutOfMemory>
+    where
+        V: VertexType,
+    {
+        Self::from_generator(
+            &genmesh::generators::Cube::new(),
+            usage,
+            cx,
+            index_type,
+            vertex,
+        )
+    }
+
+    pub fn cube_pos(
+        extent: na::Vector3<f32>,
+        usage: BufferUsage,
+        cx: &mut Graphics,
+        index_type: IndexType,
+    ) -> Result<Self, OutOfMemory> {
+        Self::from_generator_pos(&genmesh::generators::Cube::new(), usage, cx, index_type)
+    }
+
+    pub fn cube_pos_norm(
+        extent: na::Vector3<f32>,
+        usage: BufferUsage,
+        cx: &mut Graphics,
+        index_type: IndexType,
+    ) -> Result<Self, OutOfMemory> {
+        Self::from_generator_pos_norm(&genmesh::generators::Cube::new(), usage, cx, index_type)
+    }
+
+    pub fn cube_pos_norm_fixed_color(
+        extent: na::Vector3<f32>,
+        usage: BufferUsage,
+        cx: &mut Graphics,
+        index_type: IndexType,
+        color: Color,
+    ) -> Result<Self, OutOfMemory> {
+        Self::from_generator_pos_norm_fixed_color(
+            &genmesh::generators::Cube::new(),
+            usage,
+            cx,
+            index_type,
+            color,
+        )
+    }
+
     pub fn from_generator_pos<G>(
         generator: &G,
         usage: BufferUsage,
