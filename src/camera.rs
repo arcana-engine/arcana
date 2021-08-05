@@ -215,87 +215,44 @@ impl InputCommander for FreeCamera3Controller {
                 virtual_keycode: Some(key),
                 state,
                 ..
-            }) => match key {
-                VirtualKeyCode::W => match state {
-                    ElementState::Pressed if !self.forward_pressed => {
-                        self.forward_pressed = true;
-                        Some(FreeCamera3Command::Move(-na::Vector3::z()))
-                    }
-                    ElementState::Released if self.forward_pressed => {
-                        self.forward_pressed = false;
-                        Some(FreeCamera3Command::Move(na::Vector3::z()))
-                    }
-                    _ => None,
-                },
-                VirtualKeyCode::S => match state {
-                    ElementState::Pressed if !self.backward_pressed => {
-                        self.backward_pressed = true;
-                        Some(FreeCamera3Command::Move(na::Vector3::z()))
-                    }
-                    ElementState::Released if self.backward_pressed => {
-                        self.backward_pressed = false;
-                        Some(FreeCamera3Command::Move(-na::Vector3::z()))
-                    }
-                    _ => None,
-                },
-                VirtualKeyCode::A => match state {
-                    ElementState::Pressed if !self.left_pressed => {
-                        self.left_pressed = true;
-                        Some(FreeCamera3Command::Move(-na::Vector3::x()))
-                    }
-                    ElementState::Released if self.left_pressed => {
-                        self.left_pressed = false;
-                        Some(FreeCamera3Command::Move(na::Vector3::x()))
-                    }
-                    _ => None,
-                },
-                VirtualKeyCode::D => match state {
-                    ElementState::Pressed if !self.right_pressed => {
-                        self.right_pressed = true;
-                        Some(FreeCamera3Command::Move(na::Vector3::x()))
-                    }
-                    ElementState::Released if self.right_pressed => {
-                        self.right_pressed = false;
-                        Some(FreeCamera3Command::Move(-na::Vector3::x()))
-                    }
-                    _ => None,
-                },
-                VirtualKeyCode::Space => match state {
-                    ElementState::Pressed if !self.up_pressed => {
-                        self.up_pressed = true;
-                        Some(FreeCamera3Command::Move(na::Vector3::y()))
-                    }
-                    ElementState::Released if self.up_pressed => {
-                        self.up_pressed = false;
-                        Some(FreeCamera3Command::Move(-na::Vector3::y()))
-                    }
-                    _ => None,
-                },
-                VirtualKeyCode::LControl => match state {
-                    ElementState::Pressed if !self.down_pressed => {
-                        self.down_pressed = true;
-                        Some(FreeCamera3Command::Move(-na::Vector3::y()))
-                    }
-                    ElementState::Released if self.down_pressed => {
-                        self.down_pressed = false;
-                        Some(FreeCamera3Command::Move(na::Vector3::y()))
-                    }
-                    _ => None,
-                },
-                _ => None,
-            },
+            }) => {
+                let pressed = matches!(state, ElementState::Pressed);
+
+                match key {
+                    VirtualKeyCode::W => self.forward_pressed = pressed,
+                    VirtualKeyCode::S => self.backward_pressed = pressed,
+                    VirtualKeyCode::A => self.left_pressed = pressed,
+                    VirtualKeyCode::D => self.right_pressed = pressed,
+                    VirtualKeyCode::LControl => self.up_pressed = pressed,
+                    VirtualKeyCode::Space => self.down_pressed = pressed,
+                    _ => return None,
+                }
+
+                let forward = (self.forward_pressed as u8 as f32) * -na::Vector3::z();
+                let backward = (self.backward_pressed as u8 as f32) * na::Vector3::z();
+                let left = (self.left_pressed as u8 as f32) * -na::Vector3::x();
+                let right = (self.right_pressed as u8 as f32) * na::Vector3::x();
+                let up = (self.up_pressed as u8 as f32) * -na::Vector3::y();
+                let down = (self.down_pressed as u8 as f32) * na::Vector3::y();
+
+                Some(FreeCamera3Command::Move(
+                    forward + backward + left + right + up + down,
+                ))
+            }
             _ => None,
         }
     }
 }
 
 pub struct FreeCamera {
+    speed: f32,
     mov: na::Vector3<f32>,
 }
 
 impl FreeCamera {
-    pub fn new() -> Self {
+    pub fn new(speed: f32) -> Self {
         FreeCamera {
+            speed,
             mov: na::Vector3::zeros(),
         }
     }
@@ -321,7 +278,7 @@ impl System for FreeCameraSystem {
                         global.iso.rotation = rot;
                     }
                     FreeCamera3Command::Move(mov) => {
-                        camera.mov += mov;
+                        camera.mov = mov * camera.speed;
                     }
                 }
             }
