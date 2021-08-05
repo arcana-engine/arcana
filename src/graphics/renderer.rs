@@ -18,7 +18,7 @@ pub struct RendererContext<'a> {
 }
 
 impl RendererContext<'_> {
-    fn reborrow(&mut self) -> RendererContext<'_> {
+    pub fn reborrow(&mut self) -> RendererContext<'_> {
         RendererContext {
             world: &mut *self.world,
             res: &mut *self.res,
