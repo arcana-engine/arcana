@@ -78,12 +78,12 @@ impl Funnel<Event> for Viewport {
                 event: WindowEvent::Resized(size),
                 window_id,
             } if window_id == self.window => {
+                let aspect = size.width as f32 / size.height as f32;
                 if let Ok(mut camera) = world.get_mut::<Camera3>(self.camera) {
-                    camera.set_aspect(size.width as f32 / size.height as f32);
+                    camera.set_aspect(aspect);
                 }
-
                 if let Ok(mut camera) = world.get_mut::<Camera2>(self.camera) {
-                    camera.set_aspect(size.width as f32 / size.height as f32);
+                    camera.set_aspect(aspect);
                 }
 
                 // TODO: Update for Camera2d

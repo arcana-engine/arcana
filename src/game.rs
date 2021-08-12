@@ -132,11 +132,21 @@ where
 
         // Create new world with camera.
         let mut world = World::new();
-        let camera = world.spawn(C::default());
 
         // Open game window.
         let mut window =
             MainWindow::new(&event_loop).wrap_err_with(|| "Failed to initialize main window")?;
+
+        let window_size = window.inner_size();
+
+        let camera = world.spawn(C::default());
+        let aspect = window_size.width as f32 / window_size.height as f32;
+        if let Ok(mut camera) = world.get_mut::<Camera3>(camera) {
+            camera.set_aspect(aspect);
+        }
+        if let Ok(mut camera) = world.get_mut::<Camera2>(camera) {
+            camera.set_aspect(aspect);
+        }
 
         // Initialize graphics system.
         let graphics = Graphics::new().wrap_err_with(|| "Failed to initialize graphics")?;

@@ -215,7 +215,7 @@ where
 {
     fn control(&mut self, event: DeviceEvent, _res: &mut Res, world: &mut World) -> ControlResult {
         match world.query_one_mut::<&mut CommandQueue<T::Command>>(self.entity) {
-            Ok(queue) => match self.commander.translate(event) {
+            Ok(mut queue) => match self.commander.translate(event) {
                 None => ControlResult::Ignored,
                 Some(command) => {
                     if queue.commands.capacity() == queue.commands.len() {

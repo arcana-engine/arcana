@@ -59,6 +59,7 @@ fn main() {
             &mut game.world,
         )?;
 
+        game.control.add_global_controller(controller1);
         game.control.add_global_controller(controller2);
 
         Ok(game)
