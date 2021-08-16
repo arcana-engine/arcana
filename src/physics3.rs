@@ -44,6 +44,28 @@ impl ContactQueue3 {
     }
 }
 
+pub struct IntersectionQueue3 {
+    intersecting_started: Vec<ColliderHandle>,
+    intersecting_stopped: Vec<ColliderHandle>,
+}
+
+impl IntersectionQueue3 {
+    pub const fn new() -> Self {
+        IntersectionQueue3 {
+            intersecting_started: Vec::new(),
+            intersecting_stopped: Vec::new(),
+        }
+    }
+
+    pub fn drain_intersecting_started(&mut self) -> std::vec::Drain<'_, ColliderHandle> {
+        self.intersecting_started.drain(..)
+    }
+
+    pub fn drain_intersecting_stopped(&mut self) -> std::vec::Drain<'_, ColliderHandle> {
+        self.intersecting_stopped.drain(..)
+    }
+}
+
 pub struct Physics3 {
     pipeline: PhysicsPipeline,
     integration_parameters: IntegrationParameters,
@@ -135,6 +157,14 @@ impl System for Physics3 {
             }
         }
 
+        for (entity, collider) in cx.world.query_mut::<&ColliderHandle>() {
+            let collider = data.colliders.get_mut(*collider).unwrap();
+
+            if collider.user_data == 0 {
+                collider.user_data = entity.to_bits().into();
+            }
+        }
+
         for (_entity, (global, body)) in cx.world.query_mut::<(&Global3, &RigidBodyHandle)>() {
             let body = data.bodies.get_mut(*body).unwrap();
 
@@ -145,16 +175,20 @@ impl System for Physics3 {
 
         struct SenderEventHandler {
             tx: Sender<ContactEvent>,
+            intersection_tx: Sender<IntersectionEvent>,
         }
 
         impl EventHandler for SenderEventHandler {
-            fn handle_intersection_event(&self, _event: IntersectionEvent) {}
+            fn handle_intersection_event(&self, _event: IntersectionEvent) {
+                self.intersection_tx.send(_event).unwrap();
+            }
             fn handle_contact_event(&self, event: ContactEvent, _pair: &ContactPair) {
                 self.tx.send(event).unwrap();
             }
         }
 
         let (tx, rx) = unbounded();
+        let (intersection_tx, intersection_rx) = unbounded();
 
         self.pipeline.step(
             &data.gravity,
@@ -167,7 +201,10 @@ impl System for Physics3 {
             &mut data.joints,
             &mut self.ccd_solver,
             &(),
-            &SenderEventHandler { tx },
+            &SenderEventHandler {
+                tx,
+                intersection_tx,
+            },
         );
 
         for (_, (global, body)) in cx.world.query::<(&mut Global3, &RigidBodyHandle)>().iter() {
@@ -206,6 +243,41 @@ impl System for Physics3 {
                     if let Ok(mut queue) = cx.world.get_mut::<ContactQueue3>(entity) {
                         queue.contacts_stopped.push(lhs);
                     }
+                }
+            }
+        }
+
+        while let Ok(event) = intersection_rx.recv() {
+            let lhs = event.collider1;
+            let rhs = event.collider2;
+
+            if event.intersecting {
+                let bits = data.colliders.get(lhs).unwrap().user_data as u64;
+                let entity = Entity::from_bits(bits);
+
+                if let Ok(mut queue) = cx.world.get_mut::<IntersectionQueue3>(entity) {
+                    queue.intersecting_started.push(rhs);
+                }
+
+                let bits = data.colliders.get(rhs).unwrap().user_data as u64;
+                let entity = Entity::from_bits(bits);
+
+                if let Ok(mut queue) = cx.world.get_mut::<IntersectionQueue3>(entity) {
+                    queue.intersecting_started.push(lhs);
+                }
+            } else {
+                let bits = data.colliders.get(lhs).unwrap().user_data as u64;
+                let entity = Entity::from_bits(bits);
+
+                if let Ok(mut queue) = cx.world.get_mut::<IntersectionQueue3>(entity) {
+                    queue.intersecting_stopped.push(rhs);
+                }
+
+                let bits = data.colliders.get(rhs).unwrap().user_data as u64;
+                let entity = Entity::from_bits(bits);
+
+                if let Ok(mut queue) = cx.world.get_mut::<IntersectionQueue3>(entity) {
+                    queue.intersecting_stopped.push(lhs);
                 }
             }
         }

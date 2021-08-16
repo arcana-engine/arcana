@@ -48,7 +48,7 @@ pub use self::{
     game::{game2, game3, Game, MainWindow},
     graphics::renderer::{self, Renderer},
     physics2::{ContactQueue2, Physics2, PhysicsData2},
-    physics3::{ContactQueue3, Physics3, PhysicsData3},
+    physics3::{ContactQueue3, IntersectionQueue3, Physics3, PhysicsData3},
     // prefab::{prefab_pipe, Prefab, PrefabLoader, PrefabSpawner},
     resources::Res,
     scene::{Global2, Global3, Local2, Local3, SceneSystem},
