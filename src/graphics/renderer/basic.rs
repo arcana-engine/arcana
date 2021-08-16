@@ -5,7 +5,7 @@ use {
         graphics::{
             material::Material,
             mesh::Mesh,
-            vertex::{Normal3, Position3, VertexType as _, UV},
+            vertex::{Position3, VertexType as _},
             Graphics, Scale,
         },
         scene::Global3,

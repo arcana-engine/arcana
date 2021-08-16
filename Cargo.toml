@@ -43,7 +43,7 @@ tokio = { version = "1.0", features = ["rt", "net", "io-util"] }
 # Math
 na = { package = "nalgebra", version = "0.28", features = ["serde-serialize"] }
 approx = "0.5"
-genmesh = "0.6"
+genmesh = { version = "0.6", optional = true }
 
 # Physics
 parry2d = "0.6"

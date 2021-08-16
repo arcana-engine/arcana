@@ -23,7 +23,7 @@ use {
     goods::Loader,
     hecs::{DynamicBundle, World},
     std::{future::Future, path::Path, time::Duration},
-    winit::window::Window,
+    winit::window::{Window, WindowBuilder},
 };
 
 #[repr(transparent)]
@@ -42,20 +42,33 @@ impl std::ops::Deref for MainWindow {
 impl MainWindow {
     fn new(event_loop: &Loop) -> eyre::Result<Self> {
         Ok(MainWindow {
-            window: Window::new(event_loop)?,
+            window: WindowBuilder::new()
+                .with_title("Arcana Game")
+                .build(event_loop)?,
         })
     }
 }
 
-impl Funnel<Event> for MainWindow {
-    fn filter(&mut self, _res: &mut Res, _world: &mut World, event: Event) -> Option<Event> {
+struct MainWindowFunnel;
+
+impl Funnel<Event> for MainWindowFunnel {
+    fn filter(&mut self, res: &mut Res, _world: &mut World, event: Event) -> Option<Event> {
         match event {
             Event::WindowEvent {
                 event: WindowEvent::CloseRequested,
                 window_id,
-            } if window_id == self.window.id() => Some(Event::Exit),
+            } => {
+                if let Some(window) = res.get::<MainWindow>() {
+                    if window_id == window.id() {
+                        return Some(Event::Exit);
+                    }
+                }
+                Some(event)
+            }
             Event::Loop => {
-                self.window.request_redraw();
+                if let Some(window) = res.get::<MainWindow>() {
+                    window.request_redraw();
+                }
                 Some(Event::Loop)
             }
             _ => Some(event),
@@ -134,7 +147,7 @@ where
         let mut world = World::new();
 
         // Open game window.
-        let mut window =
+        let window =
             MainWindow::new(&event_loop).wrap_err_with(|| "Failed to initialize main window")?;
 
         let window_size = window.inner_size();
@@ -156,10 +169,12 @@ where
             .wrap_err_with(|| "Failed to initialize main viewport")?;
 
         let spawner = Spawner::new();
+        let mut res = Res::new();
+        res.insert(window);
 
         // Configure game with closure.
         let game = f(Game {
-            res: Res::new(),
+            res,
             world,
             scheduler: Scheduler::new(),
             control: Control::new(),
@@ -219,7 +234,6 @@ where
         loop {
             // Loop through new  events.
             let mut funnel = GameFunnel {
-                window: &mut window,
                 viewport: &mut viewport,
                 control: &mut control,
             };
@@ -318,14 +332,13 @@ where
 }
 
 struct GameFunnel<'a> {
-    window: &'a mut MainWindow,
     viewport: &'a mut Viewport,
     control: &'a mut Control,
 }
 
 impl Funnel<Event> for GameFunnel<'_> {
     fn filter(&mut self, res: &mut Res, world: &mut World, event: Event) -> Option<Event> {
-        match Funnel::filter(&mut *self.window, res, world, event) {
+        match Funnel::filter(&mut MainWindowFunnel, res, world, event) {
             None => None,
             Some(event) => match Funnel::filter(&mut *self.viewport, res, world, event) {
                 None => None,

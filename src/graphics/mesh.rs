@@ -8,7 +8,7 @@ use {
         },
         Graphics,
     },
-    arcana_mesh_file::{BindingFileHeader, MeshFile, MeshFileHeader},
+    arcana_mesh_file::{MeshFile, MeshFileHeader},
     bumpalo::{collections::Vec as BVec, Bump},
     bytemuck::cast_slice,
     goods::{Asset, AssetBuild, Loader},
@@ -23,7 +23,7 @@ use {
         borrow::{BorrowMut, Cow},
         convert::TryFrom as _,
         future::{ready, Ready},
-        mem::{size_of, size_of_val},
+        mem::size_of_val,
         ops::Range,
         sync::Arc,
     },
@@ -463,6 +463,7 @@ fn topology_triangles() -> PrimitiveTopology {
     PrimitiveTopology::TriangleList
 }
 
+#[cfg(feature = "genmesh")]
 impl Mesh {
     pub fn cube<V>(
         extent: na::Vector3<f32>,

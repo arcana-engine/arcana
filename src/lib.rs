@@ -45,7 +45,7 @@ pub use self::{
     },
     debug::{DebugInfo, EntityDebugInfo, EntityDisplay, EntityRefDebugInfo, EntityRefDisplay},
     funnel::Funnel,
-    game::{game2, game3, Game},
+    game::{game2, game3, Game, MainWindow},
     graphics::renderer::{self, Renderer},
     physics2::{ContactQueue2, Physics2, PhysicsData2},
     physics3::{ContactQueue3, Physics3, PhysicsData3},

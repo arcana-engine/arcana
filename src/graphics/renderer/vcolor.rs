@@ -3,7 +3,6 @@ use {
     crate::{
         camera::Camera3,
         graphics::{
-            material::Material,
             mesh::Mesh,
             vertex::{Color, Normal3, Position3, VertexType as _},
             Graphics, Scale,
@@ -13,10 +12,10 @@ use {
     },
     bumpalo::collections::Vec as BVec,
     sierra::{
-        descriptors, graphics_pipeline_desc, mat4, pass, pipeline, shader_repr, vec3, ClearColor,
+        descriptors, graphics_pipeline_desc, mat4, pass, pipeline, shader_repr, ClearColor,
         ClearDepth, DepthTest, DescriptorsInput, DynamicGraphicsPipeline, Fence, Format,
-        FragmentShader, Image, ImageView, Layout, PipelineInput, PipelineStageFlags, Sampler,
-        ShaderModuleInfo, VertexInputAttribute, VertexInputBinding, VertexInputRate, VertexShader,
+        FragmentShader, Image, Layout, PipelineInput, PipelineStageFlags, ShaderModuleInfo,
+        VertexInputAttribute, VertexInputBinding, VertexInputRate, VertexShader,
     },
 };
 
