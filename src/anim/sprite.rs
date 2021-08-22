@@ -1,3 +1,5 @@
+use arcana_time::TimeSpan;
+
 use {
     super::graph::{
         AnimGraph, AnimGraphState, AnimNode, AnimTransitionRule, CurrentAnimInfo, Transition,
@@ -63,131 +65,160 @@ impl AnimTransitionRule<Character2DAnimState> for Character2DAnimRule {
     }
 }
 
-pub const SIMPLE_GRAPH: &'static str = r#"
-{
-    "animations": [
-        {
-            "animation": {"name": "idle_left", "from": 0, "to": 1},
-            "span": "500ms",
-            "transitions": [2, 3, 4, 5, 6, 7, 8, 1]
-        },
-        {
-            "animation": {"name": "idle_right", "from": 2, "to": 3},
-            "span": "500ms",
-            "transitions": [2, 3, 4, 5, 6, 7, 9, 0]
-        },
-        {
-            "animation": {"name": "run_left", "from": 4, "to": 7},
-            "span": "1000ms",
-            "transitions": [0, 1, 2, 3, 4, 5, 7, 10]
-        },
-        {
-            "animation": {"name": "run_right", "from": 8, "to": 11},
-            "span": "1000ms",
-            "transitions": [0, 1, 2, 3, 4, 5, 8, 11]
-        },
-        {
-            "animation": {"name": "jump_left", "from": 12, "to": 12},
-            "span": "500ms",
-            "transitions": [12, 13, 14, 15]
-        },
-        {
-            "animation": {"name": "jump_right", "from": 15, "to": 15},
-            "span": "500ms",
-            "transitions": [12, 13, 14, 15]
-        },
-        {
-            "animation": {"name": "fall_left", "from": 16, "to": 16},
-            "span": "500ms",
-            "transitions": [14, 15]
-        },
-        {
-            "animation": {"name": "fall_right", "from": 17, "to": 17},
-            "span": "500ms",
-            "transitions": [14, 15]
-        },
-        {
-            "animation": {"name": "land_left", "from": 18, "to": 18},
-            "span": "200ms",
-            "transitions": [9, 10]
-        },
-        {
-            "animation": {"name": "land_right", "from": 19, "to": 19},
-            "span": "200ms",
-            "transitions": [9, 10]
-        }
-    ],
-    "transitions": [
-        {
-            "rule": { "IsIdle": { "face": "Left" } },
-            "target": 0
-        },
-        {
-            "rule": { "IsIdle": { "face": "Right" } },
-            "target": 1
-        },
-        {
-            "rule": { "IsJumping": { "face": "Left" } },
-            "target": 4
-        },
-        {
-            "rule": { "IsJumping": { "face": "Right" } },
-            "target": 5
-        },
-        {
-            "rule": { "IsAirborne": { "face": "Left" } },
-            "target": 6
-        },
-        {
-            "rule": { "IsAirborne": { "face": "Right" } },
-            "target": 7
-        },
-        {
-            "rule": { "IsRunning": { "face": "Left" } },
-            "target": 2
-        },
-        {
-            "rule": { "IsRunning": { "face": "Right" } },
-            "target": 3
-        },
-        {
-            "rule": { "AnimationEnded": { "face": "Left" } },
-            "target": 0
-        },
-        {
-            "rule": { "AnimationEnded": { "face": "Right" } },
-            "target": 1
-        },
-        {
-            "rule": { "AnimationEnded": { "face": "Left" } },
-            "target": 2
-        },
-        {
-            "rule": { "AnimationEnded": { "face": "Right" } },
-            "target": 3
-        },
-        {
-            "rule": { "AnimationEnded": { "face": "Left" } },
-            "target": 6
-        },
-        {
-            "rule": { "AnimationEnded": { "face": "Right" } },
-            "target": 7
-        },
-        {
-            "rule": { "IsNotAirborne": { "face": "Left" } },
-            "target": 8
-        },
-        {
-            "rule": { "IsNotAirborne": { "face": "Right" } },
-            "target": 9
-        }
-    ]
+pub fn simple_character_graph() -> AnimGraph<FrameSpan, Character2DAnimRule> {
+    use Character2DAnimRule::*;
+    use FaceDirection::*;
+
+    AnimGraph {
+        animations: vec![
+            AnimNode {
+                // idle_left
+                animation: FrameSpan { from: 0, to: 1 },
+                span: TimeSpan::from_millis(500),
+                transitions: vec![2, 3, 4, 5, 6, 7, 8, 1],
+            },
+            AnimNode {
+                // idle_right
+                animation: FrameSpan { from: 2, to: 3 },
+                span: TimeSpan::from_millis(500),
+                transitions: vec![2, 3, 4, 5, 6, 7, 9, 0],
+            },
+            AnimNode {
+                // run_left
+                animation: FrameSpan { from: 4, to: 7 },
+                span: TimeSpan::from_millis(1000),
+                transitions: vec![0, 1, 2, 3, 4, 5, 7, 10],
+            },
+            AnimNode {
+                // run_right
+                animation: FrameSpan { from: 8, to: 11 },
+                span: TimeSpan::from_millis(1000),
+                transitions: vec![0, 1, 2, 3, 4, 5, 8, 11],
+            },
+            AnimNode {
+                // jump_left
+                animation: FrameSpan { from: 12, to: 12 },
+                span: TimeSpan::from_millis(500),
+                transitions: vec![12, 13, 14, 15],
+            },
+            AnimNode {
+                // jump_right
+                animation: FrameSpan { from: 15, to: 15 },
+                span: TimeSpan::from_millis(500),
+                transitions: vec![12, 13, 14, 15],
+            },
+            AnimNode {
+                // fall_left
+                animation: FrameSpan { from: 16, to: 16 },
+                span: TimeSpan::from_millis(500),
+                transitions: vec![14, 15],
+            },
+            AnimNode {
+                // fall_right
+                animation: FrameSpan { from: 17, to: 17 },
+                span: TimeSpan::from_millis(500),
+                transitions: vec![14, 15],
+            },
+            AnimNode {
+                // land_left
+                animation: FrameSpan { from: 18, to: 18 },
+                span: TimeSpan::from_millis(200),
+                transitions: vec![9, 10],
+            },
+            AnimNode {
+                // land_right
+                animation: FrameSpan { from: 19, to: 19 },
+                span: TimeSpan::from_millis(200),
+                transitions: vec![9, 10],
+            },
+        ],
+        transitions: vec![
+            Transition {
+                transition: (),
+                rule: IsIdle { face: Left },
+                target: 0,
+            },
+            Transition {
+                transition: (),
+                rule: IsIdle { face: Right },
+                target: 1,
+            },
+            Transition {
+                transition: (),
+                rule: IsJumping { face: Left },
+                target: 4,
+            },
+            Transition {
+                transition: (),
+                rule: IsJumping { face: Right },
+                target: 5,
+            },
+            Transition {
+                transition: (),
+                rule: IsAirborne { face: Left },
+                target: 6,
+            },
+            Transition {
+                transition: (),
+                rule: IsAirborne { face: Right },
+                target: 7,
+            },
+            Transition {
+                transition: (),
+                rule: IsRunning { face: Left },
+                target: 2,
+            },
+            Transition {
+                transition: (),
+                rule: IsRunning { face: Right },
+                target: 3,
+            },
+            Transition {
+                transition: (),
+                rule: AnimationEnded { face: Left },
+                target: 0,
+            },
+            Transition {
+                transition: (),
+                rule: AnimationEnded { face: Right },
+                target: 1,
+            },
+            Transition {
+                transition: (),
+                rule: AnimationEnded { face: Left },
+                target: 2,
+            },
+            Transition {
+                transition: (),
+                rule: AnimationEnded { face: Right },
+                target: 3,
+            },
+            Transition {
+                transition: (),
+                rule: AnimationEnded { face: Left },
+                target: 6,
+            },
+            Transition {
+                transition: (),
+                rule: AnimationEnded { face: Right },
+                target: 7,
+            },
+            Transition {
+                transition: (),
+                rule: IsNotAirborne { face: Left },
+                target: 8,
+            },
+            Transition {
+                transition: (),
+                rule: IsNotAirborne { face: Right },
+                target: 9,
+            },
+        ],
+    }
 }
-"#;
 
 #[derive(Clone, Debug, serde::Serialize, serde::Deserialize)]
-struct FrameSpan {
+pub struct FrameSpan {
     from: usize,
     to: usize,
 }

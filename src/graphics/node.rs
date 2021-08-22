@@ -1,15 +1,15 @@
 use {
     super::Graphics,
     crate::{clocks::ClockIndex, resources::Res},
-    bumpalo::Bump,
     hecs::World,
+    scoped_arena::Scope,
 };
 
 pub struct NodeContext<'a> {
     pub graphics: &'a mut Graphics,
     pub world: &'a mut World,
     pub res: &'a mut Res,
-    pub bump: &'a Bump,
+    scope: &'a Scope<'a>,
     pub clock: ClockIndex,
 }
 

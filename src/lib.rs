@@ -1,4 +1,5 @@
 // #![deny(missing_docs)]
+#![feature(allocator_api)]
 
 //!
 //! Arcana is a game engine built with focus on ease of use without compromising on level of control.
@@ -33,7 +34,7 @@ mod system;
 mod task;
 mod viewport;
 
-pub use {bumpalo, hecs, na, sierra};
+pub use {hecs, na, scoped_arena, sierra};
 
 pub use arcana_proc::timespan;
 

@@ -1,22 +1,22 @@
-use bumpalo::Bump;
+use scoped_arena::Scope;
 
-pub struct BumpBitSet<'a> {
+pub struct ArenaBitSet<'a> {
     level0: u64,
     level1: [u64; 64],
     level2: [Option<&'a mut [u64; 64]>; 64],
 }
 
-impl Default for BumpBitSet<'_> {
+impl Default for ArenaBitSet<'_> {
     fn default() -> Self {
         Self::new()
     }
 }
 
-impl<'a> BumpBitSet<'a> {
+impl<'a> ArenaBitSet<'a> {
     pub const UPPER_BOUND: u32 = 64 * 64 * 64;
 
     pub fn new() -> Self {
-        BumpBitSet {
+        ArenaBitSet {
             level0: 0,
             level1: [0; 64],
             level2: [
@@ -65,7 +65,7 @@ impl<'a> BumpBitSet<'a> {
     }
 
     /// Sets specified bit.
-    pub fn set(&mut self, index: u32, bump: &'a Bump) -> bool {
+    pub fn set(&mut self, index: u32, scope: &'a Scope<'_>) -> bool {
         let (i0, i1, i2) = Self::split_index(index);
 
         self.level0 |= 1 << i0;
@@ -78,7 +78,7 @@ impl<'a> BumpBitSet<'a> {
                 old > 0
             }
             None => {
-                let level2_array = bump.alloc([0; 64]);
+                let level2_array = scope.to_scope([0; 64]);
                 level2_array[usize::from(i1)] |= 1 << i2;
                 self.level2[usize::from(i0)] = Some(level2_array);
                 false

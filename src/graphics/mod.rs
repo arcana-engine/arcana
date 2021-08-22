@@ -9,9 +9,9 @@ mod vertex;
 
 use {
     crate::bitset::BoxedBitSet,
-    bumpalo::{collections::Vec as BVec, Bump},
     bytemuck::Pod,
     raw_window_handle::HasRawWindowHandle,
+    scoped_arena::Scope,
     sierra::{
         AccessFlags, Buffer, BufferCopy, BufferImageCopy, BufferInfo, BufferUsage, CommandBuffer,
         CreateImageError, CreateSurfaceError, Device, Encoder, Extent3d, Fence, Image, ImageInfo,
@@ -136,7 +136,6 @@ impl Graphics {
         offset: u64,
         data: &[T],
         encoder: &mut Encoder<'a>,
-        staging_out: &'a mut Option<Buffer>,
     ) -> Result<(), MapError>
     where
         T: Pod,
@@ -154,17 +153,16 @@ impl Graphics {
             data,
         )?;
 
-        *staging_out = None;
-        let staging = staging_out.get_or_insert(staging);
+        let staging = encoder.scope().to_scope(staging);
 
         encoder.copy_buffer(
-            staging,
+            &*staging,
             buffer,
-            &[BufferCopy {
+            encoder.scope().to_scope([BufferCopy {
                 src_offset: 0,
                 dst_offset: offset,
                 size: staging.info().size,
-            }],
+            }]),
         );
 
         encoder.memory_barrier(
@@ -261,12 +259,12 @@ impl Graphics {
         Ok(image)
     }
 
-    pub fn flush_uploads(&mut self, bump: &Bump) -> eyre::Result<()> {
+    pub fn flush_uploads(&mut self, scope: &Scope<'_>) -> eyre::Result<()> {
         if self.buffer_uploads.is_empty() && self.image_uploads.is_empty() {
             return Ok(());
         }
 
-        let mut encoder = self.queue.create_encoder(bump)?;
+        let mut encoder = self.queue.create_encoder(scope)?;
 
         if !self.buffer_uploads.is_empty() {
             tracing::debug!("Uploading buffers");
@@ -277,7 +275,7 @@ impl Graphics {
                 encoder.copy_buffer(
                     &upload.staging,
                     &upload.buffer,
-                    bump.alloc([BufferCopy {
+                    scope.to_scope([BufferCopy {
                         src_offset: 0,
                         dst_offset: upload.offset,
                         size: upload.staging.info().size,
@@ -300,11 +298,11 @@ impl Graphics {
         if !self.image_uploads.is_empty() {
             tracing::debug!("Uploading images");
 
-            let mut images = BVec::with_capacity_in(self.image_uploads.len(), bump);
+            let mut images = Vec::with_capacity_in(self.image_uploads.len(), scope);
 
             for upload in &self.image_uploads {
                 images.push(ImageMemoryBarrier {
-                    image: bump.alloc(upload.image.clone()),
+                    image: scope.to_scope(upload.image.clone()),
                     old_layout: None,
                     new_layout: Layout::TransferDstOptimal,
                     old_access: AccessFlags::empty(),
@@ -319,7 +317,7 @@ impl Graphics {
             encoder.image_barriers(
                 PipelineStageFlags::TOP_OF_PIPE,
                 PipelineStageFlags::TRANSFER,
-                images.into_bump_slice(),
+                images.leak(),
             );
 
             for upload in &self.image_uploads {
@@ -327,7 +325,7 @@ impl Graphics {
                     &upload.staging,
                     &upload.image,
                     Layout::TransferDstOptimal,
-                    bump.alloc([BufferImageCopy {
+                    scope.to_scope([BufferImageCopy {
                         buffer_offset: 0,
                         buffer_row_length: upload.row_length,
                         buffer_image_height: upload.image_height,
@@ -338,11 +336,11 @@ impl Graphics {
                 )
             }
 
-            let mut images = BVec::with_capacity_in(images_len, bump);
+            let mut images = Vec::with_capacity_in(images_len, scope);
 
             for upload in &self.image_uploads {
                 images.push(ImageMemoryBarrier {
-                    image: bump.alloc(upload.image.clone()),
+                    image: scope.to_scope(upload.image.clone()),
                     old_layout: Some(Layout::TransferDstOptimal),
                     new_layout: upload.layout,
                     old_access: AccessFlags::TRANSFER_WRITE,
@@ -355,31 +353,31 @@ impl Graphics {
             encoder.image_barriers(
                 PipelineStageFlags::TRANSFER,
                 PipelineStageFlags::ALL_COMMANDS,
-                images.into_bump_slice(),
+                images.leak(),
             );
         }
 
         self.queue
-            .submit(&mut [], Some(encoder.finish()), &mut [], None, bump);
+            .submit(&mut [], Some(encoder.finish()), &mut [], None, scope);
 
         self.buffer_uploads.clear();
         self.image_uploads.clear();
         Ok(())
     }
 
-    pub fn create_encoder<'a>(&mut self, bump: &'a Bump) -> Result<Encoder<'a>, OutOfMemory> {
-        self.queue.create_encoder(bump)
+    pub fn create_encoder<'a>(&mut self, scope: &'a Scope<'a>) -> Result<Encoder<'a>, OutOfMemory> {
+        self.queue.create_encoder(scope)
     }
 
     pub fn submit(
         &mut self,
         wait: &mut [(PipelineStageFlags, &mut Semaphore)],
-        cbufs: impl IntoIterator<IntoIter = impl ExactSizeIterator<Item = CommandBuffer>>,
+        cbufs: impl IntoIterator<Item = CommandBuffer>,
         signal: &mut [&mut Semaphore],
         fence: Option<&mut Fence>,
-        bump: &Bump,
+        scope: &Scope<'_>,
     ) {
-        self.queue.submit(wait, cbufs, signal, fence, bump)
+        self.queue.submit(wait, cbufs, signal, fence, scope)
     }
 
     pub fn present(&mut self, image: SwapchainImage) -> Result<PresentOk, OutOfMemory> {

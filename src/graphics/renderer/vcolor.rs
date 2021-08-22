@@ -10,7 +10,6 @@ use {
         scene::Global3,
         viewport::Viewport,
     },
-    bumpalo::collections::Vec as BVec,
     sierra::{
         descriptors, graphics_pipeline_desc, mat4, pass, pipeline, shader_repr, ClearColor,
         ClearDepth, DepthTest, DescriptorsInput, DynamicGraphicsPipeline, Fence, Format,
@@ -98,7 +97,7 @@ impl VcolorRenderer {
         uniforms.camera_view = mat4_na_to_sierra(view);
         uniforms.camera_proj = mat4_na_to_sierra(proj);
 
-        let mut new_entities = BVec::new_in(cx.bump);
+        let mut new_entities = Vec::new_in(&*cx.scope);
 
         for (e, ()) in cx
             .world
@@ -121,8 +120,8 @@ impl VcolorRenderer {
                 .unwrap();
         }
 
-        let mut encoder = cx.graphics.create_encoder(cx.bump)?;
-        let mut render_pass_encoder = cx.graphics.create_encoder(cx.bump)?;
+        let mut encoder = cx.graphics.create_encoder(&*cx.scope)?;
+        let mut render_pass_encoder = cx.graphics.create_encoder(&*cx.scope)?;
 
         let mut render_pass = render_pass_encoder.with_render_pass(
             &mut self.render_pass,
@@ -135,7 +134,7 @@ impl VcolorRenderer {
 
         render_pass.bind_dynamic_graphics_pipeline(&mut self.pipeline, cx.graphics)?;
 
-        let mut writes = BVec::new_in(cx.bump);
+        let mut writes = Vec::new_in(&*cx.scope);
         for (_, (mesh, global, renderable, scale)) in
             cx.world
                 .query_mut::<(&Mesh, &Global3, &mut VcolorRenderable, Option<&Scale>)>()
@@ -164,7 +163,7 @@ impl VcolorRenderer {
                 0..1,
                 &[Position3::layout(), Normal3::layout(), Color::layout()],
                 &mut render_pass,
-                cx.bump,
+                cx.scope,
             );
 
             if drawn {
@@ -190,7 +189,7 @@ impl VcolorRenderer {
             std::array::IntoIter::new([encoder.finish(), render_pass_encoder.finish()]),
             &mut [signal],
             Some(fence),
-            cx.bump,
+            cx.scope,
         );
 
         cx.graphics.present(swapchain_image)?;

@@ -5,7 +5,6 @@ use {
         system::{System, SystemContext, DEFAULT_TICK_SPAN},
     },
     approx::relative_ne,
-    bumpalo::collections::Vec as BVec,
     flume::{unbounded, Sender},
     hecs::Entity,
     rapier3d::{
@@ -127,7 +126,7 @@ impl System for Physics3 {
     fn run(&mut self, cx: SystemContext<'_>) -> eyre::Result<()> {
         let data = cx.res.with(PhysicsData3::new);
 
-        let mut remove_bodies = BVec::with_capacity_in(data.bodies.len(), cx.bump);
+        let mut remove_bodies = Vec::with_capacity_in(data.bodies.len(), &*cx.scope);
         let world = &*cx.world;
         data.bodies.iter().for_each(|(handle, body)| {
             let e = Entity::from_bits(body.user_data as u64);

@@ -1,11 +1,11 @@
 use {
     crate::{
-        bitset::BumpBitSet,
+        bitset::ArenaBitSet,
         debug::EntityRefDisplay as _,
         system::{System, SystemContext},
     },
-    bumpalo::{collections::Vec as BVec, Bump},
     hecs::{Entity, EntityRef, World},
+    scoped_arena::Scope,
     std::fmt::{self, Display},
 };
 
@@ -211,32 +211,32 @@ impl System for SceneSystem {
     }
 
     fn run(&mut self, cx: SystemContext<'_>) -> eyre::Result<()> {
-        let mut updated = BumpBitSet::new();
-        let mut despawn = BVec::new_in(cx.bump);
+        let mut updated = ArenaBitSet::new();
+        let mut despawn = Vec::new_in(&*cx.scope);
 
         for (entity, local) in cx.world.query::<&Local2>().with::<Global2>().iter() {
-            if !updated.set(entity.id(), cx.bump) {
+            if !updated.set(entity.id(), &*cx.scope) {
                 update_global_2(
                     entity,
                     cx.world.entity(entity).unwrap(),
                     local,
                     cx.world,
-                    cx.bump,
+                    &*cx.scope,
                     &mut updated,
                     &mut despawn,
                 );
             }
         }
 
-        let mut updated = BumpBitSet::new();
+        let mut updated = ArenaBitSet::new();
         for (entity, local) in cx.world.query::<&Local3>().with::<Global3>().iter() {
-            if !updated.set(entity.id(), cx.bump) {
+            if !updated.set(entity.id(), &*cx.scope) {
                 update_global_3(
                     entity,
                     cx.world.entity(entity).unwrap(),
                     local,
                     cx.world,
-                    cx.bump,
+                    &*cx.scope,
                     &mut updated,
                     &mut despawn,
                 );
@@ -252,14 +252,14 @@ impl System for SceneSystem {
     }
 }
 
-fn update_global_2<'a>(
+fn update_global_2<'a, 'b>(
     entity: Entity,
     entity_ref: EntityRef<'a>,
     local: &Local2,
     world: &'a World,
-    bump: &'a Bump,
-    updated: &mut BumpBitSet<'a>,
-    despawn: &mut BVec<'a, Entity>,
+    scope: &'b Scope<'_>,
+    updated: &mut ArenaBitSet<'b>,
+    despawn: &mut Vec<Entity, &'b Scope<'_>>,
 ) -> Option<hecs::RefMut<'a, Global2>> {
     let parent_ref = match world.entity(local.parent) {
         Ok(parent_ref) => parent_ref,
@@ -296,13 +296,13 @@ fn update_global_2<'a>(
             }
         }
         Some(parent_local) => {
-            let parent_global = if !updated.set(local.parent.id(), bump) {
+            let parent_global = if !updated.set(local.parent.id(), scope) {
                 update_global_2(
                     local.parent,
                     parent_ref,
                     &parent_local,
                     world,
-                    bump,
+                    scope,
                     updated,
                     despawn,
                 )
@@ -328,14 +328,14 @@ fn update_global_2<'a>(
     }
 }
 
-fn update_global_3<'a>(
+fn update_global_3<'a, 'b>(
     entity: Entity,
     entity_ref: EntityRef<'a>,
     local: &Local3,
     world: &'a World,
-    bump: &'a Bump,
-    updated: &mut BumpBitSet<'a>,
-    despawn: &mut BVec<'a, Entity>,
+    scope: &'b Scope<'_>,
+    updated: &mut ArenaBitSet<'b>,
+    despawn: &mut Vec<Entity, &'b Scope<'_>>,
 ) -> Option<hecs::RefMut<'a, Global3>> {
     let parent_ref = match world.entity(local.parent) {
         Ok(parent_ref) => parent_ref,
@@ -372,13 +372,13 @@ fn update_global_3<'a>(
             }
         }
         Some(parent_local) => {
-            let parent_global = if !updated.set(local.parent.id(), bump) {
+            let parent_global = if !updated.set(local.parent.id(), scope) {
                 update_global_3(
                     local.parent,
                     parent_ref,
                     &parent_local,
                     world,
-                    bump,
+                    scope,
                     updated,
                     despawn,
                 )

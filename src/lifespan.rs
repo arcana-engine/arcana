@@ -1,9 +1,6 @@
-use {
-    crate::{
-        clocks::TimeSpan,
-        system::{System, SystemContext},
-    },
-    bumpalo::collections::Vec as BVec,
+use crate::{
+    clocks::TimeSpan,
+    system::{System, SystemContext},
 };
 
 /// Component for entities with limited lifespan.
@@ -26,7 +23,7 @@ impl System for LifeSpanSystem {
     }
 
     fn run(&mut self, cx: SystemContext<'_>) -> eyre::Result<()> {
-        let mut despawn = BVec::new_in(cx.bump);
+        let mut despawn = Vec::new_in(&*cx.scope);
 
         for (e, ls) in cx.world.query_mut::<&mut LifeSpan>() {
             if ls.left > cx.clock.delta {

@@ -7,21 +7,20 @@ use {
         fps::FpsMeter,
         funnel::Funnel,
         graphics::{
-            renderer::{basic::BasicRenderer, sprite::SpriteRenderer},
+            renderer::{basic::BasicDraw, forward::ForwardRenderer, sprite::SpriteDraw},
             Graphics, Renderer, RendererContext,
         },
         lifespan::LifeSpanSystem,
         resources::Res,
         scene::{Global2, Global3, SceneSystem},
-        // session::ClientSession,
         system::{Scheduler, SystemContext},
         task::{Executor, Spawner, TaskContext},
         viewport::Viewport,
     },
-    bumpalo::Bump,
     eyre::WrapErr,
     goods::Loader,
     hecs::{DynamicBundle, World},
+    scoped_arena::Scope,
     std::{future::Future, path::Path, time::Duration},
     winit::window::{Window, WindowBuilder},
 };
@@ -86,7 +85,7 @@ pub struct Game {
     pub viewport: Viewport,
     pub loader: Loader,
     pub spawner: Spawner,
-    pub bump: Bump,
+    pub scope: Scope<'static>,
 }
 
 impl Game {
@@ -98,7 +97,7 @@ impl Game {
             spawner: &mut self.spawner,
             graphics: &mut self.graphics,
             loader: &mut self.loader,
-            bump: &self.bump,
+            scope: &mut self.scope,
         }
     }
 }
@@ -108,7 +107,10 @@ where
     F: FnOnce(Game) -> Fut + 'static,
     Fut: Future<Output = eyre::Result<Game>>,
 {
-    game::<_, _, SpriteRenderer, (Camera2, Global2)>(f)
+    tracing::debug!("Starting 2D game");
+    game::<_, _, _, (Camera2, Global2)>(f, |g| {
+        Ok(Box::new(ForwardRenderer::new(SpriteDraw::new(g)?)))
+    })
 }
 
 pub fn game3<F, Fut>(f: F)
@@ -117,14 +119,16 @@ where
     Fut: Future<Output = eyre::Result<Game>>,
 {
     tracing::debug!("Starting 3D game");
-    game::<_, _, BasicRenderer, (Camera3, Global3)>(f)
+    game::<_, _, _, (Camera3, Global3)>(f, |g| {
+        Ok(Box::new(ForwardRenderer::new(BasicDraw::new(g)?)))
+    })
 }
 
-fn game<F, Fut, R, C>(f: F)
+fn game<F, Fut, R, C>(f: F, r: R)
 where
     F: FnOnce(Game) -> Fut + 'static,
     Fut: Future<Output = eyre::Result<Game>>,
-    R: Renderer + Send,
+    R: FnOnce(&mut Graphics) -> eyre::Result<Box<dyn Renderer>> + Send + 'static,
     C: DynamicBundle + Default,
 {
     crate::install_eyre_handler();
@@ -183,7 +187,7 @@ where
             viewport,
             loader,
             spawner,
-            bump: Bump::new(),
+            scope: Scope::new(),
         })
         .await
         .wrap_err_with(|| "Game startup failed")?;
@@ -198,15 +202,15 @@ where
             mut viewport,
             mut loader,
             mut spawner,
-            mut bump,
+            mut scope,
         } = game;
 
-        bump.reset();
+        scope.reset();
 
         // Take renderer. Use default one if not configured.
         let mut renderer = match renderer {
             Some(renderer) => renderer,
-            None => Box::new(R::new(&mut graphics).wrap_err_with(|| "Renderer build failed")?),
+            None => r(&mut graphics).wrap_err_with(|| "Renderer build failed")?,
         };
 
         // Start the clocks.
@@ -226,9 +230,6 @@ where
         );
 
         let mut executor = Executor::new();
-
-        // Init bumpalo allocator.
-        let mut bump = bumpalo::Bump::new();
 
         // Begin game loop.
         loop {
@@ -260,7 +261,7 @@ where
                                     spawner: &mut spawner,
                                     graphics: &mut graphics,
                                     loader: &mut loader,
-                                    bump: &bump,
+                                    scope: &mut scope,
                                 },
                                 cfg.teardown_timeout,
                             )
@@ -287,7 +288,7 @@ where
                     spawner: &mut spawner,
                     graphics: &mut graphics,
                     loader: &mut loader,
-                    bump: &bump,
+                    scope: &mut scope,
                     clock,
                 })
                 .wrap_err_with(|| "System returned error")?;
@@ -301,12 +302,12 @@ where
                     spawner: &mut spawner,
                     graphics: &mut graphics,
                     loader: &mut loader,
-                    bump: &bump,
+                    scope: &mut scope,
                 })
                 .wrap_err_with(|| "Task returned error")?;
 
             graphics
-                .flush_uploads(&bump)
+                .flush_uploads(&scope)
                 .wrap_err_with(|| "Uploads failed")?;
 
             res.get_mut::<FpsMeter>()
@@ -319,14 +320,14 @@ where
                         world: &mut world,
                         res: &mut res,
                         graphics: &mut graphics,
-                        bump: &bump,
+                        scope: &scope,
                         clock,
                     },
                     &mut [&mut viewport],
                 )
                 .wrap_err_with(|| "Renderer failed")?;
 
-            bump.reset();
+            scope.reset();
         }
     });
 }
@@ -384,7 +385,7 @@ fn try_load_default_config() -> eyre::Result<Config> {
         if path.is_file() {
             load_config(&path)
         } else {
-            Err(eyre::eyre!("Failed to locate conifg file"))
+            Err(eyre::eyre!("Failed to locate config file"))
         }
     }
 }

@@ -1,46 +1,30 @@
-use {
-    super::{mat3_na_to_sierra, Renderer, RendererContext},
-    crate::{
-        camera::Camera2,
-        graphics::{
-            material::Material,
-            sprite::{Rect, Sprite},
-            vertex::{vertex_layouts_for_pipeline, Semantics, VertexLocation, VertexType},
-            Graphics, SparseDescriptors,
-        },
-        scene::Global2,
-        viewport::Viewport,
+use super::{mat3_na_to_sierra, DrawNode, RendererContext};
+use crate::{
+    camera::Camera2,
+    graphics::{
+        material::Material,
+        sprite::{Rect, Sprite},
+        vertex::{vertex_layouts_for_pipeline, Semantics, VertexLocation, VertexType},
+        Graphics, SparseDescriptors,
     },
-    bumpalo::collections::Vec as BVec,
-    sierra::{
-        descriptors, graphics_pipeline_desc, mat3, pass, pipeline, shader_repr, Buffer, ClearColor,
-        ClearDepth, DepthTest, DynamicGraphicsPipeline, Fence, Format, FragmentShader, Image,
-        ImageView, Layout, PipelineInput, PipelineStageFlags, Sampler, ShaderModuleInfo,
-        VertexInputRate, VertexShader,
-    },
-    std::{borrow::Cow, convert::TryFrom},
+    scene::Global2,
 };
 
-pub struct SpriteRenderer {
-    pipeline_layout: <SpritePipeline as PipelineInput>::Layout,
+use hecs::Entity;
+use sierra::{
+    descriptors, graphics_pipeline_desc, mat3, pipeline, shader_repr, Buffer, DepthTest,
+    DynamicGraphicsPipeline, Encoder, Format, FragmentShader, ImageView, Layout, PipelineInput,
+    RenderPassEncoder, Sampler, ShaderModuleInfo, VertexInputRate, VertexShader,
+};
+use std::{borrow::Cow, convert::TryFrom};
+
+pub struct SpriteDraw {
     pipeline: DynamicGraphicsPipeline,
-    render_pass: SpriteRenderPassInstance,
-    fences: [Option<Fence>; 3],
-    fence_index: usize,
+    pipeline_layout: <SpritePipeline as PipelineInput>::Layout,
     descriptors: SpriteDescriptors,
     set: SpriteDescriptorsInstance,
     textures: SparseDescriptors<ImageView>,
     sprites: Buffer,
-}
-
-#[pass]
-#[subpass(color = color, depth = depth)]
-struct SpriteRenderPass {
-    #[attachment(store(const Layout::Present), clear(const ClearColor(0.2, 0.1, 0.1, 1.0)))]
-    color: Image,
-
-    #[attachment(clear(const ClearDepth(1.0)))]
-    depth: Format,
 }
 
 #[shader_repr]
@@ -78,124 +62,8 @@ struct SpritePipeline {
     set: SpriteDescriptors,
 }
 
-impl SpriteRenderer {
-    fn render(&mut self, cx: RendererContext<'_>, viewport: &mut Viewport) -> eyre::Result<()> {
-        let mut staging = None;
-
-        if let Some(fence) = &mut self.fences[self.fence_index] {
-            cx.graphics.wait_fences(&mut [fence], true);
-            cx.graphics.reset_fences(&mut [fence]);
-        }
-
-        let view = cx
-            .world
-            .get_mut::<Global2>(viewport.camera())?
-            .iso
-            .inverse()
-            .to_homogeneous();
-
-        let affine = cx
-            .world
-            .get_mut::<Camera2>(viewport.camera())?
-            .affine()
-            .to_homogeneous();
-
-        let mut swapchain_image = viewport.acquire_image(true)?;
-
-        self.descriptors.uniforms.camera = mat3_na_to_sierra(affine * view);
-
-        let mut encoder = cx.graphics.create_encoder(cx.bump)?;
-        let mut render_pass_encoder = cx.graphics.create_encoder(cx.bump)?;
-
-        let mut render_pass = render_pass_encoder.with_render_pass(
-            &mut self.render_pass,
-            &SpriteRenderPass {
-                color: swapchain_image.image().clone(),
-                depth: Format::D16Unorm,
-            },
-            cx.graphics,
-        )?;
-
-        render_pass.bind_dynamic_graphics_pipeline(&mut self.pipeline, cx.graphics)?;
-
-        let mut sprites = BVec::new_in(cx.bump);
-        let mut writes = BVec::new_in(cx.bump);
-        for (_, (sprite, mat, global)) in cx.world.query_mut::<(&Sprite, &Material, &Global2)>() {
-            let albedo = match &mat.albedo_coverage {
-                Some(texture) => {
-                    let (index, new) = self.textures.index(texture.image.clone());
-                    if new {
-                        self.descriptors.textures[index as usize] = texture.image.clone();
-                    }
-                    index
-                }
-                None => !0,
-            };
-
-            let instance = SpriteInstance {
-                pos: sprite.src.from_relative_to(&sprite.world),
-                uv: sprite.tex,
-                layer: sprite.layer,
-                albedo,
-                albedo_factor: {
-                    let [r, g, b] = mat.albedo_factor;
-                    [r.into(), g.into(), b.into()]
-                },
-                transform: global.iso.to_homogeneous().into(),
-            };
-
-            sprites.push(instance);
-        }
-
-        let updated = self.set.update(
-            &self.descriptors,
-            self.fence_index,
-            cx.graphics,
-            &mut writes,
-            &mut encoder,
-        )?;
-
-        cx.graphics.update_descriptor_sets(&writes, &[]);
-        render_pass.bind_graphics_descriptors(&self.pipeline_layout, updated);
-
-        let sprite_count = sprites.len() as u32;
-
-        cx.graphics.upload_buffer_with(
-            &self.sprites,
-            0,
-            sprites.into_bump_slice(),
-            &mut encoder,
-            &mut staging,
-        )?;
-
-        render_pass.bind_vertex_buffers(0, &[(&self.sprites, 0)]);
-        render_pass.draw(0..6, 0..sprite_count);
-
-        let fence = match &mut self.fences[self.fence_index] {
-            Some(fence) => fence,
-            None => self.fences[self.fence_index].get_or_insert(cx.graphics.create_fence()?),
-        };
-
-        drop(render_pass);
-
-        let [wait, signal] = swapchain_image.wait_signal();
-
-        cx.graphics.submit(
-            &mut [(PipelineStageFlags::BOTTOM_OF_PIPE, wait)],
-            std::array::IntoIter::new([encoder.finish(), render_pass_encoder.finish()]),
-            &mut [signal],
-            Some(fence),
-            cx.bump,
-        );
-
-        cx.graphics.present(swapchain_image)?;
-
-        Ok(())
-    }
-}
-
-impl Renderer for SpriteRenderer {
-    fn new(graphics: &mut Graphics) -> eyre::Result<Self> {
+impl SpriteDraw {
+    pub fn new(graphics: &mut Graphics) -> eyre::Result<Self> {
         let vert_module = graphics.create_shader_module(ShaderModuleInfo::spirv(
             std::include_bytes!("sprite.vert.spv")
                 .to_vec()
@@ -245,7 +113,7 @@ impl Renderer for SpriteRenderer {
         let (vertex_bindings, vertex_attributes) =
             vertex_layouts_for_pipeline(&[SpriteInstance::layout()]);
 
-        Ok(SpriteRenderer {
+        Ok(SpriteDraw {
             pipeline: DynamicGraphicsPipeline::new(graphics_pipeline_desc! {
                 vertex_bindings,
                 vertex_attributes,
@@ -254,9 +122,6 @@ impl Renderer for SpriteRenderer {
                 layout: pipeline_layout.raw().clone(),
                 depth_test: Some(DepthTest::LESS_WRITE),
             }),
-            fences: [None, None, None],
-            fence_index: 0,
-            render_pass: SpriteRenderPass::instance(),
             pipeline_layout,
 
             descriptors: SpriteDescriptors {
@@ -264,23 +129,87 @@ impl Renderer for SpriteRenderer {
                 textures,
                 uniforms: Uniforms::default(),
             },
+            set,
             textures: SparseDescriptors::new(),
             sprites,
-            set,
         })
     }
+}
 
-    fn render(
-        &mut self,
-        mut cx: RendererContext<'_>,
-        viewports: &mut [&mut Viewport],
+impl DrawNode for SpriteDraw {
+    fn draw<'a>(
+        &'a mut self,
+        cx: RendererContext<'a>,
+        fence_index: usize,
+        encoder: &mut Encoder<'a>,
+        mut render_pass: RenderPassEncoder<'_, 'a>,
+        camera: Entity,
     ) -> eyre::Result<()> {
-        for viewport in viewports {
-            let viewport = &mut **viewport;
-            if viewport.needs_redraw() {
-                self.render(cx.reborrow(), viewport)?;
-            }
+        let view = cx
+            .world
+            .get_mut::<Global2>(camera)?
+            .iso
+            .inverse()
+            .to_homogeneous();
+
+        let affine = cx
+            .world
+            .get_mut::<Camera2>(camera)?
+            .affine()
+            .to_homogeneous();
+
+        self.descriptors.uniforms.camera = mat3_na_to_sierra(affine * view);
+
+        render_pass.bind_dynamic_graphics_pipeline(&mut self.pipeline, cx.graphics)?;
+
+        let mut sprites = Vec::new_in(&*cx.scope);
+        let mut writes = Vec::new_in(&*cx.scope);
+        for (_, (sprite, mat, global)) in cx.world.query_mut::<(&Sprite, &Material, &Global2)>() {
+            let albedo = match &mat.albedo_coverage {
+                Some(texture) => {
+                    let (index, new) = self.textures.index(texture.image.clone());
+                    if new {
+                        self.descriptors.textures[index as usize] = texture.image.clone();
+                    }
+                    index
+                }
+                None => !0,
+            };
+
+            let instance = SpriteInstance {
+                pos: sprite.src.from_relative_to(&sprite.world),
+                uv: sprite.tex,
+                layer: sprite.layer,
+                albedo,
+                albedo_factor: {
+                    let [r, g, b] = mat.albedo_factor;
+                    [r.into(), g.into(), b.into()]
+                },
+                transform: global.iso.to_homogeneous().into(),
+            };
+
+            sprites.push(instance);
         }
+
+        let updated = self.set.update(
+            &self.descriptors,
+            fence_index,
+            cx.graphics,
+            &mut writes,
+            encoder,
+        )?;
+
+        cx.graphics.update_descriptor_sets(&writes, &[]);
+        render_pass.bind_graphics_descriptors(&self.pipeline_layout, updated);
+
+        let sprite_count = sprites.len() as u32;
+
+        cx.graphics
+            .upload_buffer_with(&self.sprites, 0, sprites.leak(), encoder)?;
+
+        let buffers = render_pass.scope().to_scope([(&self.sprites, 0)]);
+        render_pass.bind_vertex_buffers(0, buffers);
+        render_pass.draw(0..6, 0..sprite_count);
 
         Ok(())
     }

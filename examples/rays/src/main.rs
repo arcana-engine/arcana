@@ -24,9 +24,9 @@ impl graphics::Renderer for RaysRenderer {
         cx: graphics::RendererContext<'_>,
         viewports: &mut [&mut Viewport],
     ) -> eyre::Result<()> {
-        let mut encoder = cx.graphics.create_encoder(cx.bump)?;
+        let mut encoder = cx.graphics.create_encoder(&*cx.scope)?;
 
-        let mut insert_blasses = bumpalo::collections::Vec::new_in(cx.bump);
+        let mut insert_blasses = Vec::new_in(&*cx.scope);
 
         for (e, mesh) in cx
             .world
@@ -37,7 +37,7 @@ impl graphics::Renderer for RaysRenderer {
             let blas = match self.blases.entry(mesh.clone()) {
                 Entry::Occupied(entry) => entry.get().clone(),
                 Entry::Vacant(entry) => {
-                    let blas = mesh.build_triangles_blas(&mut encoder, cx.graphics, cx.bump)?;
+                    let blas = mesh.build_triangles_blas(&mut encoder, cx.graphics, cx.scope)?;
                     entry.insert(blas).clone()
                 }
             };

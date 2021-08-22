@@ -1,8 +1,8 @@
 use {
     crate::{control::Control, graphics::Graphics, resources::Res, system::SystemContext},
-    bumpalo::Bump,
     goods::Loader,
     hecs::World,
+    scoped_arena::Scope,
     std::{
         cell::UnsafeCell,
         future::Future,
@@ -32,8 +32,8 @@ pub struct TaskContext<'a> {
     /// Asset loader
     pub loader: &'a Loader,
 
-    /// Bump allocator.
-    pub bump: &'a Bump,
+    /// Arena allocator for allocations in hot-path.
+    pub scope: &'a Scope<'a>,
 }
 
 impl<'a> From<SystemContext<'a>> for TaskContext<'a> {
@@ -45,7 +45,7 @@ impl<'a> From<SystemContext<'a>> for TaskContext<'a> {
             spawner: cx.spawner,
             graphics: cx.graphics,
             loader: cx.loader,
-            bump: cx.bump,
+            scope: &*cx.scope,
         }
     }
 }
@@ -66,7 +66,7 @@ impl<'a> TaskContext<'a> {
             spawner: self.spawner,
             graphics: self.graphics,
             loader: self.loader,
-            bump: self.bump,
+            scope: self.scope,
         }
     }
 }
@@ -117,7 +117,7 @@ impl AsyncTaskContext {
     }
 }
 
-unsafe fn extend_system_context_lifetime(cx: TaskContext<'_>) -> TaskContext<'static> {
+unsafe fn extend_system_context_lifetime<'a>(cx: TaskContext<'_>) -> TaskContext<'static> {
     std::mem::transmute(cx)
 }
 

@@ -1,34 +1,36 @@
-use {
-    super::{
-        vertex::{
-            Color, Joints, Normal3, Position3, PositionNormal3, PositionNormal3Color,
-            PositionNormal3UV, PositionNormalTangent3, PositionNormalTangent3Color,
-            PositionNormalTangent3UV, Semantics, Skin, Tangent3, VertexLayout, VertexLocation,
-            VertexType, Weights, UV,
-        },
-        Graphics,
-    },
-    arcana_mesh_file::{MeshFile, MeshFileHeader},
-    bumpalo::{collections::Vec as BVec, Bump},
-    bytemuck::cast_slice,
-    goods::{Asset, AssetBuild, Loader},
-    sierra::{
-        AccelerationStructure, AccelerationStructureBuildFlags,
-        AccelerationStructureBuildGeometryInfo, AccelerationStructureGeometry,
-        AccelerationStructureGeometryInfo, AccelerationStructureInfo, AccelerationStructureLevel,
-        Buffer, BufferInfo, BufferRange, BufferUsage, Device, Encoder, Format, GeometryFlags,
-        IndexData, IndexType, OutOfMemory, PrimitiveTopology, RenderPassEncoder, VertexInputRate,
-    },
-    std::{
-        borrow::{BorrowMut, Cow},
-        convert::TryFrom as _,
-        future::{ready, Ready},
-        mem::size_of_val,
-        ops::Range,
-        sync::Arc,
-    },
+use std::{
+    borrow::{BorrowMut, Cow},
+    convert::TryFrom as _,
+    future::{ready, Ready},
+    mem::size_of_val,
+    ops::Range,
+    sync::Arc,
 };
 
+#[cfg(feature = "genmesh")]
+use std::mem::size_of;
+
+use arcana_mesh_file::{MeshFile, MeshFileHeader};
+use bytemuck::cast_slice;
+use goods::{Asset, AssetBuild, Loader};
+use scoped_arena::Scope;
+use sierra::{
+    AccelerationStructure, AccelerationStructureBuildFlags, AccelerationStructureBuildGeometryInfo,
+    AccelerationStructureGeometry, AccelerationStructureGeometryInfo, AccelerationStructureInfo,
+    AccelerationStructureLevel, Buffer, BufferInfo, BufferRange, BufferUsage, Device, Encoder,
+    Format, GeometryFlags, IndexData, IndexType, OutOfMemory, PrimitiveTopology, RenderPassEncoder,
+    VertexInputRate,
+};
+
+use super::{
+    vertex::{
+        Color, Joints, Normal3, Position3, PositionNormal3, PositionNormal3Color,
+        PositionNormal3UV, PositionNormalTangent3, PositionNormalTangent3Color,
+        PositionNormalTangent3UV, Semantics, Skin, Tangent3, VertexLayout, VertexLocation,
+        VertexType, Weights, UV,
+    },
+    Graphics,
+};
 #[derive(Clone, Debug, Hash, PartialEq, Eq)]
 pub struct Binding {
     pub buffer: Buffer,
@@ -142,7 +144,6 @@ impl Mesh {
         &self,
         encoder: &mut Encoder<'a>,
         device: &Device,
-        bump: &'a Bump,
     ) -> Result<AccelerationStructure, OutOfMemory> {
         assert_eq!(self.topology, PrimitiveTopology::TriangleList);
 
@@ -168,7 +169,6 @@ impl Mesh {
             self.vertex_count,
             encoder,
             device,
-            bump,
         )
     }
 
@@ -177,7 +177,6 @@ impl Mesh {
         pose: &PoseMesh,
         encoder: &mut Encoder<'a>,
         device: &Device,
-        bump: &'a Bump,
     ) -> Result<AccelerationStructure, OutOfMemory> {
         assert_eq!(self.topology, PrimitiveTopology::TriangleList);
 
@@ -203,7 +202,6 @@ impl Mesh {
             self.vertex_count,
             encoder,
             device,
-            bump,
         )
     }
 
@@ -212,9 +210,8 @@ impl Mesh {
         instances: Range<u32>,
         layouts: &[VertexLayout],
         encoder: &mut RenderPassEncoder<'_, 'a>,
-        bump: &'a Bump,
     ) -> bool {
-        let mut to_bind = BVec::with_capacity_in(self.bindings.len(), bump);
+        let mut to_bind = Vec::with_capacity_in(self.bindings.len(), encoder.scope());
 
         'outer: for layout in layouts {
             for binding in &*self.bindings {
@@ -231,7 +228,7 @@ impl Mesh {
             return false;
         }
 
-        encoder.bind_vertex_buffers(0, &to_bind);
+        encoder.bind_vertex_buffers(0, to_bind.leak());
 
         if let Some(indices) = &self.indices {
             encoder.bind_index_buffer(&indices.buffer, indices.offset, indices.index_type);
@@ -720,9 +717,9 @@ pub struct PoseMesh {
 
 impl PoseMesh {
     /// Create new pose-mesh for mesh
-    pub fn new(mesh: &Mesh, device: &Device, bump: &Bump) -> Result<Self, OutOfMemory> {
+    pub fn new(mesh: &Mesh, device: &Device, scope: &Scope<'_>) -> Result<Self, OutOfMemory> {
         let mut offset = 0;
-        let mut prebindings = BVec::with_capacity_in(4, bump);
+        let mut prebindings = Vec::with_capacity_in(4, scope);
         let mut usage = BufferUsage::empty();
 
         for binding in mesh.bindings.iter() {
@@ -770,7 +767,6 @@ fn build_triangles_blas<'a>(
     vertex_count: u32,
     encoder: &mut Encoder<'a>,
     device: &Device,
-    bump: &'a Bump,
 ) -> Result<AccelerationStructure, OutOfMemory> {
     assert_eq!(count % 3, 0);
     let triangle_count = count / 3;
@@ -818,36 +814,40 @@ fn build_triangles_blas<'a>(
 
     let blas_scratch_address = device.get_buffer_device_address(&blas_scratch).unwrap();
 
-    let geometries = bump.alloc([AccelerationStructureGeometry::Triangles {
-        flags: GeometryFlags::empty(),
-        vertex_format: Format::RGB32Sfloat,
-        vertex_data: pos_range,
-        vertex_stride: binding.layout.stride.into(),
-        vertex_count,
-        first_vertex: 0,
-        primitive_count: triangle_count,
-        index_data: indices.map(|indices| {
-            let index_range = BufferRange {
-                buffer: indices.buffer.clone(),
-                offset: indices.offset,
-                size: u64::from(indices.index_type.size()) * u64::from(count),
-            };
+    let geometries = encoder
+        .scope()
+        .to_scope([AccelerationStructureGeometry::Triangles {
+            flags: GeometryFlags::empty(),
+            vertex_format: Format::RGB32Sfloat,
+            vertex_data: pos_range,
+            vertex_stride: binding.layout.stride.into(),
+            vertex_count,
+            first_vertex: 0,
+            primitive_count: triangle_count,
+            index_data: indices.map(|indices| {
+                let index_range = BufferRange {
+                    buffer: indices.buffer.clone(),
+                    offset: indices.offset,
+                    size: u64::from(indices.index_type.size()) * u64::from(count),
+                };
 
-            match indices.index_type {
-                IndexType::U16 => IndexData::U16(index_range),
-                IndexType::U32 => IndexData::U32(index_range),
-            }
-        }),
-        transform_data: None,
-    }]);
+                match indices.index_type {
+                    IndexType::U16 => IndexData::U16(index_range),
+                    IndexType::U32 => IndexData::U32(index_range),
+                }
+            }),
+            transform_data: None,
+        }]);
 
-    encoder.build_acceleration_structure(&[AccelerationStructureBuildGeometryInfo {
-        src: None,
-        dst: bump.alloc(blas.clone()),
-        flags: AccelerationStructureBuildFlags::PREFER_FAST_TRACE,
-        geometries,
-        scratch: blas_scratch_address,
-    }]);
+    encoder.build_acceleration_structure(encoder.scope().to_scope([
+        AccelerationStructureBuildGeometryInfo {
+            src: None,
+            dst: encoder.scope().to_scope(blas.clone()),
+            flags: AccelerationStructureBuildFlags::PREFER_FAST_TRACE,
+            geometries,
+            scratch: blas_scratch_address,
+        },
+    ]));
 
     Ok(blas)
 }

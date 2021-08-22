@@ -5,7 +5,6 @@ use {
             sprite::{SpriteGraphAnimation, SpriteGraphAnimationSystem},
         },
         assets::SpriteSheet,
-        bumpalo::collections::Vec as BVec,
         event::{DeviceEvent, ElementState, KeyboardInput, VirtualKeyCode},
         graphics::{Material, Rect, Sprite},
         hecs::Entity,
@@ -330,7 +329,7 @@ impl System for TankSystem {
     fn run(&mut self, cx: SystemContext<'_>) -> eyre::Result<()> {
         let physics = cx.res.with(PhysicsData2::new);
 
-        let mut bullets = BVec::new_in(cx.bump);
+        let mut bullets = Vec::new_in(&*cx.scope);
 
         for (_entity, (body, global, tank, commands, contacts)) in cx
             .world
@@ -422,7 +421,7 @@ impl System for BulletSystem {
     }
 
     fn run(&mut self, cx: SystemContext<'_>) -> eyre::Result<()> {
-        let mut despawn = BVec::new_in(cx.bump);
+        let mut despawn = Vec::new_in(&*cx.scope);
 
         for (e, queue) in cx.world.query_mut::<&mut ContactQueue2>().with::<Bullet>() {
             if queue.drain_contacts_started().count() > 0 {

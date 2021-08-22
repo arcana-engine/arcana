@@ -6,10 +6,10 @@ use {
         resources::Res,
         task::{Spawner, TaskContext},
     },
-    bumpalo::Bump,
     eyre::WrapErr as _,
     goods::Loader,
     hecs::World,
+    scoped_arena::Scope,
 };
 
 /// Default value for fixed systems tick_span
@@ -41,9 +41,8 @@ pub struct SystemContext<'a> {
     /// result can be awaited in task. See `spawner` field.
     pub loader: &'a Loader,
 
-    /// Bump allocator.
-    /// Reduce allocation
-    pub bump: &'a Bump,
+    /// Arena allocator for allocations in hot-path.
+    pub scope: &'a mut Scope<'static>,
 
     /// Clock index.
     pub clock: ClockIndex,
@@ -59,7 +58,7 @@ impl<'a> SystemContext<'a> {
             spawner: self.spawner,
             graphics: self.graphics,
             loader: self.loader,
-            bump: self.bump,
+            scope: self.scope,
             clock: self.clock,
         }
     }
@@ -73,7 +72,7 @@ impl<'a> SystemContext<'a> {
             spawner: self.spawner,
             graphics: self.graphics,
             loader: self.loader,
-            bump: self.bump,
+            scope: &self.scope,
         }
     }
 }
