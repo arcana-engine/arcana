@@ -26,8 +26,13 @@ mod funnel;
 mod game;
 pub mod graphics;
 pub mod lifespan;
-mod physics2;
-mod physics3;
+
+#[cfg(feature = "physics2d")]
+pub mod physics2;
+
+#[cfg(feature = "physics3d")]
+pub mod physics3;
+
 mod resources;
 mod scene;
 mod system;
@@ -46,13 +51,10 @@ pub use self::{
     },
     debug::{DebugInfo, EntityDebugInfo, EntityDisplay, EntityRefDebugInfo, EntityRefDisplay},
     funnel::Funnel,
-    game::{game2, game3, Game, MainWindow},
+    game::*,
     graphics::renderer::{self, Renderer},
-    physics2::{ContactQueue2, Physics2, PhysicsData2},
-    physics3::{ContactQueue3, IntersectionQueue3, Physics3, PhysicsData3},
-    // prefab::{prefab_pipe, Prefab, PrefabLoader, PrefabSpawner},
     resources::Res,
-    scene::{Global2, Global3, Local2, Local3, SceneSystem},
+    scene::*,
     system::{Scheduler, System, SystemContext},
     task::{AsyncTaskContext, Spawner, TaskContext},
     viewport::Viewport,

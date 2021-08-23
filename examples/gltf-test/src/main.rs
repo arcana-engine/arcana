@@ -2,7 +2,7 @@ use arcana::*;
 
 fn main() {
     game3(|mut game| async move {
-        game.scheduler.add_system(camera::FreeCameraSystem);
+        game.scheduler.add_system(camera3::FreeCameraSystem);
 
         let mut object = game
             .loader

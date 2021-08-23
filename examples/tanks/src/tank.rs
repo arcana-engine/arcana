@@ -9,16 +9,18 @@ use {
         graphics::{Material, Rect, Sprite},
         hecs::Entity,
         lifespan::LifeSpan,
-        AsyncTaskContext, CommandQueue, ContactQueue2, Global2, InputCommander, PhysicsData2,
-        System, SystemContext, TaskContext, TimeSpan,
+        na,
+        physics2::{
+            dynamics::{RigidBodyBuilder, RigidBodyHandle},
+            geometry::{Collider, ColliderBuilder},
+            pipeline::ActiveEvents,
+            ContactQueue2, PhysicsData2,
+        },
+        AsyncTaskContext, CommandQueue, Global2, InputCommander, System, SystemContext,
+        TaskContext, TimeSpan,
     },
     eyre::WrapErr as _,
     ordered_float::OrderedFloat,
-    rapier2d::{
-        dynamics::{RigidBodyBuilder, RigidBodyHandle},
-        geometry::{Collider, ColliderBuilder},
-        pipeline::ActiveEvents,
-    },
     uuid::Uuid,
 };
 

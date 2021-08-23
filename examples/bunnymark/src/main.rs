@@ -1,10 +1,6 @@
-use {
-    arcana::*,
-    rapier2d::{
-        dynamics::RigidBodyBuilder,
-        geometry::{Collider, ColliderBuilder},
-        na,
-    },
+use arcana::{
+    assets, game2, graphics, hecs, na, AsyncTaskContext, Global2, SystemContext, TaskContext,
+    TimeSpan,
 };
 
 #[derive(Clone, Debug)]
@@ -14,7 +10,7 @@ impl Bunny {
     fn spawn(self, cx: TaskContext<'_>) -> hecs::Entity {
         let cat = cx
             .loader
-            .load::<assets::ImageAsset>(&"b4f3f88e-0fcf-4f51-8b07-a3ae5db1afbb".parse().unwrap());
+            .load::<assets::ImageAsset>(&"3368385b-dbfa-4d13-847f-df977e8c8dd4".parse().unwrap());
 
         let sampler = cx
             .graphics
@@ -39,7 +35,6 @@ impl Bunny {
                 )
                 .into(),
             ),
-            // body,
         ));
 
         cx.spawner.spawn(async move {
@@ -58,7 +53,7 @@ impl Bunny {
                 ..Default::default()
             };
 
-            cx.world.insert_one(entity, material);
+            let _ = cx.world.insert_one(entity, material);
             Ok(())
         });
 
@@ -68,7 +63,7 @@ impl Bunny {
 
 fn main() {
     game2(|mut game| async move {
-        let start = 100000;
+        let start = 80000;
 
         for _ in 0..start {
             game.res.with(BunnyCount::default).count = start;

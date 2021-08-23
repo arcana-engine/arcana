@@ -1,18 +1,14 @@
 use {
     crate::{
-        camera::{Camera2, Camera3},
         clocks::{Clocks, TimeSpan},
         control::Control,
         event::{Event, Loop, WindowEvent},
         fps::FpsMeter,
         funnel::Funnel,
-        graphics::{
-            renderer::{basic::BasicDraw, forward::ForwardRenderer, sprite::SpriteDraw},
-            Graphics, Renderer, RendererContext,
-        },
+        graphics::{Graphics, Renderer, RendererContext},
         lifespan::LifeSpanSystem,
         resources::Res,
-        scene::{Global2, Global3, SceneSystem},
+        scene::SceneSystem,
         system::{Scheduler, SystemContext},
         task::{Executor, Spawner, TaskContext},
         viewport::Viewport,
@@ -24,6 +20,15 @@ use {
     std::{future::Future, path::Path, time::Duration},
     winit::window::{Window, WindowBuilder},
 };
+
+#[cfg(any(feature = "2d", feature = "3d"))]
+use crate::graphics::renderer::forward::ForwardRenderer;
+
+#[cfg(feature = "2d")]
+use crate::{camera::Camera2, graphics::renderer::sprite::SpriteDraw, scene::Global2};
+
+#[cfg(feature = "3d")]
+use crate::{camera::Camera3, graphics::renderer::basic::BasicDraw, scene::Global3};
 
 #[repr(transparent)]
 pub struct MainWindow {
@@ -102,6 +107,7 @@ impl Game {
     }
 }
 
+#[cfg(feature = "2d")]
 pub fn game2<F, Fut>(f: F)
 where
     F: FnOnce(Game) -> Fut + 'static,
@@ -113,6 +119,7 @@ where
     })
 }
 
+#[cfg(feature = "3d")]
 pub fn game3<F, Fut>(f: F)
 where
     F: FnOnce(Game) -> Fut + 'static,
@@ -157,11 +164,17 @@ where
         let window_size = window.inner_size();
 
         let camera = world.spawn(C::default());
+
+        #[cfg(any(feature = "2d", feature = "3d"))]
         let aspect = window_size.width as f32 / window_size.height as f32;
-        if let Ok(mut camera) = world.get_mut::<Camera3>(camera) {
+
+        #[cfg(feature = "2d")]
+        if let Ok(mut camera) = world.get_mut::<Camera2>(camera) {
             camera.set_aspect(aspect);
         }
-        if let Ok(mut camera) = world.get_mut::<Camera2>(camera) {
+
+        #[cfg(feature = "3d")]
+        if let Ok(mut camera) = world.get_mut::<Camera3>(camera) {
             camera.set_aspect(aspect);
         }
 

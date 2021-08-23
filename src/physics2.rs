@@ -21,6 +21,8 @@ use {
     },
 };
 
+pub use {parry2d::*, rapier2d::*};
+
 pub struct ContactQueue2 {
     contacts_started: Vec<ColliderHandle>,
     contacts_stopped: Vec<ColliderHandle>,

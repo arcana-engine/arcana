@@ -1,6 +1,10 @@
+#![feature(allocator_api)]
+
 use {
     self::tank::*,
-    arcana::{assets::TileMap, camera::Camera2, game2, na, EntityController, Physics2, TimeSpan},
+    arcana::{
+        assets::TileMap, camera::Camera2, game2, na, physics2::Physics2, EntityController, TimeSpan,
+    },
 };
 
 mod tank;

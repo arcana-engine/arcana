@@ -1,10 +1,12 @@
 use hecs::Entity;
 use sierra::{Encoder, RenderPassEncoder};
 
+#[cfg(feature = "3d")]
 pub mod basic;
-pub mod forward;
+#[cfg(feature = "2d")]
 pub mod sprite;
-// pub mod vcolor;
+
+pub mod forward;
 
 use {
     super::Graphics,

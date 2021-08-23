@@ -1,6 +1,5 @@
 use {
     crate::{
-        camera::{Camera2, Camera3},
         event::{Event, WindowEvent},
         funnel::Funnel,
         graphics::Graphics,
@@ -10,6 +9,12 @@ use {
     sierra::{Format, ImageUsage, PresentMode, Surface, SurfaceError, Swapchain, SwapchainImage},
     winit::window::{Window, WindowId},
 };
+
+#[cfg(feature = "2d")]
+use crate::camera::Camera2;
+
+#[cfg(feature = "3d")]
+use crate::camera::Camera3;
 
 /// Viewport into the world.
 pub struct Viewport {
@@ -78,15 +83,19 @@ impl Funnel<Event> for Viewport {
                 event: WindowEvent::Resized(size),
                 window_id,
             } if window_id == self.window => {
+                #[cfg(any(feature = "2d", feature = "3d"))]
                 let aspect = size.width as f32 / size.height as f32;
-                if let Ok(mut camera) = world.get_mut::<Camera3>(self.camera) {
-                    camera.set_aspect(aspect);
-                }
+
+                #[cfg(feature = "2d")]
                 if let Ok(mut camera) = world.get_mut::<Camera2>(self.camera) {
                     camera.set_aspect(aspect);
                 }
 
-                // TODO: Update for Camera2d
+                #[cfg(feature = "3d")]
+                if let Ok(mut camera) = world.get_mut::<Camera3>(self.camera) {
+                    camera.set_aspect(aspect);
+                }
+
                 Some(event)
             }
             Event::WindowEvent {

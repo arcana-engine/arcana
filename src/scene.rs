@@ -9,18 +9,21 @@ use {
     std::fmt::{self, Display},
 };
 
+#[cfg(feature = "2d")]
 #[derive(Clone, Copy, Debug, PartialEq)]
 pub struct Local2 {
     pub parent: Entity,
     pub iso: na::Isometry2<f32>,
 }
 
+#[cfg(feature = "2d")]
 impl Display for Local2 {
     fn fmt(&self, fmt: &mut fmt::Formatter<'_>) -> fmt::Result {
         write!(fmt, "{}@{}", self.parent.to_bits(), self.iso)
     }
 }
 
+#[cfg(feature = "2d")]
 impl Local2 {
     pub fn identity(parent: Entity) -> Self {
         Local2 {
@@ -48,6 +51,7 @@ impl Local2 {
     }
 }
 
+#[cfg(feature = "2d")]
 #[derive(Clone, Copy, Debug, PartialEq, serde::Serialize, serde::Deserialize)]
 #[serde(transparent)]
 #[repr(transparent)]
@@ -55,18 +59,21 @@ pub struct Global2 {
     pub iso: na::Isometry2<f32>,
 }
 
+#[cfg(feature = "2d")]
 impl Default for Global2 {
     fn default() -> Self {
         Global2::identity()
     }
 }
 
+#[cfg(feature = "2d")]
 impl Display for Global2 {
     fn fmt(&self, fmt: &mut fmt::Formatter<'_>) -> fmt::Result {
         Display::fmt(&self.iso, fmt)
     }
 }
 
+#[cfg(feature = "2d")]
 impl Global2 {
     pub fn identity() -> Self {
         Global2 {
@@ -106,18 +113,21 @@ impl Global2 {
     }
 }
 
+#[cfg(feature = "3d")]
 #[derive(Clone, Copy, Debug, PartialEq)]
 pub struct Local3 {
     pub parent: Entity,
     pub iso: na::Isometry3<f32>,
 }
 
+#[cfg(feature = "3d")]
 impl Display for Local3 {
     fn fmt(&self, fmt: &mut fmt::Formatter<'_>) -> fmt::Result {
         write!(fmt, "{}@{}", self.parent.to_bits(), self.iso)
     }
 }
 
+#[cfg(feature = "3d")]
 impl Local3 {
     pub fn identity(parent: Entity) -> Self {
         Local3 {
@@ -145,6 +155,7 @@ impl Local3 {
     }
 }
 
+#[cfg(feature = "3d")]
 #[derive(Clone, Copy, Debug, PartialEq, serde::Serialize, serde::Deserialize)]
 #[serde(transparent)]
 #[repr(transparent)]
@@ -152,18 +163,21 @@ pub struct Global3 {
     pub iso: na::Isometry3<f32>,
 }
 
+#[cfg(feature = "3d")]
 impl Default for Global3 {
     fn default() -> Self {
         Global3::identity()
     }
 }
 
+#[cfg(feature = "3d")]
 impl Display for Global3 {
     fn fmt(&self, fmt: &mut fmt::Formatter<'_>) -> fmt::Result {
         Display::fmt(&self.iso, fmt)
     }
 }
 
+#[cfg(feature = "3d")]
 impl Global3 {
     pub fn identity() -> Self {
         Global3 {
@@ -211,9 +225,12 @@ impl System for SceneSystem {
     }
 
     fn run(&mut self, cx: SystemContext<'_>) -> eyre::Result<()> {
-        let mut updated = ArenaBitSet::new();
         let mut despawn = Vec::new_in(&*cx.scope);
 
+        #[cfg(feature = "2d")]
+        let mut updated = ArenaBitSet::new();
+
+        #[cfg(feature = "2d")]
         for (entity, local) in cx.world.query::<&Local2>().with::<Global2>().iter() {
             if !updated.set(entity.id(), &*cx.scope) {
                 update_global_2(
@@ -228,7 +245,10 @@ impl System for SceneSystem {
             }
         }
 
+        #[cfg(feature = "3d")]
         let mut updated = ArenaBitSet::new();
+
+        #[cfg(feature = "3d")]
         for (entity, local) in cx.world.query::<&Local3>().with::<Global3>().iter() {
             if !updated.set(entity.id(), &*cx.scope) {
                 update_global_3(
@@ -252,6 +272,7 @@ impl System for SceneSystem {
     }
 }
 
+#[cfg(feature = "2d")]
 fn update_global_2<'a, 'b>(
     entity: Entity,
     entity_ref: EntityRef<'a>,
@@ -328,6 +349,7 @@ fn update_global_2<'a, 'b>(
     }
 }
 
+#[cfg(feature = "3d")]
 fn update_global_3<'a, 'b>(
     entity: Entity,
     entity_ref: EntityRef<'a>,

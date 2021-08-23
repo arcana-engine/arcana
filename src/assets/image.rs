@@ -1,7 +1,6 @@
 use {
     crate::graphics::Graphics,
     goods::{Asset, AssetBuild, Loader},
-    image::{load_from_memory, DynamicImage, GenericImageView as _, ImageError},
     sierra::{
         CreateImageError, ImageExtent, ImageInfo, ImageUsage, ImageView, ImageViewInfo, Layout,
         Samples1,
@@ -29,115 +28,124 @@ impl From<ImageAsset> for ImageView {
     }
 }
 
+pub struct PngImage {
+    decoded: Box<[u8]>,
+    width: u32,
+    height: u32,
+    bit_depth: png::BitDepth,
+    color_type: png::ColorType,
+    srgb: bool,
+}
+
+#[derive(Debug, thiserror::Error)]
+pub enum ImageDecodeError {
+    #[error(transparent)]
+    Png(#[from] png::DecodingError),
+
+    #[error("Unsupported color type {0:?}")]
+    UnsupportedColorType(png::ColorType),
+
+    #[error("Unsupported bit depth {0:?}")]
+    UnsupportedBitDepth(png::BitDepth),
+
+    #[error("Unsupported bit depth {0:?}")]
+    UnsupportedSrgbBitDepth(png::BitDepth),
+}
+
 impl Asset for ImageAsset {
-    type DecodeError = ImageError;
+    type DecodeError = ImageDecodeError;
     type BuildError = CreateImageError;
-    type Decoded = DynamicImage;
-    type Fut = Ready<Result<DynamicImage, ImageError>>;
+    type Decoded = PngImage;
+    type Fut = Ready<Result<PngImage, ImageDecodeError>>;
 
     fn decode(bytes: Box<[u8]>, _loader: &Loader) -> Self::Fut {
-        ready(load_from_memory(&bytes).map_err(Into::into))
+        let mut decoder = png::Decoder::new(&*bytes);
+        decoder.set_transformations(png::Transformations::EXPAND);
+        let mut reader = match decoder.read_info() {
+            Err(err) => return ready(Err(err.into())),
+            Ok(reader) => reader,
+        };
+
+        let info = reader.info();
+        let srgb = info.srgb.is_some();
+
+        match info.bit_depth {
+            png::BitDepth::Eight => {}
+            png::BitDepth::Sixteen => {
+                if srgb {
+                    return ready(Err(ImageDecodeError::UnsupportedSrgbBitDepth(
+                        info.bit_depth,
+                    )));
+                }
+            }
+            _ => return ready(Err(ImageDecodeError::UnsupportedBitDepth(info.bit_depth))),
+        }
+        match info.color_type {
+            png::ColorType::Grayscale
+            | png::ColorType::GrayscaleAlpha
+            | png::ColorType::Rgb
+            | png::ColorType::Rgba => {}
+            _ => return ready(Err(ImageDecodeError::UnsupportedBitDepth(info.bit_depth))),
+        }
+
+        let mut buf = vec![0; reader.output_buffer_size()];
+        let info = match reader.next_frame(&mut buf) {
+            Err(err) => return ready(Err(err.into())),
+            Ok(info) => info,
+        };
+        buf.truncate(info.buffer_size());
+
+        let image = PngImage {
+            decoded: buf.into_boxed_slice(),
+            width: info.width,
+            height: info.height,
+            bit_depth: info.bit_depth,
+            color_type: info.color_type,
+            srgb,
+        };
+
+        ready(Ok(image))
     }
 }
+
 impl<B> AssetBuild<B> for ImageAsset
 where
     B: BorrowMut<Graphics>,
 {
-    fn build(image: DynamicImage, builder: &mut B) -> Result<Self, CreateImageError> {
-        let image = image.to_rgba8();
-        let image = image_view_from_dyn_image(
-            &DynamicImage::ImageRgba8(image),
-            false,
-            builder.borrow_mut(),
-        )?;
+    fn build(image: PngImage, builder: &mut B) -> Result<Self, CreateImageError> {
+        let image = image_view_from_png_image(&image, builder.borrow_mut())?;
 
         Ok(ImageAsset(image))
     }
 }
 
-pub fn image_view_from_dyn_image(
-    image: &DynamicImage,
-    srgb: bool,
+pub fn image_view_from_png_image(
+    image: &PngImage,
     graphics: &mut Graphics,
 ) -> Result<ImageView, CreateImageError> {
     use sierra::Format;
 
-    let format = match (&image, srgb) {
-        (DynamicImage::ImageLuma8(_), false) => Format::R8Unorm,
-        (DynamicImage::ImageLumaA8(_), false) => Format::RG8Unorm,
-        (DynamicImage::ImageRgb8(_), false) => Format::RGB8Unorm,
-        (DynamicImage::ImageRgba8(_), false) => Format::RGBA8Unorm,
-        (DynamicImage::ImageBgr8(_), false) => Format::BGR8Unorm,
-        (DynamicImage::ImageBgra8(_), false) => Format::BGRA8Unorm,
-        (DynamicImage::ImageLuma16(_), false) => Format::R16Unorm,
-        (DynamicImage::ImageLumaA16(_), false) => Format::RG16Unorm,
-        (DynamicImage::ImageRgb16(_), false) => Format::RGB16Unorm,
-        (DynamicImage::ImageRgba16(_), false) => Format::RGBA16Unorm,
-
-        (DynamicImage::ImageLuma8(_), true) => Format::R8Srgb,
-        (DynamicImage::ImageLumaA8(_), true) => Format::RG8Srgb,
-        (DynamicImage::ImageRgb8(_), true) => Format::RGB8Srgb,
-        (DynamicImage::ImageRgba8(_), true) => Format::RGBA8Srgb,
-        (DynamicImage::ImageBgr8(_), true) => Format::BGR8Srgb,
-        (DynamicImage::ImageBgra8(_), true) => Format::BGRA8Srgb,
-        (DynamicImage::ImageLuma16(_), true) => Format::R16Unorm,
-        (DynamicImage::ImageLumaA16(_), true) => Format::RG16Unorm,
-        (DynamicImage::ImageRgb16(_), true) => Format::RGB16Unorm,
-        (DynamicImage::ImageRgba16(_), true) => Format::RGBA16Unorm,
+    let format = match (image.srgb, image.color_type, image.bit_depth) {
+        (true, png::ColorType::Grayscale, png::BitDepth::Eight) => Format::R8Srgb,
+        (true, png::ColorType::GrayscaleAlpha, png::BitDepth::Eight) => Format::RG8Srgb,
+        (true, png::ColorType::Rgb, png::BitDepth::Eight) => Format::RGB8Srgb,
+        (true, png::ColorType::Rgba, png::BitDepth::Eight) => Format::RGBA8Srgb,
+        (false, png::ColorType::Grayscale, png::BitDepth::Eight) => Format::R8Unorm,
+        (false, png::ColorType::Grayscale, png::BitDepth::Sixteen) => Format::R16Unorm,
+        (false, png::ColorType::GrayscaleAlpha, png::BitDepth::Eight) => Format::RG8Unorm,
+        (false, png::ColorType::GrayscaleAlpha, png::BitDepth::Sixteen) => Format::RG16Unorm,
+        (false, png::ColorType::Rgb, png::BitDepth::Eight) => Format::RGB8Unorm,
+        (false, png::ColorType::Rgb, png::BitDepth::Sixteen) => Format::RGB16Unorm,
+        (false, png::ColorType::Rgba, png::BitDepth::Eight) => Format::RGBA8Unorm,
+        (false, png::ColorType::Rgba, png::BitDepth::Sixteen) => Format::RGBA16Unorm,
+        _ => panic!("Unsupported format"),
     };
 
-    let (w, h) = image.dimensions();
-
-    let bytes8;
-    let bytes16;
-
-    let bytes = match image {
-        DynamicImage::ImageLuma8(buffer) => {
-            bytes8 = &**buffer;
-            &bytes8[..]
-        }
-        DynamicImage::ImageLumaA8(buffer) => {
-            bytes8 = &**buffer;
-            &bytes8[..]
-        }
-        DynamicImage::ImageRgb8(buffer) => {
-            bytes8 = &**buffer;
-            &bytes8[..]
-        }
-        DynamicImage::ImageRgba8(buffer) => {
-            bytes8 = &**buffer;
-            &bytes8[..]
-        }
-        DynamicImage::ImageBgr8(buffer) => {
-            bytes8 = &**buffer;
-            &bytes8[..]
-        }
-        DynamicImage::ImageBgra8(buffer) => {
-            bytes8 = &**buffer;
-            &bytes8[..]
-        }
-        DynamicImage::ImageLuma16(buffer) => {
-            bytes16 = &**buffer;
-            bytemuck::cast_slice(&bytes16[..])
-        }
-        DynamicImage::ImageLumaA16(buffer) => {
-            bytes16 = &**buffer;
-            bytemuck::cast_slice(&bytes16[..])
-        }
-        DynamicImage::ImageRgb16(buffer) => {
-            bytes16 = &**buffer;
-            bytemuck::cast_slice(&bytes16[..])
-        }
-        DynamicImage::ImageRgba16(buffer) => {
-            bytes16 = &**buffer;
-            bytemuck::cast_slice(&bytes16[..])
-        }
-    };
     let image = graphics.create_image_static(
         ImageInfo {
             extent: ImageExtent::D2 {
-                width: w,
-                height: h,
+                width: image.width,
+                height: image.height,
             },
             format,
             levels: 1,
@@ -148,7 +156,7 @@ pub fn image_view_from_dyn_image(
         Layout::ShaderReadOnlyOptimal,
         0,
         0,
-        &bytes,
+        &*image.decoded,
     )?;
 
     let view = graphics.create_image_view(ImageViewInfo::new(image))?;

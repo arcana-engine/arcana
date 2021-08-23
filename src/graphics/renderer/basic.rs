@@ -8,7 +8,7 @@ use sierra::{
 
 use super::{mat4_na_to_sierra, DrawNode, RendererContext};
 use crate::{
-    camera::Camera3,
+    camera3::Camera3,
     graphics::{
         material::Material,
         mesh::Mesh,

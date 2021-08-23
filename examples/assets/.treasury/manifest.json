@@ -81,6 +81,13 @@
       "source_format": "gltf",
       "native_format": "arcana.object",
       "tags": []
+    },
+    {
+      "uuid": "3368385b-dbfa-4d13-847f-df977e8c8dd4",
+      "source": "bunny.png",
+      "source_format": "image",
+      "native_format": "rgba.png",
+      "tags": []
     }
   ]
 }

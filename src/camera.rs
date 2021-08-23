@@ -1,12 +1,16 @@
 //! Provides types and functions to deal with various types of cameras.
 
+#[cfg(feature = "3d")]
 use crate::{
     control::{CommandQueue, InputCommander},
     event::{DeviceEvent, ElementState, KeyboardInput, VirtualKeyCode},
-    scene::Global3,
     system::{System, SystemContext},
 };
 
+#[cfg(feature = "3d")]
+use crate::scene::Global3;
+
+#[cfg(feature = "3d")]
 /// Camera in 3 dimensions.
 #[derive(Debug)]
 pub struct Camera3 {
@@ -27,18 +31,21 @@ pub struct Camera3 {
     proj: na::Projective3<f32>,
 }
 
+#[cfg(feature = "3d")]
 #[derive(Debug)]
 enum Kind {
     Perspective,
     Orthographic,
 }
 
+#[cfg(feature = "3d")]
 impl Default for Camera3 {
     fn default() -> Self {
         Camera3::perspective(1.0, std::f32::consts::FRAC_PI_4, 0.1, 1000.0)
     }
 }
 
+#[cfg(feature = "3d")]
 impl Camera3 {
     /// Constructs perspective [`Camera3`].
     pub fn perspective(aspect: f32, fovy: f32, znear: f32, zfar: f32) -> Self {
@@ -150,12 +157,14 @@ impl Camera3 {
     }
 }
 
+#[cfg(feature = "3d")]
 #[derive(Debug)]
 pub enum FreeCamera3Command {
     RotateTo(na::UnitQuaternion<f32>),
     Move(na::Vector3<f32>),
 }
 
+#[cfg(feature = "3d")]
 pub struct FreeCamera3Controller {
     pitch: f32,
     yaw: f32,
@@ -168,6 +177,7 @@ pub struct FreeCamera3Controller {
     down_pressed: bool,
 }
 
+#[cfg(feature = "3d")]
 impl FreeCamera3Controller {
     pub fn new() -> Self {
         FreeCamera3Controller {
@@ -184,6 +194,7 @@ impl FreeCamera3Controller {
     }
 }
 
+#[cfg(feature = "3d")]
 impl InputCommander for FreeCamera3Controller {
     type Command = FreeCamera3Command;
 
@@ -244,31 +255,35 @@ impl InputCommander for FreeCamera3Controller {
     }
 }
 
-pub struct FreeCamera {
+#[cfg(feature = "3d")]
+pub struct FreeCamera3 {
     speed: f32,
     mov: na::Vector3<f32>,
 }
 
-impl FreeCamera {
+#[cfg(feature = "3d")]
+impl FreeCamera3 {
     pub fn new(speed: f32) -> Self {
-        FreeCamera {
+        FreeCamera3 {
             speed,
             mov: na::Vector3::zeros(),
         }
     }
 }
 
-pub struct FreeCameraSystem;
+#[cfg(feature = "3d")]
+pub struct FreeCamera3System;
 
-impl System for FreeCameraSystem {
+#[cfg(feature = "3d")]
+impl System for FreeCamera3System {
     fn name(&self) -> &str {
-        "FreeCameraSystem"
+        "FreeCamera3System"
     }
 
     fn run(&mut self, cx: SystemContext<'_>) -> eyre::Result<()> {
         let query = cx.world.query_mut::<(
             &mut Global3,
-            &mut FreeCamera,
+            &mut FreeCamera3,
             &mut CommandQueue<FreeCamera3Command>,
         )>();
         for (_, (global, camera, commands)) in query {
@@ -289,7 +304,8 @@ impl System for FreeCameraSystem {
     }
 }
 
-/// Camera in 3 dimensions.
+#[cfg(feature = "2d")]
+/// Camera in 2 dimensions.
 #[derive(Debug)]
 pub struct Camera2 {
     /// Viewport aspect ratio.
@@ -301,12 +317,14 @@ pub struct Camera2 {
     affine: na::Affine2<f32>,
 }
 
+#[cfg(feature = "2d")]
 impl Default for Camera2 {
     fn default() -> Self {
         Camera2::new(1.0, 1.0)
     }
 }
 
+#[cfg(feature = "2d")]
 impl Camera2 {
     pub fn new(aspect: f32, scaley: f32) -> Self {
         let affine = na::Affine2::from_matrix_unchecked(na::Matrix3::new(

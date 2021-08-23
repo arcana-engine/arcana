@@ -1,10 +1,11 @@
-use {
-    arcana::*,
-    rapier2d::{
+use arcana::{
+    game2, graphics, na,
+    physics2::{
         dynamics::RigidBodyBuilder,
         geometry::{Collider, ColliderBuilder},
-        na,
+        Physics2, PhysicsData2,
     },
+    Global2, TaskContext, TimeSpan,
 };
 
 #[derive(Clone, Debug)]
