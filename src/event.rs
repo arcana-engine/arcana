@@ -14,8 +14,8 @@ use {
 };
 
 pub use winit::event::{
-    DeviceEvent, DeviceId, ElementState, KeyboardInput, ModifiersState, MouseButton,
-    MouseScrollDelta, Touch, TouchPhase, VirtualKeyCode, WindowEvent,
+    AxisId, ButtonId, DeviceEvent, DeviceId, ElementState, KeyboardInput, ModifiersState,
+    MouseButton, MouseScrollDelta, Touch, TouchPhase, VirtualKeyCode, WindowEvent,
 };
 
 /// Describes a generic event.

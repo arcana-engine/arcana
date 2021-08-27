@@ -47,7 +47,7 @@ pub use self::{
     clocks::{/* , FixedClockStepIter*/ ClockIndex, Clocks, TimeSpan, TimeSpanParseErr},
     control::{
         AssumeControlError, CommandQueue, Control, ControlResult, Controlled, EntityController,
-        InputCommander, InputController,
+        InputCommander, InputController, InputEvent,
     },
     debug::{DebugInfo, EntityDebugInfo, EntityDisplay, EntityRefDebugInfo, EntityRefDisplay},
     funnel::Funnel,

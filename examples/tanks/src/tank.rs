@@ -5,7 +5,7 @@ use {
             sprite::{SpriteGraphAnimation, SpriteGraphAnimationSystem},
         },
         assets::SpriteSheet,
-        event::{DeviceEvent, ElementState, KeyboardInput, VirtualKeyCode},
+        event::{ElementState, KeyboardInput, VirtualKeyCode},
         graphics::{Material, Rect, Sprite},
         hecs::Entity,
         lifespan::LifeSpan,
@@ -16,7 +16,7 @@ use {
             pipeline::ActiveEvents,
             ContactQueue2, PhysicsData2,
         },
-        AsyncTaskContext, CommandQueue, Global2, InputCommander, System, SystemContext,
+        AsyncTaskContext, CommandQueue, Global2, InputCommander, InputEvent, System, SystemContext,
         TaskContext, TimeSpan,
     },
     eyre::WrapErr as _,
@@ -245,9 +245,9 @@ pub enum TankCommand {
 impl InputCommander for TankComander {
     type Command = TankCommand;
 
-    fn translate(&mut self, event: DeviceEvent) -> Option<TankCommand> {
+    fn translate(&mut self, event: InputEvent) -> Option<TankCommand> {
         match event {
-            DeviceEvent::Key(KeyboardInput {
+            InputEvent::KeyboardInput(KeyboardInput {
                 state,
                 virtual_keycode: Some(key),
                 ..

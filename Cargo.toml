@@ -28,8 +28,9 @@ winit = { version = "0.25", features = ["serde"] }
 raw-window-handle = "0.3"
 
 # Graphics
-sierra = { version = "0.3", features = ["serde-1"], git = "https://github.com/zakarumych/sierra" }
-#sierra = { version = "0.3", features = ["serde-1"] }
+#sierra = { version = "0.3", features = ["serde-1"], git = "https://github.com/zakarumych/sierra" }
+sierra = { version = "0.3.2", features = ["serde-1"] }
+#sierra = { version = "0.3.2", features = ["serde-1"], path = "../sierra" }
 
 # Ecs
 hecs = "0.6"
@@ -78,7 +79,7 @@ uuid = { version = "0.8", features = ["serde"] }
 parking_lot = "0.11"
 ahash = { version = "0.7", features = ["compile-time-rng"] }
 hashbrown = { version = "0.11" }
-scoped-arena = { version = "0.2.1", features = ["allocator_api"] }
+scoped-arena = { version = "0.3", features = ["allocator_api"] }
 num_cpus = "1.0"
 ordered-float = "2.1"
 bytemuck = "1.0"
