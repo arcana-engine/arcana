@@ -28,8 +28,8 @@ winit = { version = "0.25", features = ["serde"] }
 raw-window-handle = "0.3"
 
 # Graphics
-#sierra = { version = "0.3", features = ["serde-1"], git = "https://github.com/zakarumych/sierra" }
-sierra = { version = "0.3.2", features = ["serde-1"] }
+sierra = { version = "0.3", features = ["serde-1"], git = "https://github.com/zakarumych/sierra" }
+#sierra = { version = "0.3.2", features = ["serde-1"] }
 #sierra = { version = "0.3.2", features = ["serde-1"], path = "../sierra" }
 
 # Ecs
