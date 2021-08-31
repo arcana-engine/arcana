@@ -29,20 +29,7 @@ use {
 };
 
 pub use {
-    self::{
-        material::Material,
-        mesh::{Binding, BindingData, Indices, IndicesData, Mesh, MeshBuilder, MeshData, PoseMesh},
-        renderer::{Renderer, RendererContext},
-        scale::Scale,
-        sprite::{Rect, Sprite},
-        texture::{Texture, TextureAssetError, TextureDecoded, TextureFuture, TextureInfo},
-        vertex::{
-            Color, Joints, Normal3, Position3, Position3Color, Position3UV, PositionNormal3,
-            PositionNormal3Color, PositionNormal3UV, PositionNormalTangent3,
-            PositionNormalTangent3UV, Semantics, Skin, Tangent3, Transformation3d, VertexLayout,
-            VertexLocation, VertexType, Weights, UV,
-        },
-    },
+    self::{material::*, mesh::*, renderer::*, scale::*, sprite::*, texture::*, vertex::*},
     sierra::*,
 };
 
