@@ -7,6 +7,7 @@ pub use sierra::{Format, VertexInputAttribute, VertexInputBinding, VertexInputRa
 
 #[derive(Clone, Debug, Hash, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 pub enum Semantics {
+    Position2,
     Position3,
     Normal3,
     Tangent3,
@@ -70,6 +71,24 @@ pub trait VertexType: Pod {
             rate: Self::RATE,
         }
     }
+}
+
+/// Attribute for vertex position in 2d world.
+#[derive(Clone, Copy, Debug, serde::Serialize, serde::Deserialize)]
+#[repr(transparent)]
+pub struct Position2(pub [f32; 2]);
+
+unsafe impl Zeroable for Position2 {}
+unsafe impl Pod for Position2 {}
+
+impl VertexType for Position2 {
+    const LOCATIONS: &'static [VertexLocation] = &[VertexLocation {
+        format: Format::RG32Sfloat,
+        offset: 0,
+        semantics: Semantics::Position2,
+    }];
+    const NAME: &'static str = "Position2";
+    const RATE: VertexInputRate = VertexInputRate::Vertex;
 }
 
 /// Attribute for vertex position in 3d world.
@@ -200,6 +219,93 @@ impl VertexType for Weights {
 
 #[derive(Clone, Copy, Debug, serde::Serialize, serde::Deserialize)]
 #[repr(C)]
+pub struct Position2UV {
+    pub position: Position2,
+    pub uv: UV,
+}
+
+unsafe impl Zeroable for Position2UV {}
+unsafe impl Pod for Position2UV {}
+
+impl VertexType for Position2UV {
+    const LOCATIONS: &'static [VertexLocation] = &[
+        VertexLocation {
+            format: Format::RG32Sfloat,
+            offset: 0,
+            semantics: Semantics::Position2,
+        },
+        VertexLocation {
+            format: Format::RG32Sfloat,
+            offset: size_of::<Position2>() as u32,
+            semantics: Semantics::Position2,
+        },
+    ];
+    const NAME: &'static str = "Position2UV";
+    const RATE: VertexInputRate = VertexInputRate::Vertex;
+}
+
+#[derive(Clone, Copy, Debug, serde::Serialize, serde::Deserialize)]
+#[repr(C)]
+pub struct Position2Color {
+    pub position: Position2,
+    pub color: Color,
+}
+
+unsafe impl Zeroable for Position2Color {}
+unsafe impl Pod for Position2Color {}
+
+impl VertexType for Position2Color {
+    const LOCATIONS: &'static [VertexLocation] = &[
+        VertexLocation {
+            format: Format::RG32Sfloat,
+            offset: 0,
+            semantics: Semantics::Position2,
+        },
+        VertexLocation {
+            format: Format::RGBA32Sfloat,
+            offset: size_of::<Position2>() as u32,
+            semantics: Semantics::Color,
+        },
+    ];
+    const NAME: &'static str = "Position2Color";
+    const RATE: VertexInputRate = VertexInputRate::Vertex;
+}
+
+#[derive(Clone, Copy, Debug, serde::Serialize, serde::Deserialize)]
+#[repr(C)]
+pub struct Position2UVColor {
+    pub position: Position2,
+    pub uv: UV,
+    pub color: Color,
+}
+
+unsafe impl Zeroable for Position2UVColor {}
+unsafe impl Pod for Position2UVColor {}
+
+impl VertexType for Position2UVColor {
+    const LOCATIONS: &'static [VertexLocation] = &[
+        VertexLocation {
+            format: Format::RG32Sfloat,
+            offset: 0,
+            semantics: Semantics::Position2,
+        },
+        VertexLocation {
+            format: Format::RG32Sfloat,
+            offset: size_of::<Position2>() as u32,
+            semantics: Semantics::UV,
+        },
+        VertexLocation {
+            format: Format::RGBA32Sfloat,
+            offset: size_of::<Position2>() as u32 + size_of::<UV>() as u32,
+            semantics: Semantics::Color,
+        },
+    ];
+    const NAME: &'static str = "Position2UVColor";
+    const RATE: VertexInputRate = VertexInputRate::Vertex;
+}
+
+#[derive(Clone, Copy, Debug, serde::Serialize, serde::Deserialize)]
+#[repr(C)]
 pub struct Position3UV {
     pub position: Position3,
     pub uv: UV,
@@ -249,6 +355,39 @@ impl VertexType for Position3Color {
         },
     ];
     const NAME: &'static str = "Position3Color";
+    const RATE: VertexInputRate = VertexInputRate::Vertex;
+}
+
+#[derive(Clone, Copy, Debug, serde::Serialize, serde::Deserialize)]
+#[repr(C)]
+pub struct Position3UVColor {
+    pub position: Position3,
+    pub uv: UV,
+    pub color: Color,
+}
+
+unsafe impl Zeroable for Position3UVColor {}
+unsafe impl Pod for Position3UVColor {}
+
+impl VertexType for Position3UVColor {
+    const LOCATIONS: &'static [VertexLocation] = &[
+        VertexLocation {
+            format: Format::RGB32Sfloat,
+            offset: 0,
+            semantics: Semantics::Position3,
+        },
+        VertexLocation {
+            format: Format::RG32Sfloat,
+            offset: size_of::<Position3>() as u32,
+            semantics: Semantics::UV,
+        },
+        VertexLocation {
+            format: Format::RGBA32Sfloat,
+            offset: size_of::<Position3>() as u32 + size_of::<UV>() as u32,
+            semantics: Semantics::Color,
+        },
+    ];
+    const NAME: &'static str = "Position3UVColor";
     const RATE: VertexInputRate = VertexInputRate::Vertex;
 }
 
