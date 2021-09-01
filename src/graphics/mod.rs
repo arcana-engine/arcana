@@ -1,3 +1,88 @@
+#[macro_export]
+/// Macro to simplify building of VertexLayout in const context.
+macro_rules! vertex_location {
+    ($offset:ident, $elem:ty as $semantics:literal) => {
+        #[allow(unused_assignments)]
+        VertexLocation {
+            format: <$elem as $crate::graphics::FormatElement>::FORMAT,
+            semantics: $crate::graphics::Semantics::Custom(::std::borrow::Cow::Borrowed(
+                $semantics,
+            )),
+            offset: {
+                let o = $offset;
+                $offset += ::core::mem::size_of::<$elem>() as u32;
+                o
+            },
+        }
+    };
+
+    ($offset:ident, $va:ty) => {
+        #[allow(unused_assignments)]
+        VertexLocation {
+            format: <$va as $crate::graphics::VertexAttribute>::FORMAT,
+            semantics: <$va as $crate::graphics::VertexAttribute>::SEMANTICS,
+            offset: {
+                let o = $offset;
+                $offset += ::core::mem::size_of::<$va>() as u32;
+                o
+            },
+        }
+    };
+}
+
+#[macro_export]
+macro_rules! define_vertex_attribute {
+    ($(
+        $(#[$meta:meta])*
+        $vis:vis struct $va:ident as $semantics:tt ($fvis:vis $ft:ty);
+    )*) => {$(
+        $(#[$meta])*
+        #[derive(Clone, Copy, Debug, Default, PartialEq, PartialOrd)]
+        #[repr(transparent)]
+        $vis struct $va($fvis $ft);
+
+        unsafe impl bytemuck::Zeroable for $va {}
+        unsafe impl bytemuck::Pod for $va {}
+
+        impl $crate::graphics::VertexAttribute for $va {
+            const FORMAT: $crate::graphics::Format = <$ft as $crate::graphics::FormatElement>::FORMAT;
+            const SEMANTICS: $crate::graphics::Semantics = $semantics;
+        }
+    )*};
+}
+
+#[macro_export]
+macro_rules! define_vertex_type {
+    ($(
+        $(#[$meta:meta])*
+        $vis:vis struct $vt:ident as $rate:ident {
+            $( $van:ident: $vat:ty $(as $semantics:literal)? ),*
+            $(,)?
+        }
+    )*) => {$(
+        $(#[$meta])*
+        #[repr(C)]
+        #[derive(Clone, Copy, Debug, Default, PartialEq)]
+        $vis struct $vt {
+            $( $van: $vat, )*
+        }
+
+        unsafe impl bytemuck::Zeroable for $vt {}
+        unsafe impl bytemuck::Pod for $vt {}
+
+        impl $crate::graphics::VertexType for $vt {
+            const LOCATIONS: &'static [$crate::graphics::VertexLocation] = {
+                let mut offset = 0;
+                &[$(
+                    $crate::vertex_location!(offset, $vat as $semantics ),
+                ),*]
+            };
+            const RATE: $crate::graphics::VertexInputRate = $crate::graphics::VertexInputRate::$rate;
+        }
+    )*};
+}
+
+mod format;
 mod material;
 mod mesh;
 pub mod node;
@@ -29,7 +114,9 @@ use {
 };
 
 pub use {
-    self::{material::*, mesh::*, renderer::*, scale::*, sprite::*, texture::*, vertex::*},
+    self::{
+        format::*, material::*, mesh::*, renderer::*, scale::*, sprite::*, texture::*, vertex::*,
+    },
     sierra::*,
 };
 

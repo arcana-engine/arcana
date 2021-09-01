@@ -1,10 +1,25 @@
+use std::borrow::Cow;
+
+use bytemuck::{Pod, Zeroable};
+use sierra::Format;
+
+use super::{Semantics, VertexAttribute};
+
 #[repr(C)]
-#[derive(Clone, Copy, Debug)]
+#[derive(Clone, Copy, Debug, PartialEq)]
 pub struct Rect {
     pub left: f32,
     pub right: f32,
     pub top: f32,
     pub bottom: f32,
+}
+
+unsafe impl Zeroable for Rect {}
+unsafe impl Pod for Rect {}
+
+impl VertexAttribute for Rect {
+    const FORMAT: Format = Format::RGBA32Sfloat;
+    const SEMANTICS: Semantics = Semantics::Custom(Cow::Borrowed("Rect"));
 }
 
 impl Default for Rect {

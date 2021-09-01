@@ -1,22 +1,24 @@
+use std::{convert::TryFrom, mem::size_of};
+
+use hecs::Entity;
+use palette::LinSrgb;
+use sierra::{
+    descriptors, graphics_pipeline_desc, mat3, pipeline, shader_repr, Buffer, DepthTest,
+    DynamicGraphicsPipeline, Encoder, FragmentShader, ImageView, Layout, PipelineInput,
+    RenderPassEncoder, Sampler, ShaderModuleInfo, VertexInputRate, VertexShader,
+};
+
 use super::{mat3_na_to_sierra, DrawNode, RendererContext};
 use crate::{
     camera::Camera2,
     graphics::{
         material::Material,
         sprite::{Rect, Sprite},
-        vertex::{vertex_layouts_for_pipeline, Semantics, VertexLocation, VertexType},
-        Graphics, SparseDescriptors,
+        vertex_layouts_for_pipeline, Graphics, SparseDescriptors, Transformation2, VertexLocation,
+        VertexType,
     },
     scene::Global2,
 };
-
-use hecs::Entity;
-use sierra::{
-    descriptors, graphics_pipeline_desc, mat3, pipeline, shader_repr, Buffer, DepthTest,
-    DynamicGraphicsPipeline, Encoder, Format, FragmentShader, ImageView, Layout, PipelineInput,
-    RenderPassEncoder, Sampler, ShaderModuleInfo, VertexInputRate, VertexShader,
-};
-use std::{borrow::Cow, convert::TryFrom};
 
 pub struct SpriteDraw {
     pipeline: DynamicGraphicsPipeline,
@@ -98,13 +100,13 @@ impl SpriteDraw {
 
         let dummy = graphics.create_image_view(sierra::ImageViewInfo::new(dummy))?;
         let textures = (0..128).map(|_| dummy.clone()).collect::<Vec<_>>();
-        let textures = <[ImageView; 128] as TryFrom<Vec<_>>>::try_from(textures).unwrap();
+        let textures = <[ImageView; 128]>::try_from(textures).unwrap();
 
         let sampler = graphics.create_sampler(sierra::SamplerInfo::linear())?;
 
         let sprites = graphics.create_buffer(sierra::BufferInfo {
             align: 255,
-            size: std::mem::size_of::<SpriteInstance>() as u64 * 65536,
+            size: std::mem::size_of::<SpriteInstance>() as u64 * 256,
             usage: sierra::BufferUsage::VERTEX | sierra::BufferUsage::TRANSFER_DST,
         })?;
 
@@ -183,9 +185,9 @@ impl DrawNode for SpriteDraw {
                 albedo,
                 albedo_factor: {
                     let [r, g, b] = mat.albedo_factor;
-                    [r.into(), g.into(), b.into()]
+                    palette::LinSrgb::from((r.into(), g.into(), b.into()))
                 },
-                transform: global.iso.to_homogeneous().into(),
+                transform: Transformation2(global.iso.to_homogeneous().into()),
             };
 
             sprites.push(instance);
@@ -204,6 +206,15 @@ impl DrawNode for SpriteDraw {
 
         let sprite_count = sprites.len() as u32;
 
+        if self.sprites.info().size < sprite_count as u64 * size_of::<SpriteInstance>() as u64 {
+            self.sprites = cx.graphics.create_buffer(sierra::BufferInfo {
+                align: 255,
+                size: std::mem::size_of::<SpriteInstance>() as u64
+                    * (sprite_count as u64).next_power_of_two(),
+                usage: sierra::BufferUsage::VERTEX | sierra::BufferUsage::TRANSFER_DST,
+            })?;
+        }
+
         cx.graphics
             .upload_buffer_with(&self.sprites, 0, sprites.leak(), encoder)?;
 
@@ -216,62 +227,32 @@ impl DrawNode for SpriteDraw {
 }
 
 #[repr(C)]
-#[derive(Clone, Copy, Debug, Default)]
+#[derive(Clone, Copy, Debug, Default, PartialEq)]
 struct SpriteInstance {
     pos: Rect,
     uv: Rect,
     layer: u32,
     albedo: u32,
-    albedo_factor: [f32; 3],
-    transform: [[f32; 3]; 3],
+    albedo_factor: palette::LinSrgb<f32>,
+    transform: Transformation2,
 }
 
 unsafe impl bytemuck::Zeroable for SpriteInstance {}
 unsafe impl bytemuck::Pod for SpriteInstance {}
 
 impl VertexType for SpriteInstance {
-    const NAME: &'static str = "SpriteInstance";
-    const LOCATIONS: &'static [VertexLocation] = &[
-        VertexLocation {
-            format: Format::RGBA32Sfloat,
-            offset: 0,
-            semantics: Semantics::Custom(Cow::Borrowed("pos_aabb")),
-        },
-        VertexLocation {
-            format: Format::RGBA32Sfloat,
-            offset: 16,
-            semantics: Semantics::Custom(Cow::Borrowed("uv_aabb")),
-        },
-        VertexLocation {
-            format: Format::R32Uint,
-            offset: 32,
-            semantics: Semantics::Custom(Cow::Borrowed("sprite_layer")),
-        },
-        VertexLocation {
-            format: Format::R32Uint,
-            offset: 36,
-            semantics: Semantics::Custom(Cow::Borrowed("albedo")),
-        },
-        VertexLocation {
-            format: Format::RGB32Sfloat,
-            offset: 40,
-            semantics: Semantics::Custom(Cow::Borrowed("albedo_factor")),
-        },
-        VertexLocation {
-            format: Format::RGB32Sfloat,
-            offset: 52,
-            semantics: Semantics::Custom(Cow::Borrowed("transform2_0")),
-        },
-        VertexLocation {
-            format: Format::RGB32Sfloat,
-            offset: 64,
-            semantics: Semantics::Custom(Cow::Borrowed("transform2_1")),
-        },
-        VertexLocation {
-            format: Format::RGB32Sfloat,
-            offset: 76,
-            semantics: Semantics::Custom(Cow::Borrowed("transform2_2")),
-        },
-    ];
+    const LOCATIONS: &'static [VertexLocation] = {
+        let mut offset = 0;
+        &[
+            vertex_location!(offset, Rect),
+            vertex_location!(offset, Rect),
+            vertex_location!(offset, u32 as "Layer"),
+            vertex_location!(offset, u32 as "Albedo"),
+            vertex_location!(offset, LinSrgb<f32>),
+            vertex_location!(offset, [f32; 3] as "Transform2.0"),
+            vertex_location!(offset, [f32; 3] as "Transform2.1"),
+            vertex_location!(offset, [f32; 3] as "Transform2.2"),
+        ]
+    };
     const RATE: VertexInputRate = VertexInputRate::Instance;
 }

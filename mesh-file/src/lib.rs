@@ -20,7 +20,7 @@ pub enum VertexLayout {
     Normal3,
     Tangent3,
     UV,
-    Color,
+    ColorSrgba,
     PositionNormal3,
     PositionNormal3Color,
     PositionNormal3UV,

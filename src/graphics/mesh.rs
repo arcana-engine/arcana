@@ -22,15 +22,13 @@ use sierra::{
     VertexInputRate,
 };
 
-use super::{
-    vertex::{
-        Color, Joints, Normal3, Position3, PositionNormal3, PositionNormal3Color,
-        PositionNormal3UV, PositionNormalTangent3, PositionNormalTangent3Color,
-        PositionNormalTangent3UV, Semantics, Skin, Tangent3, VertexLayout, VertexLocation,
-        VertexType, Weights, UV,
-    },
-    Graphics,
+use super::vertex::{
+    Joints, Normal3, Position3, Semantics, Tangent3, VertexAttribute, VertexLayout, VertexLocation,
+    VertexType, Weights, UV, V2, V3, V4,
 };
+
+use super::Graphics;
+
 #[derive(Clone, Debug, Hash, PartialEq, Eq)]
 pub struct Binding {
     pub buffer: Buffer,
@@ -499,13 +497,16 @@ impl Mesh {
         Self::from_generator_pos_norm(&genmesh::generators::Cube::new(), usage, cx, index_type)
     }
 
-    pub fn cube_pos_norm_fixed_color(
+    pub fn cube_pos_norm_fixed_color<C>(
         extent: na::Vector3<f32>,
         usage: BufferUsage,
         cx: &mut Graphics,
         index_type: IndexType,
-        color: Color,
-    ) -> Result<Self, OutOfMemory> {
+        color: C,
+    ) -> Result<Self, OutOfMemory>
+    where
+        C: VertexAttribute,
+    {
         Self::from_generator_pos_norm_fixed_color(
             &genmesh::generators::Cube::new(),
             usage,
@@ -540,27 +541,25 @@ impl Mesh {
         G: genmesh::generators::SharedVertex<genmesh::Vertex>
             + genmesh::generators::IndexedPolygon<genmesh::Quad<usize>>,
     {
-        Self::from_generator(generator, usage, cx, index_type, |v| PositionNormal3 {
-            position: Position3(v.pos.into()),
-            normal: Normal3(v.normal.into()),
+        Self::from_generator(generator, usage, cx, index_type, |v| {
+            V2(Position3(v.pos.into()), Normal3(v.normal.into()))
         })
     }
 
-    pub fn from_generator_pos_norm_fixed_color<G>(
+    pub fn from_generator_pos_norm_fixed_color<G, C>(
         generator: &G,
         usage: BufferUsage,
         cx: &mut Graphics,
         index_type: IndexType,
-        color: Color,
+        color: C,
     ) -> Result<Self, OutOfMemory>
     where
         G: genmesh::generators::SharedVertex<genmesh::Vertex>
             + genmesh::generators::IndexedPolygon<genmesh::Quad<usize>>,
+        C: VertexAttribute,
     {
-        Self::from_generator(generator, usage, cx, index_type, |v| PositionNormal3Color {
-            position: Position3(v.pos.into()),
-            normal: Normal3(v.pos.into()),
-            color,
+        Self::from_generator(generator, usage, cx, index_type, |v| {
+            V3(Position3(v.pos.into()), Normal3(v.pos.into()), color)
         })
     }
 
@@ -727,7 +726,7 @@ impl PoseMesh {
                 .layout
                 .locations
                 .iter()
-                .any(|l| l.semantics.animate());
+                .any(|l| l.semantics.vector());
 
             if animate {
                 prebindings.push((binding.layout.clone(), offset));
@@ -913,26 +912,28 @@ where
                     arcana_mesh_file::VertexLayout::Normal3 => Normal3::layout(),
                     arcana_mesh_file::VertexLayout::Tangent3 => Tangent3::layout(),
                     arcana_mesh_file::VertexLayout::UV => UV::layout(),
-                    arcana_mesh_file::VertexLayout::Color => Color::layout(),
-                    arcana_mesh_file::VertexLayout::PositionNormal3 => PositionNormal3::layout(),
+                    arcana_mesh_file::VertexLayout::ColorSrgba => palette::Srgba::<u8>::layout(),
+                    arcana_mesh_file::VertexLayout::PositionNormal3 => {
+                        V2::<Position3, Normal3>::layout()
+                    }
                     arcana_mesh_file::VertexLayout::PositionNormal3UV => {
-                        PositionNormal3UV::layout()
+                        V3::<Position3, Normal3, UV>::layout()
                     }
                     arcana_mesh_file::VertexLayout::PositionNormal3Color => {
-                        PositionNormal3Color::layout()
+                        V3::<Position3, Normal3, palette::Srgba<u8>>::layout()
                     }
                     arcana_mesh_file::VertexLayout::PositionNormalTangent3 => {
-                        PositionNormalTangent3::layout()
+                        V3::<Position3, Normal3, Tangent3>::layout()
                     }
                     arcana_mesh_file::VertexLayout::PositionNormalTangent3UV => {
-                        PositionNormalTangent3UV::layout()
+                        V4::<Position3, Normal3, Tangent3, UV>::layout()
                     }
                     arcana_mesh_file::VertexLayout::PositionNormalTangent3Color => {
-                        PositionNormalTangent3Color::layout()
+                        V4::<Position3, Normal3, Tangent3, palette::Srgba<u8>>::layout()
                     }
                     arcana_mesh_file::VertexLayout::Joints => Joints::layout(),
                     arcana_mesh_file::VertexLayout::Weights => Weights::layout(),
-                    arcana_mesh_file::VertexLayout::Skin => Skin::layout(),
+                    arcana_mesh_file::VertexLayout::Skin => V2::<Joints, Weights>::layout(),
                 };
 
                 let size = u64::from(layout.stride) * u64::from(decoded.header.vertex_count);
