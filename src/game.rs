@@ -233,7 +233,7 @@ where
         scheduler.add_system(LifeSpanSystem);
         scheduler.add_system(SceneSystem);
 
-        res.insert(FpsMeter::new());
+        res.insert(FpsMeter::new(TimeSpan::SECOND));
         scheduler.add_fixed_system(
             |cx: SystemContext<'_>| {
                 let fps = cx.res.get::<FpsMeter>().unwrap();

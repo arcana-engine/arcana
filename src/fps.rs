@@ -3,13 +3,15 @@ use {crate::clocks::TimeSpan, std::collections::VecDeque};
 pub struct FpsMeter {
     frames: VecDeque<TimeSpan>,
     total: TimeSpan,
+    window: TimeSpan,
 }
 
 impl FpsMeter {
-    pub fn new() -> Self {
+    pub fn new(window: TimeSpan) -> Self {
         FpsMeter {
             frames: VecDeque::new(),
             total: TimeSpan::ZERO,
+            window,
         }
     }
 
@@ -17,7 +19,7 @@ impl FpsMeter {
         self.frames.push_back(span);
         self.total += span;
 
-        while self.total > TimeSpan::SECOND * 5 {
+        while self.total > self.window {
             let span = self.frames.pop_front().unwrap();
             self.total -= span;
         }
