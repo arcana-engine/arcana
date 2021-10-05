@@ -163,7 +163,7 @@ mod shared {
 }
 
 impl Loop {
-    /// Runt event loop until completion.
+    /// Runs event loop until completion.
     /// This function does not return as process is terminated on exit.
     pub fn run<F, Fut>(f: F) -> !
     where

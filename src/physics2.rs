@@ -214,3 +214,12 @@ impl System for Physics2 {
         Ok(())
     }
 }
+
+#[derive(Clone, Copy, Debug, PartialEq)]
+#[cfg_attr(feature = "visible", derive(serde::Deserialize))]
+#[cfg_attr(feature = "server", derive(serde::Serialize))]
+pub struct BodyReplicable {
+    iso: na::Isometry2<f32>,
+    linvel: na::Vector2<f32>,
+    angvel: f32,
+}

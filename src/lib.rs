@@ -8,24 +8,18 @@
 //!
 //! Starting writing a game is as simple as calling single function: `arcana::game2` or `arcana::game3`,\
 //! depending on what number of dimensions new game needs.\
-//! From there add systems, load prefabs or otherwise populate game world.
-//!
-//! Then start writing prefab implementations and input controls, implement custom rendering logic when required.
+//! From there add systems, load assets or otherwise populate game world.
 //!
 
 pub mod anim;
 pub mod assets;
 mod bitset;
-pub mod camera;
 mod clocks;
-mod control;
 mod debug;
-pub mod event;
-pub mod fps;
-mod funnel;
 mod game;
-pub mod graphics;
 pub mod lifespan;
+pub mod net;
+pub mod prefab;
 
 #[cfg(feature = "physics2d")]
 pub mod physics2;
@@ -33,30 +27,52 @@ pub mod physics2;
 #[cfg(feature = "physics3d")]
 pub mod physics3;
 
+mod control;
 mod resources;
 mod scene;
+mod scoped_vec_iter;
 mod system;
 mod task;
+
+#[cfg(feature = "visible")]
+pub mod camera;
+#[cfg(feature = "visible")]
+pub mod event;
+#[cfg(feature = "visible")]
+pub mod fps;
+#[cfg(feature = "visible")]
+mod funnel;
+#[cfg(feature = "visible")]
+pub mod graphics;
+#[cfg(feature = "visible")]
 mod viewport;
 
-pub use {hecs, na, scoped_arena, sierra};
+pub use {hecs, na, scoped_arena};
+
+#[cfg(feature = "visible")]
+pub use sierra;
 
 pub use arcana_proc::timespan;
 
 pub use self::{
-    clocks::{/* , FixedClockStepIter*/ ClockIndex, Clocks, TimeSpan, TimeSpanParseErr},
-    control::{
-        AssumeControlError, CommandQueue, Control, ControlResult, Controlled, EntityController,
-        InputCommander, InputController, InputEvent,
-    },
+    clocks::{ClockIndex, Clocks, TimeSpan, TimeSpanParseErr},
+    control::CommandQueue,
     debug::{DebugInfo, EntityDebugInfo, EntityDisplay, EntityRefDebugInfo, EntityRefDisplay},
-    funnel::Funnel,
     game::*,
-    graphics::renderer::{self, Renderer},
     resources::Res,
     scene::*,
     system::{Scheduler, System, SystemContext},
     task::{AsyncTaskContext, Spawner, TaskContext},
+};
+
+#[cfg(feature = "visible")]
+pub use self::{
+    control::{
+        AssumeControlError, Control, ControlResult, Controlled, EntityController, InputCommander,
+        InputController, InputEvent,
+    },
+    funnel::Funnel,
+    graphics::renderer::{self, Renderer},
     viewport::Viewport,
 };
 

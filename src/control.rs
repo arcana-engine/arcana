@@ -1,3 +1,4 @@
+#[cfg(feature = "visible")]
 use {
     crate::{
         event::{
@@ -9,12 +10,12 @@ use {
         // session::{ClientSession, NetId},
     },
     hecs::{Entity, World},
-    std::collections::{
-        hash_map::{Entry, HashMap},
-        VecDeque,
-    },
+    std::collections::hash_map::{Entry, HashMap},
 };
 
+use std::collections::VecDeque;
+
+#[cfg(feature = "visible")]
 #[derive(Clone, Copy, Debug)]
 pub enum InputEvent {
     CursorMoved {
@@ -43,6 +44,7 @@ pub enum InputEvent {
     },
 }
 
+#[cfg(feature = "visible")]
 /// Device is already associated with a controller.
 #[derive(Clone, Copy, Debug, PartialEq, Eq, thiserror::Error)]
 #[error("Device ({device_id:?}) is already associated with a controller")]
@@ -51,6 +53,7 @@ pub struct DeviceUsed {
 }
 
 /// Result of `InputController::control` method
+#[cfg(feature = "visible")]
 pub enum ControlResult {
     /// Event was consumed by the controller.
     /// It should not be propagated further.
@@ -67,12 +70,14 @@ pub enum ControlResult {
 
 /// An input controller.
 /// Receives device events from `Control` hub.
+#[cfg(feature = "visible")]
 pub trait InputController: Send + 'static {
     /// Translates device event into controls.
     fn control(&mut self, event: InputEvent, res: &mut Res, world: &mut World) -> ControlResult;
 }
 
 /// Collection of controllers.
+#[cfg(feature = "visible")]
 pub struct Control {
     /// Controllers bound to specific devices.
     devices: HashMap<DeviceId, Box<dyn InputController>>,
@@ -85,10 +90,12 @@ pub struct Control {
 /// See [`Control::add_global_controller`].
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
 #[repr(transparent)]
+#[cfg(feature = "visible")]
 pub struct GlobalControllerId {
     idx: usize,
 }
 
+#[cfg(feature = "visible")]
 impl Control {
     /// Returns empty collection of controllers
     pub fn new() -> Control {
@@ -123,6 +130,7 @@ impl Control {
     }
 }
 
+#[cfg(feature = "visible")]
 impl Funnel<Event> for Control {
     fn filter(&mut self, res: &mut Res, world: &mut World, event: Event) -> Option<Event> {
         let (input_event, device_id) = match event {
@@ -201,9 +209,14 @@ impl<T> CommandQueue<T> {
     pub fn drain(&mut self) -> impl Iterator<Item = T> + '_ {
         self.commands.drain(..)
     }
+
+    pub fn iter(&self) -> impl Iterator<Item = &T> + '_ {
+        self.commands.iter()
+    }
 }
 
 /// Translates device events into commands and
+#[cfg(feature = "visible")]
 pub trait InputCommander {
     type Command;
 
@@ -211,6 +224,7 @@ pub trait InputCommander {
 }
 
 /// Error that can occur when assuming control over an entity.
+#[cfg(feature = "visible")]
 #[derive(Clone, Copy, Debug, PartialEq, Eq, thiserror::Error)]
 pub enum AssumeControlError {
     /// Failed to assume control of non-existing entity.
@@ -231,11 +245,13 @@ pub struct Controlled {
 const CONTROLLED: Controlled = Controlled { __: () };
 
 /// A kind of [`InputController`]s that yield commands and sends them to a command queue of an entity.
+#[cfg(feature = "visible")]
 pub struct EntityController<T> {
     commander: T,
     entity: Entity,
 }
 
+#[cfg(feature = "visible")]
 impl<T> EntityController<T>
 where
     T: InputCommander,
@@ -267,6 +283,7 @@ where
     }
 }
 
+#[cfg(feature = "visible")]
 impl<T> InputController for EntityController<T>
 where
     T: InputCommander + Send + 'static,
@@ -288,61 +305,3 @@ where
         }
     }
 }
-
-// /// A kind of [`InputController`]s that yield commands and sends them to a server and a command queue of an entity.
-// pub struct ClientEntityController<T> {
-//     commander: T,
-//     entity: Entity,
-//     netid: NetId,
-// }
-
-// impl<T> ClientEntityController<T>
-// where
-//     T: InputCommander,
-//     T::Command: Send + Sync + 'static,
-// {
-//     pub fn assume_control(
-//         commander: T,
-//         queue_cap: usize,
-//         entity: Entity,
-//         world: &mut World,
-//     ) -> Result<Self, AssumeControlError> {
-//         match world.query_one_mut::<Controlled>(entity).is_ok() {
-//             true => Err(AssumeControlError::AlreadyControlled { entity }),
-//             false => {
-//                 world.insert(
-//                     entity,
-//                     (
-//                         CONTROLLED,
-//                         CommandQueue::<T::Command> {
-//                             commands: VecDeque::with_capacity(queue_cap),
-//                         },
-//                     ),
-//                 );
-//                 Ok(ClientEntityController { commander, entity })
-//             }
-//         }
-//     }
-// }
-
-// impl<T> InputController for ClientEntityController<T>
-// where
-//     T: InputCommander + Send + 'static,
-//     T::Command: Send + Sync + 'static,
-// {
-//     fn control(&mut self, event: DeviceEvent, _res: &mut Res, world: &mut World) -> ControlResult {
-//         match world.query_one_mut::<&mut CommandQueue<T::Command>>(self.entity) {
-//             Ok(queue) => match self.commander.translate(event) {
-//                 None => ControlResult::Ignored,
-//                 Some(command) => {
-//                     if queue.commands.capacity() == queue.commands.len() {
-//                         queue.commands.pop_front();
-//                     }
-//                     queue.commands.push_back(command);
-//                     ControlResult::Consumed
-//                 }
-//             },
-//             Err(err) => ControlResult::ControlLost,
-//         }
-//     }
-// }

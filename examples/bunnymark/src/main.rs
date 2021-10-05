@@ -63,7 +63,7 @@ impl Bunny {
 
 fn main() {
     game2(|mut game| async move {
-        let start = 80000;
+        let start = 100000;
 
         for _ in 0..start {
             game.res.with(BunnyCount::default).count = start;

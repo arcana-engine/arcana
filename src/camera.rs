@@ -2,7 +2,7 @@
 
 #[cfg(feature = "3d")]
 use crate::{
-    control::{CommandQueue, InputCommander},
+    control::{CommandQueue, InputCommander, InputEvent},
     event::{DeviceEvent, ElementState, KeyboardInput, VirtualKeyCode},
     system::{System, SystemContext},
 };
@@ -198,9 +198,9 @@ impl FreeCamera3Controller {
 impl InputCommander for FreeCamera3Controller {
     type Command = FreeCamera3Command;
 
-    fn translate(&mut self, event: DeviceEvent) -> Option<FreeCamera3Command> {
+    fn translate(&mut self, event: InputEvent) -> Option<FreeCamera3Command> {
         match event {
-            DeviceEvent::MouseMotion { delta: (x, y) } => {
+            InputEvent::MouseMotion { delta: (x, y) } => {
                 self.pitch -= (x * 0.001) as f32;
                 self.yaw -= (y * 0.001) as f32;
 
@@ -222,7 +222,7 @@ impl InputCommander for FreeCamera3Controller {
                         * na::UnitQuaternion::from_euler_angles(self.yaw, 0.0, 0.0),
                 ))
             }
-            DeviceEvent::Key(KeyboardInput {
+            InputEvent::KeyboardInput(KeyboardInput {
                 virtual_keycode: Some(key),
                 state,
                 ..

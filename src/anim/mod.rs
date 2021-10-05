@@ -1,4 +1,6 @@
 pub mod graph;
+
+#[cfg(feature = "visible")]
 pub mod sprite;
 
 // struct Animation<F> {

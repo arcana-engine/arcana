@@ -1,12 +1,7 @@
+#![feature(allocator_api)]
+
 use {
     arcana::{
-        anim::{
-            graph::{AnimTransitionRule, CurrentAnimInfo},
-            sprite::{SpriteGraphAnimation, SpriteGraphAnimationSystem},
-        },
-        assets::SpriteSheet,
-        event::{ElementState, KeyboardInput, VirtualKeyCode},
-        graphics::{Material, Rect, Sprite},
         hecs::Entity,
         lifespan::LifeSpan,
         na,
@@ -16,12 +11,22 @@ use {
             pipeline::ActiveEvents,
             ContactQueue2, PhysicsData2,
         },
-        AsyncTaskContext, CommandQueue, Global2, InputCommander, InputEvent, System, SystemContext,
-        TaskContext, TimeSpan,
+        AsyncTaskContext, CommandQueue, Global2, System, SystemContext, TaskContext, TimeSpan,
     },
     eyre::WrapErr as _,
     ordered_float::OrderedFloat,
     uuid::Uuid,
+};
+
+#[cfg(feature = "visible")]
+use crate::{
+    anim::{
+        graph::{AnimTransitionRule, CurrentAnimInfo},
+        sprite::{SpriteGraphAnimation, SpriteGraphAnimationSystem},
+    },
+    assets::SpriteSheet,
+    event::{ElementState, KeyboardInput, VirtualKeyCode},
+    graphics::{Material, Rect, Sprite},
 };
 
 pub struct Bullet;
@@ -46,6 +51,7 @@ pub enum TankAnimTransitionRule {
     AnimationComplete,
 }
 
+#[cfg(feature = "visible")]
 impl AnimTransitionRule<TankState> for TankAnimTransitionRule {
     fn matches(&self, state: &TankState, info: &CurrentAnimInfo) -> bool {
         match self {
@@ -57,6 +63,7 @@ impl AnimTransitionRule<TankState> for TankAnimTransitionRule {
     }
 }
 
+#[cfg(feature = "visible")]
 fn tank_graph_animation(sheet: &SpriteSheet) -> SpriteGraphAnimation<TankAnimTransitionRule> {
     SpriteGraphAnimation::new(
         0,
@@ -88,6 +95,7 @@ impl Tank {
 
     /// Spawn this tank.
     pub fn spawn(self, cx: TaskContext<'_>) -> Entity {
+        #[cfg(feature = "visible")]
         let sprite_sheet = cx.loader.load::<SpriteSheet>(&self.sprite_sheet);
 
         let physics = cx.res.with(PhysicsData2::new);
@@ -113,6 +121,7 @@ impl Tank {
         let entity = cx.world.spawn((
             Global2::identity(),
             body,
+            #[cfg(feature = "visible")]
             Sprite {
                 world: Rect {
                     left: -hs.x,
@@ -134,6 +143,7 @@ impl Tank {
             self,
         ));
 
+        #[cfg(feature = "visible")]
         cx.spawner.spawn(async move {
             let mut cx = AsyncTaskContext::new();
             let mut sprite_sheet = sprite_sheet.await;
@@ -167,55 +177,6 @@ impl Tank {
 }
 
 #[derive(Debug)]
-pub struct TankComander {
-    forward: VirtualKeyCode,
-    backward: VirtualKeyCode,
-    left: VirtualKeyCode,
-    right: VirtualKeyCode,
-    fire: VirtualKeyCode,
-
-    forward_pressed: bool,
-    backward_pressed: bool,
-    left_pressed: bool,
-    right_pressed: bool,
-    fire_pressed: bool,
-}
-
-impl TankComander {
-    pub fn main() -> Self {
-        TankComander {
-            forward: VirtualKeyCode::W,
-            backward: VirtualKeyCode::S,
-            left: VirtualKeyCode::A,
-            right: VirtualKeyCode::D,
-            fire: VirtualKeyCode::Space,
-
-            forward_pressed: false,
-            backward_pressed: false,
-            left_pressed: false,
-            right_pressed: false,
-            fire_pressed: false,
-        }
-    }
-
-    pub fn alt() -> Self {
-        TankComander {
-            forward: VirtualKeyCode::Up,
-            backward: VirtualKeyCode::Down,
-            left: VirtualKeyCode::Left,
-            right: VirtualKeyCode::Right,
-            fire: VirtualKeyCode::Numpad0,
-
-            forward_pressed: false,
-            backward_pressed: false,
-            left_pressed: false,
-            right_pressed: false,
-            fire_pressed: false,
-        }
-    }
-}
-
-#[derive(Debug)]
 pub struct TankState {
     drive: i8,
     rotate: i8,
@@ -240,85 +201,6 @@ pub enum TankCommand {
     Drive(i8),
     Rotate(i8),
     Fire(bool),
-}
-
-impl InputCommander for TankComander {
-    type Command = TankCommand;
-
-    fn translate(&mut self, event: InputEvent) -> Option<TankCommand> {
-        match event {
-            InputEvent::KeyboardInput(KeyboardInput {
-                state,
-                virtual_keycode: Some(key),
-                ..
-            }) => {
-                if key == self.forward {
-                    match state {
-                        ElementState::Pressed if !self.forward_pressed => {
-                            self.forward_pressed = true;
-                            Some(TankCommand::Drive(1))
-                        }
-                        ElementState::Released if self.forward_pressed => {
-                            self.forward_pressed = false;
-                            Some(TankCommand::Drive(-1))
-                        }
-                        _ => None,
-                    }
-                } else if key == self.backward {
-                    match state {
-                        ElementState::Pressed if !self.backward_pressed => {
-                            self.backward_pressed = true;
-                            Some(TankCommand::Drive(-1))
-                        }
-                        ElementState::Released if self.backward_pressed => {
-                            self.backward_pressed = false;
-                            Some(TankCommand::Drive(1))
-                        }
-                        _ => None,
-                    }
-                } else if key == self.left {
-                    match state {
-                        ElementState::Pressed if !self.left_pressed => {
-                            self.left_pressed = true;
-                            Some(TankCommand::Rotate(-1))
-                        }
-                        ElementState::Released if self.left_pressed => {
-                            self.left_pressed = false;
-                            Some(TankCommand::Rotate(1))
-                        }
-                        _ => None,
-                    }
-                } else if key == self.right {
-                    match state {
-                        ElementState::Pressed if !self.right_pressed => {
-                            self.right_pressed = true;
-                            Some(TankCommand::Rotate(1))
-                        }
-                        ElementState::Released if self.right_pressed => {
-                            self.right_pressed = false;
-                            Some(TankCommand::Rotate(-1))
-                        }
-                        _ => None,
-                    }
-                } else if key == self.fire {
-                    match state {
-                        ElementState::Pressed if !self.fire_pressed => {
-                            self.fire_pressed = true;
-                            Some(TankCommand::Fire(true))
-                        }
-                        ElementState::Released if self.fire_pressed => {
-                            self.fire_pressed = false;
-                            Some(TankCommand::Fire(false))
-                        }
-                        _ => None,
-                    }
-                } else {
-                    None
-                }
-            }
-            _ => None,
-        }
-    }
 }
 
 pub struct TankSystem;
@@ -390,6 +272,7 @@ impl System for TankSystem {
                     Global2::new(na::Translation2::new(pos.x, pos.y).into()),
                     Bullet,
                     body,
+                    #[cfg(feature = "visible")]
                     Sprite {
                         world: Rect {
                             left: -0.05,
@@ -401,6 +284,7 @@ impl System for TankSystem {
                         tex: Rect::ONE_QUAD,
                         layer: 0,
                     },
+                    #[cfg(feature = "visible")]
                     Material {
                         albedo_factor: [OrderedFloat(1.0), OrderedFloat(0.8), OrderedFloat(0.2)],
                         ..Default::default()
@@ -433,6 +317,7 @@ impl System for BulletSystem {
         }
 
         for e in despawn {
+            #[cfg(feature = "visible")]
             if let Ok(iso) = cx.world.get::<Global2>(e).map(|g| g.iso) {
                 cx.world.spawn((
                     Global2::new(iso),
@@ -461,4 +346,5 @@ impl System for BulletSystem {
     }
 }
 
+#[cfg(feature = "visible")]
 pub type TankAnimationSystem = SpriteGraphAnimationSystem<TankState, TankAnimTransitionRule>;

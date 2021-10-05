@@ -9,7 +9,7 @@ pub struct NodeContext<'a> {
     pub graphics: &'a mut Graphics,
     pub world: &'a mut World,
     pub res: &'a mut Res,
-    scope: &'a Scope<'a>,
+    pub scope: &'a Scope<'a>,
     pub clock: ClockIndex,
 }
 

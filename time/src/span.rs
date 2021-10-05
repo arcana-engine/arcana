@@ -308,6 +308,12 @@ impl From<Duration> for TimeSpan {
     }
 }
 
+impl From<TimeSpan> for Duration {
+    fn from(span: TimeSpan) -> Self {
+        Duration::new(span.as_seconds(), (span.as_nanos() % 1000000000) as u32)
+    }
+}
+
 impl fmt::Debug for TimeSpan {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         fmt::Display::fmt(self, f)

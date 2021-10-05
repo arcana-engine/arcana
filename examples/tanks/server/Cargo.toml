@@ -1,5 +1,5 @@
 [package]
-name = "tanks"
+name = "tanks-server"
 version = "0.1.0"
 edition = "2018"
 authors = ["Zakarum <zakarumych@ya.ru>"]
@@ -7,7 +7,8 @@ license = "MIT OR Apache-2.0"
 publish = false
 
 [dependencies]
-arcana = { path = "../..", features = ["physics2d"], default-features = false }
+tanks = { path = ".." }
+arcana = { path = "../../..", features = ["physics2d", "server"], default-features = false }
 color-eyre = "0.5"
 eyre = "0.6"
 futures = "0.3"
@@ -18,3 +19,5 @@ tracing = "0.1"
 ordered-float = "2.1"
 uuid = "0.8"
 thiserror = "1.0"
+tokio = { version = "1.0", features = ["net"] }
+alkahest = "0.1"

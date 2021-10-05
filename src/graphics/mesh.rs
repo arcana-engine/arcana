@@ -461,7 +461,6 @@ fn topology_triangles() -> PrimitiveTopology {
 #[cfg(feature = "genmesh")]
 impl Mesh {
     pub fn cube<V>(
-        extent: na::Vector3<f32>,
         usage: BufferUsage,
         cx: &mut Graphics,
         index_type: IndexType,
@@ -485,7 +484,13 @@ impl Mesh {
         cx: &mut Graphics,
         index_type: IndexType,
     ) -> Result<Self, OutOfMemory> {
-        Self::from_generator_pos(&genmesh::generators::Cube::new(), usage, cx, index_type)
+        Self::from_generator_pos(
+            &genmesh::generators::Cube::new(),
+            extent,
+            usage,
+            cx,
+            index_type,
+        )
     }
 
     pub fn cube_pos_norm(
@@ -494,7 +499,13 @@ impl Mesh {
         cx: &mut Graphics,
         index_type: IndexType,
     ) -> Result<Self, OutOfMemory> {
-        Self::from_generator_pos_norm(&genmesh::generators::Cube::new(), usage, cx, index_type)
+        Self::from_generator_pos_norm(
+            &genmesh::generators::Cube::new(),
+            extent,
+            usage,
+            cx,
+            index_type,
+        )
     }
 
     pub fn cube_pos_norm_fixed_color<C>(
@@ -509,6 +520,7 @@ impl Mesh {
     {
         Self::from_generator_pos_norm_fixed_color(
             &genmesh::generators::Cube::new(),
+            extent,
             usage,
             cx,
             index_type,
@@ -518,6 +530,7 @@ impl Mesh {
 
     pub fn from_generator_pos<G>(
         generator: &G,
+        extent: na::Vector3<f32>,
         usage: BufferUsage,
         cx: &mut Graphics,
         index_type: IndexType,
@@ -527,12 +540,13 @@ impl Mesh {
             + genmesh::generators::IndexedPolygon<genmesh::Quad<usize>>,
     {
         Self::from_generator(generator, usage, cx, index_type, |v| {
-            Position3(v.pos.into())
+            Position3([v.pos.x * extent.x, v.pos.y * extent.y, v.pos.z * extent.z])
         })
     }
 
     pub fn from_generator_pos_norm<G>(
         generator: &G,
+        extent: na::Vector3<f32>,
         usage: BufferUsage,
         cx: &mut Graphics,
         index_type: IndexType,
@@ -542,12 +556,16 @@ impl Mesh {
             + genmesh::generators::IndexedPolygon<genmesh::Quad<usize>>,
     {
         Self::from_generator(generator, usage, cx, index_type, |v| {
-            V2(Position3(v.pos.into()), Normal3(v.normal.into()))
+            V2(
+                Position3([v.pos.x * extent.x, v.pos.y * extent.y, v.pos.z * extent.z]),
+                Normal3(v.normal.into()),
+            )
         })
     }
 
     pub fn from_generator_pos_norm_fixed_color<G, C>(
         generator: &G,
+        extent: na::Vector3<f32>,
         usage: BufferUsage,
         cx: &mut Graphics,
         index_type: IndexType,
@@ -559,7 +577,11 @@ impl Mesh {
         C: VertexAttribute,
     {
         Self::from_generator(generator, usage, cx, index_type, |v| {
-            V3(Position3(v.pos.into()), Normal3(v.pos.into()), color)
+            V3(
+                Position3([v.pos.x * extent.x, v.pos.y * extent.y, v.pos.z * extent.z]),
+                Normal3(v.pos.into()),
+                color,
+            )
         })
     }
 
@@ -601,9 +623,7 @@ impl Mesh {
 
                         polygon.emit_triangles(|triangle| {
                             indices.push(triangle.x);
-
                             indices.push(triangle.y);
-
                             indices.push(triangle.z);
                         });
 
@@ -641,9 +661,7 @@ impl Mesh {
 
                         polygon.emit_triangles(|triangle| {
                             indices.push(triangle.x);
-
                             indices.push(triangle.y);
-
                             indices.push(triangle.z);
                         });
 

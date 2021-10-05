@@ -1,5 +1,5 @@
 use {
-    crate::{control::Control, graphics::Graphics, resources::Res, system::SystemContext},
+    crate::{resources::Res, system::SystemContext},
     goods::Loader,
     hecs::World,
     scoped_arena::Scope,
@@ -12,6 +12,9 @@ use {
     },
 };
 
+#[cfg(feature = "visible")]
+use crate::{control::Control, graphics::Graphics};
+
 /// Context in which [`System`] runs.
 pub struct TaskContext<'a> {
     /// Main world.
@@ -20,20 +23,22 @@ pub struct TaskContext<'a> {
     /// Resources map.
     pub res: &'a mut Res,
 
-    /// Input controllers.
-    pub control: &'a mut Control,
-
     /// Task spawner,
     pub spawner: &'a mut Spawner,
-
-    /// Graphics context.
-    pub graphics: &'a mut Graphics,
 
     /// Asset loader
     pub loader: &'a Loader,
 
     /// Arena allocator for allocations in hot-path.
     pub scope: &'a Scope<'a>,
+
+    /// Input controllers.
+    #[cfg(feature = "visible")]
+    pub control: &'a mut Control,
+
+    /// Graphics context.
+    #[cfg(feature = "visible")]
+    pub graphics: &'a mut Graphics,
 }
 
 impl<'a> From<SystemContext<'a>> for TaskContext<'a> {
@@ -41,11 +46,13 @@ impl<'a> From<SystemContext<'a>> for TaskContext<'a> {
         TaskContext {
             world: cx.world,
             res: cx.res,
-            control: cx.control,
             spawner: cx.spawner,
-            graphics: cx.graphics,
             loader: cx.loader,
             scope: &*cx.scope,
+            #[cfg(feature = "visible")]
+            control: cx.control,
+            #[cfg(feature = "visible")]
+            graphics: cx.graphics,
         }
     }
 }
@@ -62,11 +69,13 @@ impl<'a> TaskContext<'a> {
         TaskContext {
             res: self.res,
             world: self.world,
-            control: self.control,
             spawner: self.spawner,
-            graphics: self.graphics,
             loader: self.loader,
             scope: self.scope,
+            #[cfg(feature = "visible")]
+            control: self.control,
+            #[cfg(feature = "visible")]
+            graphics: self.graphics,
         }
     }
 }

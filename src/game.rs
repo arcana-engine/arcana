@@ -1,40 +1,55 @@
 use {
     crate::{
         clocks::{Clocks, TimeSpan},
-        control::Control,
-        event::{Event, Loop, WindowEvent},
-        fps::FpsMeter,
-        funnel::Funnel,
-        graphics::{Graphics, Renderer, RendererContext},
         lifespan::LifeSpanSystem,
         resources::Res,
         scene::SceneSystem,
         system::{Scheduler, SystemContext},
         task::{Executor, Spawner, TaskContext},
-        viewport::Viewport,
     },
     eyre::WrapErr,
     goods::Loader,
-    hecs::{DynamicBundle, World},
+    hecs::World,
     scoped_arena::Scope,
     std::{future::Future, path::Path, time::Duration},
+};
+
+#[cfg(feature = "visible")]
+use {
+    crate::{
+        control::Control,
+        event::{Event, Loop, WindowEvent},
+        fps::FpsMeter,
+        funnel::Funnel,
+        graphics::{Graphics, Renderer, RendererContext},
+        hecs::DynamicBundle,
+        viewport::Viewport,
+    },
     winit::window::{Window, WindowBuilder},
 };
 
-#[cfg(any(feature = "2d", feature = "3d"))]
+#[cfg(all(any(feature = "2d", feature = "3d"), feature = "visible"))]
 use crate::graphics::renderer::forward::ForwardRenderer;
 
-#[cfg(feature = "2d")]
+#[cfg(feature = "client")]
+use crate::net::client::ClientSystem;
+
+#[cfg(feature = "server")]
+use crate::net::server::ServerSystem;
+
+#[cfg(all(feature = "2d", feature = "visible"))]
 use crate::{camera::Camera2, graphics::renderer::sprite::SpriteDraw, scene::Global2};
 
 #[cfg(feature = "3d")]
 use crate::{camera::Camera3, graphics::renderer::basic::BasicDraw, scene::Global3};
 
+#[cfg(feature = "visible")]
 #[repr(transparent)]
 pub struct MainWindow {
     window: Window,
 }
 
+#[cfg(feature = "visible")]
 impl std::ops::Deref for MainWindow {
     type Target = Window;
 
@@ -43,6 +58,7 @@ impl std::ops::Deref for MainWindow {
     }
 }
 
+#[cfg(feature = "visible")]
 impl MainWindow {
     fn new(event_loop: &Loop) -> eyre::Result<Self> {
         Ok(MainWindow {
@@ -53,8 +69,10 @@ impl MainWindow {
     }
 }
 
+#[cfg(feature = "visible")]
 struct MainWindowFunnel;
 
+#[cfg(feature = "visible")]
 impl Funnel<Event> for MainWindowFunnel {
     fn filter(&mut self, res: &mut Res, _world: &mut World, event: Event) -> Option<Event> {
         match event {
@@ -84,13 +102,27 @@ pub struct Game {
     pub res: Res,
     pub world: World,
     pub scheduler: Scheduler,
-    pub control: Control,
-    pub graphics: Graphics,
-    pub renderer: Option<Box<dyn Renderer + Send>>,
-    pub viewport: Viewport,
     pub loader: Loader,
     pub spawner: Spawner,
     pub scope: Scope<'static>,
+
+    #[cfg(feature = "visible")]
+    pub control: Control,
+
+    #[cfg(feature = "visible")]
+    pub graphics: Graphics,
+
+    #[cfg(feature = "visible")]
+    pub renderer: Option<Box<dyn Renderer>>,
+
+    #[cfg(feature = "visible")]
+    pub viewport: Viewport,
+
+    #[cfg(feature = "client")]
+    pub client: Option<ClientSystem>,
+
+    #[cfg(feature = "server")]
+    pub server: Option<ServerSystem>,
 }
 
 impl Game {
@@ -98,16 +130,18 @@ impl Game {
         TaskContext {
             world: &mut self.world,
             res: &mut self.res,
-            control: &mut self.control,
             spawner: &mut self.spawner,
-            graphics: &mut self.graphics,
             loader: &mut self.loader,
             scope: &mut self.scope,
+            #[cfg(feature = "visible")]
+            control: &mut self.control,
+            #[cfg(feature = "visible")]
+            graphics: &mut self.graphics,
         }
     }
 }
 
-#[cfg(feature = "2d")]
+#[cfg(all(feature = "2d", feature = "visible"))]
 pub fn game2<F, Fut>(f: F)
 where
     F: FnOnce(Game) -> Fut + 'static,
@@ -119,7 +153,7 @@ where
     })
 }
 
-#[cfg(feature = "3d")]
+#[cfg(all(feature = "3d", feature = "visible"))]
 pub fn game3<F, Fut>(f: F)
 where
     F: FnOnce(Game) -> Fut + 'static,
@@ -131,7 +165,8 @@ where
     })
 }
 
-fn game<F, Fut, R, C>(f: F, r: R)
+#[cfg(feature = "visible")]
+pub fn game<F, Fut, R, C>(f: F, r: R)
 where
     F: FnOnce(Game) -> Fut + 'static,
     Fut: Future<Output = eyre::Result<Game>>,
@@ -201,6 +236,12 @@ where
             loader,
             spawner,
             scope: Scope::new(),
+
+            #[cfg(feature = "client")]
+            client: None,
+
+            #[cfg(feature = "server")]
+            server: None,
         })
         .await
         .wrap_err_with(|| "Game startup failed")?;
@@ -216,6 +257,12 @@ where
             mut loader,
             mut spawner,
             mut scope,
+
+            #[cfg(feature = "client")]
+            mut client,
+
+            #[cfg(feature = "server")]
+            mut server,
         } = game;
 
         scope.reset();
@@ -246,13 +293,13 @@ where
 
         // Begin game loop.
         loop {
-            // Loop through new  events.
-            let mut funnel = GameFunnel {
-                viewport: &mut viewport,
-                control: &mut control,
-            };
-
             loop {
+                // Loop through new  events.
+                let mut funnel = GameFunnel {
+                    viewport: &mut viewport,
+                    control: &mut control,
+                };
+
                 let event = event_loop.next_event(Duration::new(0, 1_000_000)).await;
 
                 // Filter event
@@ -270,13 +317,13 @@ where
                                 TaskContext {
                                     world: &mut world,
                                     res: &mut res,
-                                    control: &mut control,
                                     spawner: &mut spawner,
-                                    graphics: &mut graphics,
                                     loader: &mut loader,
                                     scope: &mut scope,
+                                    control: &mut control,
+                                    graphics: &mut graphics,
                                 },
-                                cfg.teardown_timeout,
+                                cfg.teardown_timeout.into(),
                             )
                             .await;
 
@@ -287,24 +334,59 @@ where
                         graphics.wait_idle();
                         return Ok(());
                     }
+                    None => {
+                        executor
+                            .run_once(TaskContext {
+                                world: &mut world,
+                                res: &mut res,
+                                spawner: &mut spawner,
+                                loader: &mut loader,
+                                scope: &mut scope,
+
+                                #[cfg(feature = "visible")]
+                                control: &mut control,
+
+                                #[cfg(feature = "visible")]
+                                graphics: &mut graphics,
+                            })
+                            .wrap_err_with(|| "Task returned error")?;
+                    }
                     _ => {}
                 }
             }
 
             let clock = clocks.advance();
 
+            let mut cx = SystemContext {
+                world: &mut world,
+                res: &mut res,
+                control: &mut control,
+                spawner: &mut spawner,
+                graphics: &mut graphics,
+                loader: &mut loader,
+                scope: &mut scope,
+                clock,
+            };
+
             scheduler
-                .run(SystemContext {
-                    world: &mut world,
-                    res: &mut res,
-                    control: &mut control,
-                    spawner: &mut spawner,
-                    graphics: &mut graphics,
-                    loader: &mut loader,
-                    scope: &mut scope,
-                    clock,
-                })
+                .run(cx.reborrow())
                 .wrap_err_with(|| "System returned error")?;
+
+            #[cfg(feature = "client")]
+            if let Some(client) = &mut client {
+                client
+                    .run(cx.reborrow())
+                    .await
+                    .wrap_err("Client system run failed")?;
+            }
+
+            #[cfg(feature = "server")]
+            if let Some(server) = &mut server {
+                server
+                    .run(cx.reborrow())
+                    .await
+                    .wrap_err("Server system run failed")?;
+            }
 
             executor.append(&mut spawner);
             executor
@@ -345,11 +427,147 @@ where
     });
 }
 
+#[cfg(not(feature = "visible"))]
+pub fn game<F, Fut>(f: F)
+where
+    F: FnOnce(Game) -> Fut + 'static,
+    Fut: Future<Output = eyre::Result<Game>>,
+{
+    use crate::clocks;
+
+    crate::install_eyre_handler();
+    crate::install_tracing_subscriber();
+
+    let runtime = tokio::runtime::Builder::new_current_thread()
+        .enable_all()
+        .build()
+        .expect("Failed to build tokio runtime");
+
+    // Load config.
+    let cfg = load_default_config();
+
+    // Initialize asset loader.
+    let mut loader_builder = Loader::builder();
+    if let Some(path) = cfg.treasury {
+        let treasury = goods::source::treasury::TreasurySource::open(path)
+            .expect("Failed to initialize treasury loader");
+        loader_builder.add(treasury);
+    }
+    let loader = loader_builder.build();
+
+    // Create new world with camera.
+    let mut world = World::new();
+
+    let spawner = Spawner::new();
+    let mut res = Res::new();
+
+    let main_step = cfg.main_step;
+
+    runtime.block_on(async move {
+        // Configure game with closure.
+        let game = f(Game {
+            res,
+            world,
+            scheduler: Scheduler::new(),
+            loader,
+            spawner,
+            scope: Scope::new(),
+
+            #[cfg(feature = "client")]
+            client: None,
+
+            #[cfg(feature = "server")]
+            server: None,
+        })
+        .await
+        .wrap_err_with(|| "Game startup failed")?;
+
+        let Game {
+            mut res,
+            mut world,
+            mut scheduler,
+            mut loader,
+            mut spawner,
+            mut scope,
+
+            #[cfg(feature = "client")]
+            mut client,
+
+            #[cfg(feature = "server")]
+            mut server,
+        } = game;
+
+        scope.reset();
+
+        // Start the clocks.
+        let mut clocks = Clocks::new();
+        let mut next = clocks.get_start();
+
+        // Schedule default systems.
+        scheduler.add_ticking_system(LifeSpanSystem);
+        scheduler.add_ticking_system(SceneSystem);
+
+        let mut executor = Executor::new();
+
+        loop {
+            let clock = clocks.advance();
+
+            let mut cx = SystemContext {
+                world: &mut world,
+                res: &mut res,
+                spawner: &mut spawner,
+                loader: &mut loader,
+                scope: &mut scope,
+                clock,
+            };
+
+            scheduler
+                .run(cx.reborrow())
+                .wrap_err_with(|| "System returned error")?;
+
+            #[cfg(feature = "client")]
+            if let Some(client) = &mut client {
+                client
+                    .run(cx.reborrow())
+                    .await
+                    .wrap_err("Client system run failed")?;
+            }
+
+            #[cfg(feature = "server")]
+            if let Some(server) = &mut server {
+                server
+                    .run(cx.reborrow())
+                    .await
+                    .wrap_err("Server system run failed")?;
+            }
+
+            executor.append(&mut spawner);
+            executor
+                .run_once(TaskContext {
+                    world: &mut world,
+                    res: &mut res,
+                    spawner: &mut spawner,
+                    loader: &mut loader,
+                    scope: &mut scope,
+                })
+                .wrap_err_with(|| "Task returned error")?;
+
+            next += Duration::from(main_step);
+            tokio::time::sleep_until(next.into()).await;
+
+            scope.reset();
+        }
+        Ok::<(), eyre::Report>(())
+    });
+}
+
+#[cfg(feature = "visible")]
 struct GameFunnel<'a> {
     viewport: &'a mut Viewport,
     control: &'a mut Control,
 }
 
+#[cfg(feature = "visible")]
 impl Funnel<Event> for GameFunnel<'_> {
     fn filter(&mut self, res: &mut Res, world: &mut World, event: Event) -> Option<Event> {
         match Funnel::filter(&mut MainWindowFunnel, res, world, event) {
@@ -371,11 +589,20 @@ struct Config {
     treasury: Option<Box<Path>>,
 
     #[serde(default = "default_teardown_timeout")]
-    teardown_timeout: Duration,
+    teardown_timeout: TimeSpan,
+
+    #[cfg(not(feature = "visible"))]
+    #[serde(default = "default_main_step")]
+    main_step: TimeSpan,
 }
 
-fn default_teardown_timeout() -> Duration {
-    Duration::from_secs(5)
+fn default_teardown_timeout() -> TimeSpan {
+    TimeSpan::from_seconds(5)
+}
+
+#[cfg(not(feature = "visible"))]
+fn default_main_step() -> TimeSpan {
+    TimeSpan::from_seconds(5)
 }
 
 #[tracing::instrument]

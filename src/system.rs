@@ -1,8 +1,6 @@
 use {
     crate::{
         clocks::{ClockIndex, TimeSpan, TimeStamp},
-        control::Control,
-        graphics::Graphics,
         resources::Res,
         task::{Spawner, TaskContext},
     },
@@ -11,6 +9,9 @@ use {
     hecs::World,
     scoped_arena::Scope,
 };
+
+#[cfg(feature = "visible")]
+use crate::{control::Control, graphics::Graphics};
 
 /// Default value for fixed systems tick_span
 pub const DEFAULT_TICK_SPAN: TimeSpan = TimeSpan::from_micros(20_000);
@@ -27,14 +28,8 @@ pub struct SystemContext<'a> {
     /// All singleton values are stored here and accessible by type.
     pub res: &'a mut Res,
 
-    /// Control hub to make entities controlled.
-    pub control: &'a mut Control,
-
     /// Spawns tasks that will be executed asynchronously.
     pub spawner: &'a mut Spawner,
-
-    /// Graphics context.
-    pub graphics: &'a mut Graphics,
 
     /// Asset loader.
     /// Assets are loaded asynchronously,
@@ -46,6 +41,14 @@ pub struct SystemContext<'a> {
 
     /// Clock index.
     pub clock: ClockIndex,
+
+    /// Control hub to make entities controlled.
+    #[cfg(feature = "visible")]
+    pub control: &'a mut Control,
+
+    /// Graphics context.
+    #[cfg(feature = "visible")]
+    pub graphics: &'a mut Graphics,
 }
 
 impl<'a> SystemContext<'a> {
@@ -54,12 +57,14 @@ impl<'a> SystemContext<'a> {
         SystemContext {
             world: self.world,
             res: self.res,
-            control: self.control,
             spawner: self.spawner,
-            graphics: self.graphics,
             loader: self.loader,
             scope: self.scope,
             clock: self.clock,
+            #[cfg(feature = "visible")]
+            control: self.control,
+            #[cfg(feature = "visible")]
+            graphics: self.graphics,
         }
     }
 
@@ -68,11 +73,15 @@ impl<'a> SystemContext<'a> {
         TaskContext {
             world: self.world,
             res: self.res,
-            control: self.control,
             spawner: self.spawner,
-            graphics: self.graphics,
             loader: self.loader,
             scope: &self.scope,
+
+            #[cfg(feature = "visible")]
+            control: self.control,
+
+            #[cfg(feature = "visible")]
+            graphics: self.graphics,
         }
     }
 }
@@ -138,12 +147,14 @@ impl Scheduler {
     }
 
     /// Adds system to the app.
+    #[cfg(feature = "visible")]
     pub fn with_system(mut self, system: impl System) -> Self {
         self.var_systems.push(Box::new(system));
         self
     }
 
     /// Adds system to the app.
+    #[cfg(feature = "visible")]
     pub fn add_system(&mut self, system: impl System) -> &mut Self {
         self.var_systems.push(Box::new(system));
         self
