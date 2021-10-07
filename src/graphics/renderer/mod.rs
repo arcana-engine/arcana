@@ -3,6 +3,7 @@ use sierra::{Encoder, RenderPassEncoder};
 
 #[cfg(feature = "3d")]
 pub mod basic;
+
 #[cfg(feature = "2d")]
 pub mod sprite;
 
@@ -118,12 +119,14 @@ where
     }
 }
 
+#[allow(unused)]
 #[inline(always)]
 fn mat4_na_to_sierra(m: na::Matrix4<f32>) -> sierra::mat4<f32> {
     let array: [[f32; 4]; 4] = m.into();
     sierra::mat4::from(array)
 }
 
+#[allow(unused)]
 #[inline(always)]
 fn mat3_na_to_sierra(m: na::Matrix3<f32>) -> sierra::mat3<f32> {
     let array: [[f32; 3]; 3] = m.into();

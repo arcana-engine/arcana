@@ -20,6 +20,7 @@ use crate::camera::Camera3;
 pub struct Viewport {
     camera: Entity,
     window: WindowId,
+    #[allow(unused)]
     surface: Surface,
     swapchain: Swapchain,
     needs_redraw: bool,
@@ -74,11 +75,13 @@ impl Viewport {
 
 impl Funnel<Event> for Viewport {
     fn filter(&mut self, _res: &mut Res, world: &mut World, event: Event) -> Option<Event> {
+        let _ = &world;
         match event {
             Event::RedrawRequested(id) if id == self.window => {
                 self.needs_redraw = true;
                 None
             }
+            #[cfg(any(feature = "2d", feature = "3d"))]
             Event::WindowEvent {
                 event: WindowEvent::Resized(size),
                 window_id,

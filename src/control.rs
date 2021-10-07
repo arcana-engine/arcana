@@ -206,12 +206,22 @@ pub struct CommandQueue<T> {
 }
 
 impl<T> CommandQueue<T> {
+    pub fn new() -> Self {
+        CommandQueue {
+            commands: VecDeque::new(),
+        }
+    }
+
     pub fn drain(&mut self) -> impl Iterator<Item = T> + '_ {
         self.commands.drain(..)
     }
 
     pub fn iter(&self) -> impl Iterator<Item = &T> + '_ {
         self.commands.iter()
+    }
+
+    pub fn enque(&mut self, commands: impl IntoIterator<Item = T>) {
+        self.commands.extend(commands)
     }
 }
 
@@ -237,11 +247,13 @@ pub enum AssumeControlError {
 }
 
 /// Marker component. Marks that entity is being controlled.
+#[cfg(feature = "visible")]
 pub struct Controlled {
     // Forbid construction outside of this module.
     __: (),
 }
 
+#[cfg(feature = "visible")]
 const CONTROLLED: Controlled = Controlled { __: () };
 
 /// A kind of [`InputController`]s that yield commands and sends them to a command queue of an entity.

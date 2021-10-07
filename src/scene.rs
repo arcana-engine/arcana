@@ -1,13 +1,19 @@
-use {
-    crate::{
-        bitset::ArenaBitSet,
-        debug::EntityRefDisplay as _,
-        system::{System, SystemContext},
-    },
-    hecs::{Entity, EntityRef, World},
-    scoped_arena::Scope,
-    std::fmt::{self, Display},
+use std::fmt::{self, Display};
+
+use hashbrown::HashSet;
+use hecs::{Entity, EntityRef, World};
+use scoped_arena::Scope;
+
+use crate::{
+    debug::EntityRefDisplay as _,
+    system::{System, SystemContext},
 };
+
+#[cfg(feature = "client")]
+use crate::net::client;
+
+#[cfg(feature = "server")]
+use crate::net::server;
 
 #[cfg(feature = "2d")]
 #[derive(Clone, Copy, Debug, PartialEq)]
@@ -228,11 +234,11 @@ impl System for SceneSystem {
         let mut despawn = Vec::new_in(&*cx.scope);
 
         #[cfg(feature = "2d")]
-        let mut updated = ArenaBitSet::new();
+        let mut updated = HashSet::new_in(&*cx.scope);
 
         #[cfg(feature = "2d")]
         for (entity, local) in cx.world.query::<&Local2>().with::<Global2>().iter() {
-            if !updated.set(entity.id(), &*cx.scope) {
+            if updated.insert(entity.id()) {
                 update_global_2(
                     entity,
                     cx.world.entity(entity).unwrap(),
@@ -246,11 +252,11 @@ impl System for SceneSystem {
         }
 
         #[cfg(feature = "3d")]
-        let mut updated = ArenaBitSet::new();
+        let mut updated = HashSet::new_in(&*cx.scope);
 
         #[cfg(feature = "3d")]
         for (entity, local) in cx.world.query::<&Local3>().with::<Global3>().iter() {
-            if !updated.set(entity.id(), &*cx.scope) {
+            if updated.insert(entity.id()) {
                 update_global_3(
                     entity,
                     cx.world.entity(entity).unwrap(),
@@ -279,7 +285,7 @@ fn update_global_2<'a, 'b>(
     local: &Local2,
     world: &'a World,
     scope: &'b Scope<'_>,
-    updated: &mut ArenaBitSet<'b>,
+    updated: &mut HashSet<u32, ahash::RandomState, &'b Scope<'_>>,
     despawn: &mut Vec<Entity, &'b Scope<'_>>,
 ) -> Option<hecs::RefMut<'a, Global2>> {
     let parent_ref = match world.entity(local.parent) {
@@ -317,7 +323,7 @@ fn update_global_2<'a, 'b>(
             }
         }
         Some(parent_local) => {
-            let parent_global = if !updated.set(local.parent.id(), scope) {
+            let parent_global = if updated.insert(local.parent.id()) {
                 update_global_2(
                     local.parent,
                     parent_ref,
@@ -356,7 +362,7 @@ fn update_global_3<'a, 'b>(
     local: &Local3,
     world: &'a World,
     scope: &'b Scope<'_>,
-    updated: &mut ArenaBitSet<'b>,
+    updated: &mut HashSet<u32, ahash::RandomState, &'b Scope<'_>>,
     despawn: &mut Vec<Entity, &'b Scope<'_>>,
 ) -> Option<hecs::RefMut<'a, Global3>> {
     let parent_ref = match world.entity(local.parent) {
@@ -394,7 +400,7 @@ fn update_global_3<'a, 'b>(
             }
         }
         Some(parent_local) => {
-            let parent_global = if !updated.set(local.parent.id(), scope) {
+            let parent_global = if updated.insert(local.parent.id()) {
                 update_global_3(
                     local.parent,
                     parent_ref,
@@ -423,5 +429,31 @@ fn update_global_3<'a, 'b>(
                 }
             }
         }
+    }
+}
+
+#[cfg(feature = "client")]
+impl client::ReplicaSetElem for Global2 {
+    type Component = Self;
+    type Replica = [f32; 3];
+
+    fn build(unpacked: [f32; 3]) -> Self {
+        Global2 {
+            iso: na::Isometry2::new([unpacked[1], unpacked[2]].into(), unpacked[0]),
+        }
+    }
+}
+
+#[cfg(feature = "server")]
+impl<'a> server::ReplicaSetElem<'a> for Global2 {
+    type Query = &'static Self;
+    type Replica = [f32; 3];
+    type ReplicaPack = [f32; 3];
+
+    fn replicate<'b>(item: &'b Self, _scope: &'a Scope<'_>) -> [f32; 3] {
+        let angle = item.iso.rotation.angle();
+        let x = item.iso.translation.vector.x;
+        let y = item.iso.translation.vector.y;
+        [angle, x, y]
     }
 }

@@ -44,9 +44,6 @@ pub enum Event {
 
     /// Next loop.
     Loop,
-
-    /// Next loop.
-    Exit,
 }
 
 impl Event {

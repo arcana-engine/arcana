@@ -35,7 +35,6 @@ impl<'a, T> ScopedVecIter<'a, T> {
     pub fn new(vec: Vec<T, &'a Scope<'_>>) -> Self {
         unsafe {
             let mut vec = ManuallyDrop::new(vec);
-            let alloc = ptr::read(vec.allocator());
             let begin = vec.as_mut_ptr();
             let end = if mem::size_of::<T>() == 0 {
                 (begin as *const i8).wrapping_offset(vec.len() as isize) as *const T
@@ -117,7 +116,7 @@ impl<'a, T> Iterator for ScopedVecIter<'a, T> {
             // purposefully don't use 'ptr.offset' because for
             // vectors with 0-size elements this would return the
             // same pointer.
-            self.ptr = unsafe { (self.ptr as *const i8).wrapping_offset(1) as *mut T };
+            self.ptr = (self.ptr as *const i8).wrapping_offset(1) as *mut T;
 
             // Make up a value of this ZST.
             Some(unsafe { mem::zeroed() })
@@ -152,7 +151,7 @@ impl<'a, T> DoubleEndedIterator for ScopedVecIter<'a, T> {
             None
         } else if mem::size_of::<T>() == 0 {
             // See above for why 'ptr.offset' isn't used
-            self.end = unsafe { (self.end as *const i8).wrapping_offset(-1) as *mut T };
+            self.end = (self.end as *const i8).wrapping_offset(-1) as *mut T;
 
             // Make up a value of this ZST.
             Some(unsafe { mem::zeroed() })

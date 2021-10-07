@@ -193,6 +193,8 @@ impl DrawNode for SpriteDraw {
             sprites.push(instance);
         }
 
+        tracing::debug!("Rendering {} sprites", sprites.len());
+
         let updated = self.set.update(
             &self.descriptors,
             fence_index,

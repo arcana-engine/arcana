@@ -3,7 +3,7 @@
 #[cfg(feature = "3d")]
 use crate::{
     control::{CommandQueue, InputCommander, InputEvent},
-    event::{DeviceEvent, ElementState, KeyboardInput, VirtualKeyCode},
+    event::{ElementState, KeyboardInput, VirtualKeyCode},
     system::{System, SystemContext},
 };
 
@@ -127,6 +127,7 @@ impl Camera3 {
 
     /// Converts point in screen space into ray in world space.
     /// Screen space Z is depth.
+    #[cfg(feature = "parry3d")]
     pub fn screen_to_world_ray(
         &self,
         view: &na::Affine3<f32>,

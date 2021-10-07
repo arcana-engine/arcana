@@ -13,7 +13,7 @@
 
 pub mod anim;
 pub mod assets;
-mod bitset;
+// mod bitset;
 mod clocks;
 mod debug;
 mod game;
@@ -29,7 +29,10 @@ pub mod physics3;
 
 mod control;
 mod resources;
+
+#[cfg(any(feature = "2d", feature = "3d"))]
 mod scene;
+
 mod scoped_vec_iter;
 mod system;
 mod task;
@@ -47,7 +50,7 @@ pub mod graphics;
 #[cfg(feature = "visible")]
 mod viewport;
 
-pub use {hecs, na, scoped_arena};
+pub use {bincode, hecs, na, scoped_arena};
 
 #[cfg(feature = "visible")]
 pub use sierra;
@@ -60,10 +63,13 @@ pub use self::{
     debug::{DebugInfo, EntityDebugInfo, EntityDisplay, EntityRefDebugInfo, EntityRefDisplay},
     game::*,
     resources::Res,
-    scene::*,
+    scoped_vec_iter::ScopedVecIter,
     system::{Scheduler, System, SystemContext},
-    task::{AsyncTaskContext, Spawner, TaskContext},
+    task::{with_async_task_context, Spawner, TaskContext},
 };
+
+#[cfg(any(feature = "2d", feature = "3d"))]
+pub use self::scene::*;
 
 #[cfg(feature = "visible")]
 pub use self::{
@@ -79,7 +85,7 @@ pub use self::{
 /// Installs default eyre handler.
 pub fn install_eyre_handler() {
     if let Err(err) = color_eyre::install() {
-        tracing::error!("Failed to install eyre report handler: {}", err);
+        panic!("Failed to install eyre report handler: {}", err);
     }
 }
 
@@ -92,6 +98,6 @@ pub fn install_tracing_subscriber() {
             .finish()
             .with(tracing_error::ErrorLayer::default()),
     ) {
-        tracing::error!("Failed to install tracing subscriber: {}", err);
+        panic!("Failed to install tracing subscriber: {}", err);
     }
 }

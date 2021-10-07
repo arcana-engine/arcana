@@ -1,16 +1,16 @@
-use {
-    crate::{resources::Res, system::SystemContext},
-    goods::Loader,
-    hecs::World,
-    scoped_arena::Scope,
-    std::{
-        cell::UnsafeCell,
-        future::Future,
-        pin::Pin,
-        task::{Context, Poll},
-        time::{Duration, Instant},
-    },
+use std::{
+    cell::UnsafeCell,
+    future::Future,
+    pin::Pin,
+    ptr::NonNull,
+    task::{Context, Poll},
+    time::{Duration, Instant},
 };
+
+use crate::{resources::Res, system::SystemContext};
+use goods::Loader;
+use hecs::World;
+use scoped_arena::Scope;
 
 #[cfg(feature = "visible")]
 use crate::{control::Control, graphics::Graphics};
@@ -80,56 +80,42 @@ impl<'a> TaskContext<'a> {
     }
 }
 
-pub struct AsyncTaskContext {
-    _priv: (),
+/// Returns borrowed `TaskContext`.
+/// Only usable when called in futures spawned with [`Spawner`].
+///
+/// # Panics
+///
+/// Panics if called outside future spawner with [`Spawner`].
+///
+/// # Safety
+///
+/// ???
+///
+/// ```compile_fail
+/// # fn func<'a>(cx: TaskContext<'a>) {
+/// let cx: TaskContext<'_> = cx;
+/// std::thread::new(move || { cx; })
+/// # }
+/// ```
+///
+/// ```compile_fail
+/// # fn func<'a>(cx: TaskContext<'a>) {
+/// let cx: &TaskContext<'_> = &cx;
+/// std::thread::new(move || { cx; })
+/// # }
+/// ```
+pub fn with_async_task_context<F, R>(f: F) -> R
+where
+    F: for<'a> FnOnce(TaskContext<'a>) -> R,
+{
+    TASK_CONTEXT.with(|tcx| unsafe {
+        let tcx = (&mut *tcx.get())
+            .as_mut()
+            .expect("Called outside task executor");
+
+        f(tcx.from_raw())
+    })
 }
-
-impl AsyncTaskContext {
-    pub fn new() -> Self {
-        AsyncTaskContext { _priv: () }
-    }
-
-    /// Returns borrowed `TaskContext`.
-    /// Only usable when called in futures spawned with [`Spawner`].
-    ///
-    /// # Panics
-    ///
-    /// Panics if called outside future spawner with [`Spawner`].
-    ///
-    /// # Safety
-    ///
-    /// References in returned `TaskContext` are invalidated upon .await or return.
-    /// They cannot be sent outside of the future.
-    ///
-    /// This function is safe as `TaskContext` is not `Send` or `Sync`.
-    ///
-    /// ```compile_fail
-    /// # fn func<'a>(cx: TaskContext<'a>) {
-    /// let cx: TaskContext<'_> = cx;
-    /// std::thread::new(move || { cx; })
-    /// # }
-    /// ```
-    ///
-    /// ```compile_fail
-    /// # fn func<'a>(cx: TaskContext<'a>) {
-    /// let cx: &TaskContext<'_> = &cx;
-    /// std::thread::new(move || { cx; })
-    /// # }
-    /// ```
-    pub fn get(&mut self) -> TaskContext<'_> {
-        TASK_CONTEXT.with(|tcx| unsafe {
-            let tcx = (&mut *tcx.get())
-                .as_mut()
-                .expect("Called outside task executor");
-            extend_system_context_lifetime(tcx.reborrow())
-        })
-    }
-}
-
-unsafe fn extend_system_context_lifetime<'a>(cx: TaskContext<'_>) -> TaskContext<'static> {
-    std::mem::transmute(cx)
-}
-
 /// Task spawner.
 pub struct Spawner {
     new_tasks: Vec<Pin<Box<dyn Future<Output = eyre::Result<()>>>>>,
@@ -165,7 +151,7 @@ impl Executor {
 
     pub fn run_once(&mut self, tcx: TaskContext<'_>) -> eyre::Result<()> {
         TASK_CONTEXT.with(|cell| unsafe {
-            *cell.get() = Some(extend_system_context_lifetime(tcx));
+            *cell.get() = Some(RawTaskContext::into_raw(tcx));
         });
         let _unset = UnsetTaskContext;
 
@@ -207,7 +193,7 @@ impl Executor {
                 }
 
                 TASK_CONTEXT.with(|cell| unsafe {
-                    *cell.get() = Some(extend_system_context_lifetime(me.tcx.reborrow()));
+                    *cell.get() = Some(RawTaskContext::into_raw(me.tcx.reborrow()));
                 });
                 let _unset = UnsetTaskContext;
 
@@ -254,6 +240,48 @@ impl Drop for UnsetTaskContext {
     }
 }
 
+struct RawTaskContext {
+    pub world: NonNull<World>,
+    pub res: NonNull<Res>,
+    pub spawner: NonNull<Spawner>,
+    pub loader: NonNull<Loader>,
+    pub scope: NonNull<u8>,
+    #[cfg(feature = "visible")]
+    pub control: NonNull<Control>,
+    #[cfg(feature = "visible")]
+    pub graphics: NonNull<Graphics>,
+}
+
+impl RawTaskContext {
+    fn into_raw(cx: TaskContext<'_>) -> Self {
+        RawTaskContext {
+            world: NonNull::from(cx.world),
+            res: NonNull::from(cx.res),
+            spawner: NonNull::from(cx.spawner),
+            loader: NonNull::from(cx.loader),
+            scope: NonNull::from(cx.scope).cast(),
+            #[cfg(feature = "visible")]
+            control: NonNull::from(cx.control),
+            #[cfg(feature = "visible")]
+            graphics: NonNull::from(cx.graphics),
+        }
+    }
+
+    unsafe fn from_raw<'a>(&self) -> TaskContext<'a> {
+        TaskContext {
+            world: &mut *self.world.as_ptr(),
+            res: &mut *self.res.as_ptr(),
+            spawner: &mut *self.spawner.as_ptr(),
+            loader: &*self.loader.as_ptr(),
+            scope: &*self.scope.cast().as_ptr(),
+            #[cfg(feature = "visible")]
+            control: &mut *self.control.as_ptr(),
+            #[cfg(feature = "visible")]
+            graphics: &mut *self.graphics.as_ptr(),
+        }
+    }
+}
+
 std::thread_local! {
-    static TASK_CONTEXT: UnsafeCell<Option<TaskContext<'static>>> = UnsafeCell::new(None);
+    static TASK_CONTEXT: UnsafeCell<Option<RawTaskContext>> = UnsafeCell::new(None);
 }

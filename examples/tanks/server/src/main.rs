@@ -2,26 +2,34 @@
 
 use std::net::Ipv4Addr;
 
-use alkahest::Unpacked;
+use alkahest::{Bytes, Unpacked};
 use arcana::{
-    net::server::{RemotePlayer, ServerSystem},
-    timespan,
+    assets::tiles::{TileMap, TileMapComponent},
+    bincode, game,
+    hecs::QueryOneError,
+    na,
+    net::{
+        server::{RemotePlayer, ServerOwned, ServerSystem},
+        PlayerId, ReplicaPrefabSerde, ReplicaSerde,
+    },
+    physics2::Physics2,
+    scoped_arena::Scope,
+    timespan, CommandQueue, Global2, TimeSpan,
 };
 use tokio::net::TcpListener;
 
-use {
-    arcana::{assets::TileMap, game, na, physics2::Physics2, TimeSpan},
-    tanks::*,
-};
+use tanks::*;
 
 struct RemoteTankPlayer {}
 
 impl RemotePlayer for RemoteTankPlayer {
+    type Command = tanks::TankCommand;
     type Info = ();
-    type Input = ();
+    type Input = Bytes;
 
     fn accept(
         info: Unpacked<'_, Self::Info>,
+        pid: PlayerId,
         res: &mut arcana::Res,
         world: &mut arcana::hecs::World,
     ) -> eyre::Result<Self>
@@ -31,31 +39,44 @@ impl RemotePlayer for RemoteTankPlayer {
         Ok(RemoteTankPlayer {})
     }
 
-    fn apply_input(
+    fn replicate_input(
         &mut self,
-        input: Unpacked<'_, Self::Input>,
-        res: &mut arcana::Res,
-        world: &mut arcana::hecs::World,
+        input: &[u8],
+        queue: &mut CommandQueue<tanks::TankCommand>,
+        scope: &Scope<'_>,
     ) {
+        let commands: Vec<tanks::TankCommand> =
+            bincode::deserialize_from(input).expect("Failed to deserialize command");
+        queue.enque(commands);
     }
 }
 
+type ReplicaSet = (ReplicaPrefabSerde<TileMapComponent>, Global2);
+
 fn main() {
     game(|mut game| async move {
-        let listner = TcpListener::bind((Ipv4Addr::LOCALHOST, 0)).await?;
+        // Bind listener for incoming connections.
+        let listener = TcpListener::bind((Ipv4Addr::LOCALHOST, 12345)).await?;
 
-        let server = ServerSystem::new::<RemoteTankPlayer, ()>(listner, timespan!(20ms));
+        // Create server-side game session.
+        let server = ServerSystem::new::<RemoteTankPlayer, ReplicaSet>(listener, timespan!(20ms));
+
+        // Set it to be executed in game loop.
         game.server = Some(server);
 
-        // let _map = TileMap::load_and_spawn(
-        //     &"a20280d4-a3e8-4a2a-8c51-381f021c11a7".parse().unwrap(),
-        //     &na::Isometry2::identity(),
-        //     &game.loader,
-        //     &mut game.res,
-        //     &mut game.world,
-        //     &mut game.graphics,
-        // )
-        // .await?;
+        tracing::info!("START");
+
+        let map = TileMap::load_and_spawn(
+            &"a20280d4-a3e8-4a2a-8c51-381f021c11a7".parse().unwrap(),
+            &na::Isometry2::identity(),
+            &mut game.world,
+            &mut game.res,
+            &game.loader,
+            &mut game.spawner,
+        )
+        .await?;
+
+        game.world.insert_one(map, ServerOwned);
 
         // {
         //     let tank1 = Tank::new(
@@ -72,6 +93,7 @@ fn main() {
         // game.scheduler.add_system(tanks::TankAnimationSystem::new());
         // game.scheduler.add_system(tanks::BulletSystem);
 
+        // Game configured. Run it.
         Ok(game)
     })
 }

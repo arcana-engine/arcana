@@ -110,4 +110,11 @@ impl Res {
             }
         }
     }
+
+    /// Removes resource and returns it.
+    pub fn remove<T: 'static>(&mut self) -> Option<Box<T>> {
+        self.map
+            .remove(&TypeId::of::<T>())
+            .map(|b| b.downcast().unwrap())
+    }
 }

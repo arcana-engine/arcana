@@ -1,3 +1,21 @@
+use std::{collections::HashMap, fmt, sync::Arc};
+
+#[cfg(any(feature = "client", feature = "server"))]
+use alkahest::Bytes;
+
+use goods::{Asset, Loader};
+use hecs::{Entity, World};
+use na;
+use ordered_float::OrderedFloat;
+use rapier2d::{
+    dynamics::RigidBodyBuilder,
+    geometry::{ColliderBuilder, SharedShape},
+};
+use tracing::{instrument, Instrument};
+use uuid::Uuid;
+
+use crate::{prefab::PrefabComponent, task::with_async_task_context, Spawner};
+
 use {
     super::WithUuid,
     crate::{
@@ -5,16 +23,6 @@ use {
         resources::Res,
         scene::{Global2, Local2},
     },
-    goods::{Asset, Loader},
-    hecs::{Entity, World},
-    na,
-    ordered_float::OrderedFloat,
-    rapier2d::{
-        dynamics::RigidBodyBuilder,
-        geometry::{ColliderBuilder, SharedShape},
-    },
-    std::{collections::HashMap, sync::Arc},
-    uuid::Uuid,
 };
 
 #[cfg(feature = "visible")]
@@ -76,7 +84,7 @@ pub struct TileMap {
     cells: Arc<[usize]>,
 }
 
-#[cfg_attr(feature = "visible", derive(serde::Deserialize))]
+#[cfg_attr(feature = "client", derive(serde::Deserialize))]
 #[cfg_attr(feature = "server", derive(serde::Serialize))]
 pub struct TileMapComponent {
     pub set: Uuid,
@@ -85,7 +93,66 @@ pub struct TileMapComponent {
     pub cells: Arc<[usize]>,
 }
 
-#[cfg_attr(feature = "visible", derive(serde::Deserialize))]
+impl fmt::Debug for TileMapComponent {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        f.debug_struct("TileMapComponent")
+            .field("set", &self.set)
+            .field("cell_size", &self.cell_size)
+            .field("width", &self.width)
+            .field("cells.len()", &self.cells.len())
+            .finish()
+    }
+}
+
+#[cfg(feature = "client")]
+impl PrefabComponent for TileMapComponent {
+    #[instrument(skip(world, res, spawner))]
+    fn pre_insert(
+        &mut self,
+        entity: Entity,
+        world: &mut World,
+        res: &mut Res,
+        spawner: &mut crate::Spawner,
+    ) {
+        let set = self.set;
+        let cell_size = self.cell_size;
+        let width = self.width;
+        let cells = self.cells.clone();
+
+        spawner.spawn(
+            async move {
+                let mut set = with_async_task_context(|cx| cx.loader.load::<TileSet>(&set)).await;
+
+                tracing::debug!("TileSet for TileMapComponent loaded");
+
+                with_async_task_context(|cx| {
+                    let set = set.get(cx.graphics)?;
+
+                    let origin = match cx.world.query_one_mut::<&Global2>(entity) {
+                        Err(_) => return Ok(()),
+                        Ok(global) => global.iso,
+                    };
+
+                    spawn_tiles(
+                        Some(entity),
+                        &origin,
+                        set,
+                        &cells,
+                        cell_size,
+                        width,
+                        cx.world,
+                        cx.res,
+                    )?;
+
+                    Ok(())
+                })
+            }
+            .in_current_span(),
+        );
+    }
+}
+
+#[cfg_attr(feature = "client", derive(serde::Deserialize))]
 #[cfg_attr(feature = "server", derive(serde::Serialize))]
 pub struct TileComponent {
     pub set: Uuid,
@@ -98,13 +165,12 @@ impl TileMap {
         origin: &na::Isometry2<f32>,
         res: &mut Res,
         world: &mut World,
+        spawner: &mut Spawner,
     ) -> eyre::Result<Entity> {
         let cell_size = self.cell_size;
         let cells = self.cells.clone();
 
-        let hc = cell_size * 0.5;
-
-        let map_entity = world.spawn((
+        let entity = world.spawn((
             TileMapComponent {
                 set: WithUuid::uuid(&self.set),
                 cell_size: self.cell_size,
@@ -114,183 +180,36 @@ impl TileMap {
             Global2::new(*origin),
         ));
 
-        for (j, row) in cells.chunks(self.width).enumerate() {
-            for (i, &cell) in row.iter().enumerate() {
-                let tile = match self.set.tiles.get(cell) {
-                    None => {
-                        return Err(eyre::eyre!("Missing tile '{}' in the tileset", cell));
-                    }
-                    Some(tile) => tile,
-                };
+        spawn_tiles(
+            Some(entity),
+            origin,
+            &self.set,
+            &self.cells,
+            self.cell_size,
+            self.width,
+            world,
+            res,
+        )?;
 
-                #[cfg(feature = "visible")]
-                let albedo_coverage = tile.texture.clone();
-
-                let local_tr = na::Translation2::new(i as f32 * cell_size, j as f32 * cell_size);
-
-                match tile.collider {
-                    None => {
-                        world.spawn((
-                            Local2::new(map_entity, local_tr.into()),
-                            Global2::new(origin * local_tr),
-                            #[cfg(feature = "visible")]
-                            Sprite {
-                                world: Rect {
-                                    left: -hc,
-                                    right: hc,
-                                    top: -hc,
-                                    bottom: hc,
-                                },
-                                src: Rect::ONE_QUAD,
-                                tex: Rect::ONE_QUAD,
-                                layer: 10,
-                            },
-                            #[cfg(feature = "visible")]
-                            Material {
-                                albedo_coverage,
-                                ..Default::default()
-                            },
-                        ));
-                    }
-                    Some(collider) => {
-                        let shape = collider.shared_shape(cell_size, res);
-
-                        let physics = res.with(PhysicsData2::new);
-                        let body = physics
-                            .bodies
-                            .insert(RigidBodyBuilder::new_static().build());
-
-                        physics.colliders.insert_with_parent(
-                            ColliderBuilder::new(shape).build(),
-                            body,
-                            &mut physics.bodies,
-                        );
-
-                        world.spawn((
-                            Local2::new(map_entity, local_tr.into()),
-                            Global2::new(origin * local_tr),
-                            #[cfg(feature = "visible")]
-                            Sprite {
-                                world: Rect {
-                                    left: -hc,
-                                    right: hc,
-                                    top: -hc,
-                                    bottom: hc,
-                                },
-                                src: Rect::ONE_QUAD,
-                                tex: Rect::ONE_QUAD,
-                                layer: 10,
-                            },
-                            #[cfg(feature = "visible")]
-                            Material {
-                                albedo_coverage,
-                                ..Default::default()
-                            },
-                            body,
-                        ));
-                    }
-                }
-            }
-        }
-
-        Ok(map_entity)
+        Ok(entity)
     }
 
     fn spawn_individual_tiles(
         &self,
         origin: &na::Isometry2<f32>,
-        res: &mut Res,
         world: &mut World,
+        res: &mut Res,
     ) -> eyre::Result<()> {
-        let cell_size = self.cell_size;
-        let cells = self.cells.clone();
-
-        let hc = cell_size * 0.5;
-
-        for (j, row) in cells.chunks(self.width).enumerate() {
-            for (i, &cell) in row.iter().enumerate() {
-                let tile = match self.set.tiles.get(cell) {
-                    None => {
-                        return Err(eyre::eyre!("Missing tile '{}' in the tileset", cell));
-                    }
-                    Some(tile) => tile,
-                };
-
-                #[cfg(feature = "visible")]
-                let albedo_coverage = tile.texture.clone();
-
-                let local_tr = na::Translation2::new(i as f32 * cell_size, j as f32 * cell_size);
-
-                match tile.collider {
-                    None => {
-                        world.spawn((
-                            TileComponent {
-                                set: WithUuid::uuid(&self.set),
-                                cell,
-                            },
-                            Global2::new(origin * local_tr),
-                            #[cfg(feature = "visible")]
-                            Sprite {
-                                world: Rect {
-                                    left: -hc,
-                                    right: hc,
-                                    top: -hc,
-                                    bottom: hc,
-                                },
-                                src: Rect::ONE_QUAD,
-                                tex: Rect::ONE_QUAD,
-                                layer: 10,
-                            },
-                            #[cfg(feature = "visible")]
-                            Material {
-                                albedo_coverage,
-                                ..Default::default()
-                            },
-                        ));
-                    }
-                    Some(collider) => {
-                        let shape = collider.shared_shape(cell_size, res);
-
-                        let physics = res.with(PhysicsData2::new);
-                        let body = physics
-                            .bodies
-                            .insert(RigidBodyBuilder::new_static().build());
-
-                        physics.colliders.insert_with_parent(
-                            ColliderBuilder::new(shape).build(),
-                            body,
-                            &mut physics.bodies,
-                        );
-
-                        world.spawn((
-                            TileComponent {
-                                set: WithUuid::uuid(&self.set),
-                                cell,
-                            },
-                            Global2::new(origin * local_tr),
-                            #[cfg(feature = "visible")]
-                            Sprite {
-                                world: Rect {
-                                    left: -hc,
-                                    right: hc,
-                                    top: -hc,
-                                    bottom: hc,
-                                },
-                                src: Rect::ONE_QUAD,
-                                tex: Rect::ONE_QUAD,
-                                layer: 10,
-                            },
-                            #[cfg(feature = "visible")]
-                            Material {
-                                albedo_coverage,
-                                ..Default::default()
-                            },
-                            body,
-                        ));
-                    }
-                }
-            }
-        }
+        spawn_tiles(
+            None,
+            origin,
+            &self.set,
+            &self.cells,
+            self.cell_size,
+            self.width,
+            world,
+            res,
+        )?;
 
         Ok(())
     }
@@ -298,9 +217,10 @@ impl TileMap {
     pub async fn load_and_spawn(
         uuid: &Uuid,
         origin: &na::Isometry2<f32>,
-        loader: &Loader,
-        res: &mut Res,
         world: &mut World,
+        res: &mut Res,
+        loader: &Loader,
+        spawner: &mut Spawner,
         #[cfg(feature = "visible")] graphics: &mut Graphics,
     ) -> eyre::Result<Entity> {
         let mut map = loader.load::<Self>(uuid).await;
@@ -309,15 +229,15 @@ impl TileMap {
         #[cfg(not(feature = "visible"))]
         let map = map.get(&mut ())?;
 
-        map.spawn(origin, res, world)
+        map.spawn(origin, res, world, spawner)
     }
 
     pub async fn load_and_spawn_individual_tiles(
         uuid: &Uuid,
         origin: &na::Isometry2<f32>,
-        loader: &Loader,
-        res: &mut Res,
         world: &mut World,
+        res: &mut Res,
+        loader: &Loader,
         #[cfg(feature = "visible")] graphics: &mut Graphics,
     ) -> eyre::Result<()> {
         let mut map = loader.load::<Self>(uuid).await;
@@ -326,6 +246,108 @@ impl TileMap {
         #[cfg(not(feature = "visible"))]
         let map = map.get(&mut ())?;
 
-        map.spawn_individual_tiles(origin, res, world)
+        map.spawn_individual_tiles(origin, world, res)
     }
+}
+
+fn spawn_tiles(
+    map: Option<Entity>,
+    origin: &na::Isometry2<f32>,
+    set: &TileSet,
+    cells: &[usize],
+    cell_size: f32,
+    width: usize,
+    world: &mut World,
+    res: &mut Res,
+) -> eyre::Result<()> {
+    let hc = cell_size * 0.5;
+    for (j, row) in cells.chunks(width).enumerate() {
+        for (i, &cell) in row.iter().enumerate() {
+            let tile = match set.tiles.get(cell) {
+                None => {
+                    return Err(eyre::eyre!("Missing tile '{}' in the tileset", cell));
+                }
+                Some(tile) => tile,
+            };
+
+            #[cfg(feature = "visible")]
+            let albedo_coverage = tile.texture.clone();
+
+            let local_tr = na::Translation2::new(i as f32 * cell_size, j as f32 * cell_size);
+
+            match tile.collider {
+                None => {
+                    let e = world.spawn((
+                        Global2::new(origin * local_tr),
+                        #[cfg(feature = "visible")]
+                        Sprite {
+                            world: Rect {
+                                left: -hc,
+                                right: hc,
+                                top: -hc,
+                                bottom: hc,
+                            },
+                            src: Rect::ONE_QUAD,
+                            tex: Rect::ONE_QUAD,
+                            layer: 10,
+                        },
+                        #[cfg(feature = "visible")]
+                        Material {
+                            albedo_coverage,
+                            ..Default::default()
+                        },
+                    ));
+
+                    if let Some(map) = map {
+                        world
+                            .insert_one(e, Local2::new(map, local_tr.into()))
+                            .unwrap();
+                    }
+                }
+                Some(collider) => {
+                    let shape = collider.shared_shape(cell_size, res);
+
+                    let physics = res.with(PhysicsData2::new);
+                    let body = physics
+                        .bodies
+                        .insert(RigidBodyBuilder::new_static().build());
+
+                    physics.colliders.insert_with_parent(
+                        ColliderBuilder::new(shape).build(),
+                        body,
+                        &mut physics.bodies,
+                    );
+
+                    let e = world.spawn((
+                        Global2::new(origin * local_tr),
+                        #[cfg(feature = "visible")]
+                        Sprite {
+                            world: Rect {
+                                left: -hc,
+                                right: hc,
+                                top: -hc,
+                                bottom: hc,
+                            },
+                            src: Rect::ONE_QUAD,
+                            tex: Rect::ONE_QUAD,
+                            layer: 10,
+                        },
+                        #[cfg(feature = "visible")]
+                        Material {
+                            albedo_coverage,
+                            ..Default::default()
+                        },
+                        body,
+                    ));
+
+                    if let Some(map) = map {
+                        world
+                            .insert_one(e, Local2::new(map, local_tr.into()))
+                            .unwrap();
+                    }
+                }
+            }
+        }
+    }
+    Ok(())
 }

@@ -1,13 +1,18 @@
-#![feature(allocator_api)]
+#![feature(allocator_api, future_poll_fn)]
 
-use arcana::net::client::ClientSystem;
+use std::net::Ipv4Addr;
 
-use {
-    arcana::{
-        assets::TileMap, camera::Camera2, game2, na, physics2::Physics2, EntityController, TimeSpan,
-    },
-    tanks::*,
+use arcana::{
+    assets::tiles::TileMapComponent,
+    camera::Camera2,
+    event::{ElementState, KeyboardInput, VirtualKeyCode},
+    game2,
+    net::client::{ClientSystem, SerdeInputsReplicate},
+    net::{PlayerId, ReplicaPrefabSerde},
+    Controlled, EntityController, Global2, InputCommander, InputEvent, SystemContext,
 };
+
+use tanks::*;
 
 #[derive(Debug)]
 pub struct TankComander {
@@ -137,11 +142,45 @@ impl InputCommander for TankComander {
     }
 }
 
+type ReplicaInput = SerdeInputsReplicate<tanks::TankCommand>;
+type ReplicaSet = (ReplicaPrefabSerde<TileMapComponent>, Global2);
+
 fn main() {
     game2(|mut game| async move {
-        let mut client = ClientSystem::new::<I, R>().await?;
+        // Create client system to communicate with game server.
+        let mut client = ClientSystem::new::<ReplicaInput, ReplicaSet>();
+
+        // Connect to local server. It must be running.
+        client
+            .connect((Ipv4Addr::LOCALHOST, 12345), &game.scope)
+            .await?;
+
+        tracing::info!("Connected");
+
+        // Add player to game session.
+        let id = client.add_player((), &game.scope).await?;
+
+        // Add system that will assume control of entities belonging to the added player.
+        game.scheduler.add_system(move |cx: SystemContext<'_>| {
+            for (e, pid) in cx.world.query_mut::<&PlayerId>().without::<Controlled>() {
+                if id == *pid {
+                    let controller =
+                        EntityController::assume_control(TankComander::main(), 10, e, cx.world)
+                            .expect("Entity exists and is not controlled");
+
+                    cx.control.add_global_controller(controller);
+
+                    break;
+                }
+            }
+        });
+
+        tracing::info!("Player added");
+
+        // Set client session to be executed in game loop.
         game.client = Some(client);
 
+        // Setup camera.
         let camera = game.viewport.camera();
 
         game.world
@@ -149,17 +188,7 @@ fn main() {
             .unwrap()
             .set_scaley(0.2);
 
-        let player_tank = game.world.spawn(());
-
-        let controller = EntityController::assume_control(
-            TankComander::main(),
-            10,
-            player_tank,
-            &mut game.world,
-        )?;
-
-        game.control.add_global_controller(controller);
-
+        // Game configured. Run it.
         Ok(game)
     })
 }

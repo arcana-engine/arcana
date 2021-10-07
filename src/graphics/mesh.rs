@@ -23,8 +23,8 @@ use sierra::{
 };
 
 use super::vertex::{
-    Joints, Normal3, Position3, Semantics, Tangent3, VertexAttribute, VertexLayout, VertexLocation,
-    VertexType, Weights, UV, V2, V3, V4,
+    Joints, Normal3, Position3, Semantics, Tangent3, VertexLayout, VertexLocation, VertexType,
+    Weights, UV, V2, V3, V4,
 };
 
 use super::Graphics;

@@ -11,10 +11,9 @@ use {
             pipeline::ActiveEvents,
             ContactQueue2, PhysicsData2,
         },
-        AsyncTaskContext, CommandQueue, Global2, System, SystemContext, TaskContext, TimeSpan,
+        with_async_task_context, CommandQueue, Global2, System, SystemContext, TaskContext,
+        TimeSpan,
     },
-    eyre::WrapErr as _,
-    ordered_float::OrderedFloat,
     uuid::Uuid,
 };
 
@@ -196,7 +195,7 @@ impl TankState {
     }
 }
 
-#[derive(Debug)]
+#[derive(Debug, serde::Serialize, serde::Deserialize)]
 pub enum TankCommand {
     Drive(i8),
     Rotate(i8),
