@@ -7,9 +7,10 @@ use arcana::{
     camera::Camera2,
     event::{ElementState, KeyboardInput, VirtualKeyCode},
     game2,
-    net::client::{ClientSystem, SerdeInputsReplicate},
-    net::{PlayerId, ReplicaPrefabSerde},
-    Controlled, EntityController, Global2, InputCommander, InputEvent, SystemContext,
+    hecs::Entity,
+    net::{client::ClientSystem, PlayerId},
+    physics2::Physics2,
+    Controlled, EntityController, Global2, InputCommander, InputEvent, SystemContext, TimeSpan,
 };
 
 use tanks::*;
@@ -142,8 +143,8 @@ impl InputCommander for TankComander {
     }
 }
 
-type ReplicaInput = SerdeInputsReplicate<tanks::TankCommand>;
-type ReplicaSet = (ReplicaPrefabSerde<TileMapComponent>, Global2);
+type ReplicaInput = tanks::TankCommand;
+type ReplicaSet = (Global2, TankState, Tank, TileMapComponent);
 
 fn main() {
     game2(|mut game| async move {
@@ -158,19 +159,40 @@ fn main() {
         tracing::info!("Connected");
 
         // Add player to game session.
-        let id = client.add_player((), &game.scope).await?;
+        let pid = client.add_player((), &game.scope).await?;
+
+        struct RemoteControl {
+            entity: Option<Entity>,
+            pid: PlayerId,
+        }
+
+        let mut rc = RemoteControl { entity: None, pid };
 
         // Add system that will assume control of entities belonging to the added player.
         game.scheduler.add_system(move |cx: SystemContext<'_>| {
-            for (e, pid) in cx.world.query_mut::<&PlayerId>().without::<Controlled>() {
-                if id == *pid {
-                    let controller =
-                        EntityController::assume_control(TankComander::main(), 10, e, cx.world)
-                            .expect("Entity exists and is not controlled");
+            if let Some(entity) = rc.entity {
+                if cx.world.query_one_mut::<&PlayerId>(entity).is_err() {
+                    tracing::error!("Controlled entity is broken");
 
-                    cx.control.add_global_controller(controller);
+                    cx.world.despawn(entity);
+                    rc.entity = None;
+                }
+            }
 
-                    break;
+            if rc.entity.is_none() {
+                for (e, pid) in cx.world.query_mut::<&PlayerId>().without::<Controlled>() {
+                    if rc.pid == *pid {
+                        tracing::error!("Found player's entity");
+
+                        let controller =
+                            EntityController::assume_control(TankComander::main(), 10, e, cx.world)
+                                .expect("Entity exists and is not controlled");
+
+                        cx.control.add_global_controller(controller);
+                        rc.entity = Some(e);
+
+                        break;
+                    }
                 }
             }
         });
@@ -187,6 +209,14 @@ fn main() {
             .get_mut::<Camera2>(camera)
             .unwrap()
             .set_scaley(0.2);
+
+        game.scheduler.add_system(tanks::TankAnimationSystem::new());
+
+        game.scheduler
+            .add_fixed_system(Physics2::new(), TimeSpan::MILLISECOND * 20);
+
+        game.scheduler.add_system(tanks::TankClientSystem);
+        game.scheduler.add_system(tanks::BulletSystem);
 
         // Game configured. Run it.
         Ok(game)

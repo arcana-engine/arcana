@@ -446,7 +446,7 @@ impl client::ReplicaSetElem for Global2 {
 
 #[cfg(feature = "server")]
 impl<'a> server::ReplicaSetElem<'a> for Global2 {
-    type Query = &'static Self;
+    type Component = Self;
     type Replica = [f32; 3];
     type ReplicaPack = [f32; 3];
 

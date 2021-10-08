@@ -1,8 +1,6 @@
-use std::{collections::HashMap, fmt, sync::Arc};
+use std::{collections::HashMap, convert::TryFrom, fmt, sync::Arc};
 
-#[cfg(any(feature = "client", feature = "server"))]
-use alkahest::Bytes;
-
+use alkahest::{Schema, Seq, Unpacked};
 use goods::{Asset, Loader};
 use hecs::{Entity, World};
 use na;
@@ -14,7 +12,16 @@ use rapier2d::{
 use tracing::{instrument, Instrument};
 use uuid::Uuid;
 
-use crate::{prefab::PrefabComponent, task::with_async_task_context, Spawner};
+#[cfg(feature = "server")]
+use scoped_arena::Scope;
+
+use crate::{task::with_async_task_context, Spawner};
+
+#[cfg(feature = "client")]
+use crate::net::client;
+
+#[cfg(feature = "server")]
+use crate::net::server;
 
 use {
     super::WithUuid,
@@ -57,7 +64,6 @@ impl ColliderKind {
 #[derive(Clone, Debug)]
 #[cfg_attr(feature = "visible", derive(AssetField))]
 #[cfg_attr(not(feature = "visible"), derive(serde::Deserialize))]
-#[cfg_attr(feature = "server", derive(serde::Serialize))]
 pub struct Tile {
     #[serde(default)]
     collider: Option<ColliderKind>,
@@ -69,7 +75,6 @@ pub struct Tile {
 }
 
 #[derive(Clone, Debug, Asset)]
-#[cfg_attr(feature = "server", derive(serde::Serialize))]
 pub struct TileSet {
     #[cfg_attr(feature = "visible", container)]
     tiles: Arc<[Tile]>,
@@ -84,8 +89,6 @@ pub struct TileMap {
     cells: Arc<[usize]>,
 }
 
-#[cfg_attr(feature = "client", derive(serde::Deserialize))]
-#[cfg_attr(feature = "server", derive(serde::Serialize))]
 pub struct TileMapComponent {
     pub set: Uuid,
     pub cell_size: f32,
@@ -104,20 +107,60 @@ impl fmt::Debug for TileMapComponent {
     }
 }
 
+#[cfg(any(feature = "client", feature = "server"))]
+#[derive(Schema)]
+pub struct TileMapComponentReplica {
+    pub set: u128,
+    pub cell_size: f32,
+    pub width: u32,
+    pub cells: Seq<u32>,
+}
+
+#[cfg(any(feature = "client", feature = "server"))]
+fn pack_cell_index(cell: usize) -> u32 {
+    u32::try_from(cell).expect("Too large tile map")
+}
+
+#[cfg(any(feature = "client", feature = "server"))]
+fn unpack_cell_index(cell: u32) -> usize {
+    usize::try_from(cell).expect("Too large tile map")
+}
+
 #[cfg(feature = "client")]
-impl PrefabComponent for TileMapComponent {
+impl client::ReplicaSetElem for TileMapComponent {
+    type Component = Self;
+    type Replica = TileMapComponentReplica;
+
+    #[inline(always)]
+    fn build(unpacked: Unpacked<'_, TileMapComponentReplica>) -> Self {
+        TileMapComponent {
+            set: Uuid::from_u128(unpacked.set),
+            cell_size: unpacked.cell_size,
+            width: unpack_cell_index(unpacked.width),
+            cells: unpacked.cells.map(unpack_cell_index).collect(),
+        }
+    }
+
+    #[inline(always)]
+    fn replicate(unpacked: Unpacked<'_, Self::Replica>, component: &mut Self) {
+        component.set = Uuid::from_u128(unpacked.set);
+        component.cell_size = unpacked.cell_size;
+        component.width = unpack_cell_index(unpacked.width);
+        component.cells = unpacked.cells.map(unpack_cell_index).collect();
+    }
+
     #[instrument(skip(world, res, spawner))]
     fn pre_insert(
-        &mut self,
+        component: &mut Self::Component,
         entity: Entity,
         world: &mut World,
         res: &mut Res,
-        spawner: &mut crate::Spawner,
+        spawner: &mut Spawner,
     ) {
-        let set = self.set;
-        let cell_size = self.cell_size;
-        let width = self.width;
-        let cells = self.cells.clone();
+        let set = component.set;
+        let cell_size = component.cell_size;
+        let width = component.width;
+        let cells = component.cells.clone();
 
         spawner.spawn(
             async move {
@@ -152,8 +195,23 @@ impl PrefabComponent for TileMapComponent {
     }
 }
 
-#[cfg_attr(feature = "client", derive(serde::Deserialize))]
-#[cfg_attr(feature = "server", derive(serde::Serialize))]
+#[cfg(feature = "server")]
+impl<'a> server::ReplicaSetElem<'a> for TileMapComponent {
+    type Component = Self;
+    type Replica = TileMapComponentReplica;
+    type ReplicaPack = TileMapComponentReplicaPack<u128, f32, u32, &'a [u32]>;
+
+    fn replicate(component: &'a Self, scope: &'a Scope<'_>) -> Self::ReplicaPack {
+        TileMapComponentReplicaPack {
+            set: component.set.as_u128(),
+            cell_size: component.cell_size,
+            width: pack_cell_index(component.width),
+            cells: &*scope
+                .to_scope_from_iter(component.cells.iter().map(|&cell| pack_cell_index(cell))),
+        }
+    }
+}
+
 pub struct TileComponent {
     pub set: Uuid,
     pub cell: usize,

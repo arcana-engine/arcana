@@ -16,15 +16,15 @@ pub trait Prefab {
     fn spawn(self, res: &mut Res, world: &mut World, spawner: &mut Spawner) -> Entity;
 }
 
-/// Prefab component is a component that can add components and spawn entities when inserted.
-pub trait PrefabComponent: Component {
-    /// Method that should be called before component is inserted.
-    /// `entity` - the entity where component will be inserted.
-    fn pre_insert(
-        &mut self,
-        entity: Entity,
-        world: &mut World,
-        res: &mut Res,
-        spawner: &mut Spawner,
-    );
-}
+// /// Prefab component is a component that can add components and spawn entities when inserted.
+// pub trait PrefabComponent: Component {
+//     /// Method that should be called before component is inserted.
+//     /// `entity` - the entity where component will be inserted.
+//     fn pre_insert(
+//         &mut self,
+//         entity: Entity,
+//         world: &mut World,
+//         res: &mut Res,
+//         spawner: &mut Spawner,
+//     );
+// }

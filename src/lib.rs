@@ -50,7 +50,8 @@ pub mod graphics;
 #[cfg(feature = "visible")]
 mod viewport;
 
-pub use {bincode, hecs, na, scoped_arena};
+// Reexport crates widely used in public API.
+pub use {bincode, hecs, na, palette, scoped_arena, uuid};
 
 #[cfg(feature = "visible")]
 pub use sierra;

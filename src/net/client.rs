@@ -1,9 +1,9 @@
-use std::{collections::HashMap, future::Future, marker::PhantomData, pin::Pin};
+use std::{future::Future, pin::Pin};
 
-use alkahest::{Bytes, Pack, Schema, Seq, Unpacked};
+use alkahest::{Pack, Schema, Seq, SeqUnpacked, Unpacked};
 use astral::{
     channel::tcp::TcpChannel,
-    client_server::{ClientSession, PlayerId},
+    client_server::{ClientSession, MaybePlayerId, PlayerId},
 };
 use eyre::Context;
 use hashbrown::HashSet;
@@ -12,12 +12,9 @@ use scoped_arena::Scope;
 use tokio::net::{TcpStream, ToSocketAddrs};
 use tracing::instrument;
 
-use crate::{
-    control::CommandQueue, prefab::PrefabComponent, resources::Res, system::SystemContext,
-    task::Spawner,
-};
+use crate::{control::CommandQueue, resources::Res, system::SystemContext, task::Spawner};
 
-use super::{EntityMapper, NetId, ReplicaPrefabSerde, ReplicaSerde};
+use super::{EntityMapper, NetId};
 
 pub trait ReplicaSetElem {
     type Component: Component;
@@ -42,43 +39,6 @@ pub trait ReplicaSetElem {
     }
 }
 
-impl<T> ReplicaSetElem for ReplicaSerde<T>
-where
-    T: serde::de::DeserializeOwned + Component,
-{
-    type Component = T;
-    type Replica = Bytes;
-
-    #[inline(always)]
-    fn build(unpacked: &[u8]) -> T {
-        bincode::deserialize_from(unpacked).expect("Failed to deserialize item")
-    }
-}
-
-impl<T> ReplicaSetElem for ReplicaPrefabSerde<T>
-where
-    T: serde::de::DeserializeOwned + PrefabComponent,
-{
-    type Component = T;
-    type Replica = Bytes;
-
-    #[inline(always)]
-    fn build(unpacked: &[u8]) -> T {
-        bincode::deserialize_from(unpacked).expect("Failed to deserialize item")
-    }
-
-    #[inline(always)]
-    fn pre_insert(
-        component: &mut T,
-        entity: Entity,
-        world: &mut World,
-        res: &mut Res,
-        spawner: &mut Spawner,
-    ) {
-        component.pre_insert(entity, world, res, spawner)
-    }
-}
-
 pub trait ReplicaSet {
     type Replica: Schema;
 
@@ -93,10 +53,10 @@ pub trait ReplicaSet {
 }
 
 impl ReplicaSet for () {
-    type Replica = NetId;
+    type Replica = (NetId, MaybePlayerId);
 
     fn replicate(
-        unpacked: Unpacked<'_, Seq<NetId>>,
+        unpacked: SeqUnpacked<'_, (NetId, MaybePlayerId)>,
         world: &mut World,
         _res: &mut Res,
         _spawner: &mut Spawner,
@@ -107,34 +67,21 @@ impl ReplicaSet for () {
 
         tracing::debug!("Replicate {} entities", unpacked.len());
 
-        for nid in unpacked {
-            let nid = match nid {
-                None => {
-                    tracing::error!("Zero NetId received");
+        for (nid_res, pid_opt) in unpacked {
+            let nid = match nid_res {
+                Err(err) => {
+                    tracing::error!("{:?}", err);
                     continue;
                 }
-                Some(nid) => nid,
+                Ok(nid) => nid,
             };
 
             set.insert(nid);
 
-            match mapper.entity_by_id.get(&nid) {
-                None => {
-                    let entity = world.spawn((nid,));
-                    mapper.entity_by_id.insert(nid, entity);
-                }
-                Some(&entity) => match world.query_one_mut::<&NetId>(entity) {
-                    Ok(id) => {
-                        debug_assert_eq!(*id, nid);
-                    }
-                    Err(QueryOneError::Unsatisfied) => {
-                        panic!("NetId component was removed on networked entity");
-                    }
-                    Err(QueryOneError::NoSuchEntity) => {
-                        let entity = world.spawn((nid,));
-                        mapper.entity_by_id.insert(nid, entity);
-                    }
-                },
+            let entity = mapper.get_or_spawn(world, nid);
+
+            if let Some(pid) = pid_opt {
+                world.insert_one(entity, pid);
             }
         }
 
@@ -157,10 +104,10 @@ macro_rules! replica_set_tuple {
         where
             $($a: ReplicaSetElem,)+
         {
-            type Replica = (NetId, $(Option<$a::Replica>),+);
+            type Replica = (NetId, MaybePlayerId, $(Option<$a::Replica>),+);
 
             fn replicate(
-                unpacked: Unpacked<'_, Seq<(NetId, $(Option<$a::Replica>),+)>>,
+                unpacked: SeqUnpacked<'_, (NetId, MaybePlayerId, $(Option<$a::Replica>),+)>,
                 world: &mut World,
                 res: &mut Res,
                 spawner: &mut Spawner,
@@ -173,93 +120,71 @@ macro_rules! replica_set_tuple {
 
                 let mut set = HashSet::new_in(scope);
 
-                for (nid, $($a),+) in unpacked {
-                    let nid = match nid {
-                        None => {
-                            tracing::error!("Zero NetId received");
+                for (nid_res, pid_opt, $($a),+) in unpacked {
+                    let nid = match nid_res {
+                        Err(err) => {
+                            tracing::error!("{:?}", err);
                             continue;
                         }
-                        Some(nid) => nid,
+                        Ok(nid) => nid,
                     };
 
                     set.insert(nid);
 
-                    match mapper.entity_by_id.get(&nid) {
-                        None => {
-                            let entity = world.spawn((nid,));
+                    let entity = mapper.get_or_spawn(world, nid);
+
+                    match world.query_one_mut::<(&NetId, Option<&mut PlayerId>, $(Option<&mut $a::Component>,)+)>(entity) {
+                        Ok((nid_, pid_opt_, $($b, )+)) => {
+                            debug_assert_eq!(*nid_, nid);
+
+                            enum Action<I, R> {
+                                Insert(I),
+                                Remove(R),
+                                Nothing,
+                            }
+
+                            let pid = match (pid_opt, pid_opt_) {
+                                (None, None) => Action::Nothing,
+                                (None, Some(_)) => Action::Remove(move |world: &mut World| {
+                                    world.remove_one::<PlayerId>(entity);
+                                }),
+                                (Some(pid), None) => Action::Insert(move |world: &mut World| {
+                                    world.insert_one(entity, pid).unwrap();
+                                }),
+                                (Some(pid), Some(pid_)) => { *pid_ = pid; Action::Nothing }
+                            };
+
+                            let ($($b,)+) = ($(
+                                match ($a, $b) {
+                                    (None, None) => Action::Nothing,
+                                    (None, Some($b)) => Action::Remove(move |world: &mut World| {
+                                        world.remove_one::<$a::Component>(entity);
+                                    }),
+                                    (Some($a), None) => Action::Insert(move |world: &mut World, res: &mut Res, spawner: &mut Spawner| {
+                                        let mut $b = $a::build($a);
+                                        $a::pre_insert(&mut $b, entity, world, res, spawner);
+                                        world.insert_one(entity, $b).unwrap();
+                                    }),
+                                    (Some($a), Some($b)) => {$a::replicate($a, $b); Action::Nothing }
+                                },
+                            )+);
+
+                            match pid {
+                                Action::Insert(f) => f(world),
+                                Action::Remove(f) => f(world),
+                                Action::Nothing => {}
+                            }
 
                             $(
-                                if let Some($a) = $a {
-                                    let mut $a = $a::build($a);
-                                    $a::pre_insert(&mut $a, entity, world, res, spawner);
-                                    world.insert_one(entity, $a);
+                                match $b {
+                                    Action::Insert(f) => f(world, res, spawner),
+                                    Action::Remove(f) => f(world),
+                                    Action::Nothing => {}
                                 }
                             )+
-
-                            mapper.entity_by_id.insert(nid, entity);
                         }
-                        Some(&entity) => match world.query_one_mut::<(&NetId, $(Option<&mut $a::Component>,)+)>(entity) {
-                            Ok((id, $($b, )+)) => {
-                                debug_assert_eq!(*id, nid);
-
-                                enum Action<I, R> {
-                                    Insert(I),
-                                    Remove(R),
-                                    Nothing,
-                                }
-
-                                let ($($b,)+) = ($(
-                                    match ($a, $b) {
-                                        (None, None) => Action::Nothing,
-                                        (None, Some($b)) => Action::Remove(move |world: &mut World| {
-                                            world.remove_one::<$a::Component>(entity);
-                                        }),
-                                        (Some($a), None) => Action::Insert(move |world: &mut World, res: &mut Res, spawner: &mut Spawner| {
-                                            let mut $b = $a::build($a);
-                                            $a::pre_insert(&mut $b, entity, world, res, spawner);
-                                            world.insert_one(entity, $b).unwrap();
-                                        }),
-                                        (Some($a), Some($b)) => {$a::replicate($a, $b); Action::Nothing }
-                                    },
-                                )+);
-
-                                $(
-                                    match $b {
-                                        Action::Insert(f) => f(world, res, spawner),
-                                        Action::Remove(f) => f(world),
-                                        Action::Nothing => {}
-                                    }
-                                )+
-                            }
-                            Err(QueryOneError::Unsatisfied) => {
-                                tracing::error!("NetId component was removed on networked entity");
-                                world.despawn(entity).unwrap();
-
-                                let entity = world.spawn((nid,));
-                                mapper.entity_by_id.insert(nid, entity);
-
-                                $(
-                                    if let Some($a) = $a {
-                                        let mut $a = $a::build($a);
-                                        $a::pre_insert(&mut $a, entity, world, res, spawner);
-                                        world.insert_one(entity, $a);
-                                    }
-                                )+
-
-                            }
-                            Err(QueryOneError::NoSuchEntity) => {
-                                let entity = world.spawn((nid,));
-                                mapper.entity_by_id.insert(nid, entity);
-
-                                $(
-                                    if let Some($a) = $a {
-                                        let mut $a = $a::build($a);
-                                        $a::pre_insert(&mut $a, entity, world, res, spawner);
-                                        world.insert_one(entity, $a);
-                                    }
-                                )+
-                            }
-                        },
+                        Err(QueryOneError::Unsatisfied) => unreachable!(),
+                        Err(QueryOneError::NoSuchEntity) => unreachable!(),
                     }
                 }
 
@@ -292,28 +217,10 @@ pub trait InputsReplicate<'a>: Send + Sync + 'static {
     type Replica: Schema;
     type ReplicaPack: Pack<Self::Replica>;
 
-    fn replicate(queue: &CommandQueue<Self::Command>, scope: &'a Scope<'_>) -> Self::ReplicaPack;
-}
-
-pub struct SerdeInputsReplicate<C> {
-    _marker: PhantomData<C>,
-}
-
-impl<'a, C> InputsReplicate<'a> for SerdeInputsReplicate<C>
-where
-    C: Component,
-{
-    type Command = C;
-    type Replica = Bytes;
-    type ReplicaPack = &'a [u8];
-
-    fn replicate(queue: &CommandQueue<C>, scope: &'a Scope<'_>) -> &'a [u8] {
-        let commands = &*scope.to_scope_from_iter(queue.iter());
-
-        let mut out = Vec::new_in(scope);
-        bincode::serialize_into(&mut out, commands).expect("Failed to serialize item");
-        out.leak()
-    }
+    fn replicate(
+        queue: &mut CommandQueue<Self::Command>,
+        scope: &'a Scope<'_>,
+    ) -> Self::ReplicaPack;
 }
 
 pub struct ClientSystem {
@@ -383,9 +290,11 @@ impl ClientSystem {
             .expect("Attempt to add player in disconnected ClientSystem")
             .add_player::<P, PlayerId, _>(player, scope)
             .await
-            .ok()
-            .flatten()
-            .ok_or_else(|| eyre::eyre!("Failed to add player"))?;
+            .map_or_else(
+                |err| Err(eyre::Report::from(err)),
+                |res| res.map_err(eyre::Report::from),
+            )
+            .wrap_err_with(|| eyre::eyre!("Failed to add player"))?;
 
         let no_collision = self.controlled.insert(id);
         if !no_collision {
@@ -409,7 +318,7 @@ where
 
     for (_, (pid, nid, queue)) in cx
         .world
-        .query_mut::<(&PlayerId, &NetId, &CommandQueue<I::Command>)>()
+        .query_mut::<(&PlayerId, &NetId, &mut CommandQueue<I::Command>)>()
     {
         if controlled.contains(pid) {
             let input = I::replicate(queue, scope);
@@ -420,7 +329,7 @@ where
     tracing::debug!("Sending input ({})", session.current_step());
     Box::pin(async move {
         session
-            .send_inputs::<I::Replica, _, _>(inputs, scope)
+            .send_inputs::<(NetId, I::Replica), _, _>(inputs, scope)
             .await
             .wrap_err("Failed to send inputs from client to server")
     })

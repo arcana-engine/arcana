@@ -1,20 +1,19 @@
-use std::{any::Any, future::Future, num::NonZeroU64, pin::Pin};
+use std::{any::Any, collections::HashMap, future::Future, num::NonZeroU64, pin::Pin};
 
-use alkahest::{Bytes, Pack, Schema, Seq, Unpacked};
+use alkahest::{Pack, Schema, Seq, Unpacked};
 use arcana_time::TimeSpan;
 use astral::{
     channel::tcp::TcpChannel,
-    client_server::{ClientId, Event, PlayerId, ServerSession},
+    client_server::{ClientId, Event, MaybePlayerId, PlayerId, ServerSession},
 };
-use hashbrown::HashMap;
-use hecs::{Component, Entity, Fetch, Query, QueryOneError, World};
+use hecs::{Component, QueryOneError, World};
 use scoped_arena::Scope;
 use tokio::net::TcpListener;
 use tracing::instrument;
 
-use crate::{CommandQueue, Res, SystemContext};
+use crate::{CommandQueue, Res, Spawner, SystemContext};
 
-use super::{EntityMapper, NetId, ReplicaPrefabSerde, ReplicaSerde};
+use super::{EntityMapper, NetId};
 
 /// Component to signal that entity is owned by server and must be replicated to connected clients.
 pub struct ServerOwned;
@@ -53,44 +52,11 @@ impl IdGen {
 }
 
 pub trait ReplicaSetElem<'a> {
-    type Query: Query;
+    type Component: Component;
     type Replica: Schema;
     type ReplicaPack: Pack<Self::Replica> + Copy + 'a;
 
-    fn replicate<'b>(
-        item: <<Self::Query as Query>::Fetch as Fetch<'b>>::Item,
-        scope: &'a Scope<'_>,
-    ) -> Self::ReplicaPack;
-}
-
-impl<'a, T> ReplicaSetElem<'a> for ReplicaSerde<T>
-where
-    T: serde::Serialize + Component,
-{
-    type Query = &'static T;
-    type Replica = Bytes;
-    type ReplicaPack = &'a [u8];
-
-    fn replicate<'b>(item: &'b T, scope: &'a Scope<'_>) -> &'a [u8] {
-        let mut out = Vec::new_in(scope);
-        bincode::serialize_into(&mut out, item).expect("Failed to serialize item");
-        out.leak()
-    }
-}
-
-impl<'a, T> ReplicaSetElem<'a> for ReplicaPrefabSerde<T>
-where
-    T: serde::Serialize + Component,
-{
-    type Query = &'static T;
-    type Replica = Bytes;
-    type ReplicaPack = &'a [u8];
-
-    fn replicate<'b>(item: &'b T, scope: &'a Scope<'_>) -> &'a [u8] {
-        let mut out = Vec::new_in(scope);
-        bincode::serialize_into(&mut out, item).expect("Failed to serialize item");
-        out.leak()
-    }
+    fn replicate(component: &'a Self::Component, scope: &'a Scope<'_>) -> Self::ReplicaPack;
 }
 
 pub trait ReplicaSet<'a> {
@@ -100,44 +66,43 @@ pub trait ReplicaSet<'a> {
     fn replicate(
         id_gen: &mut IdGen,
         mapper: &mut EntityMapper,
-        world: &mut World,
-        scope: &'a Scope<'a>,
+        world: &'a mut World,
+        scope: &'a Scope<'_>,
     ) -> &'a [Self::ReplicaPack];
 }
 
 impl<'a> ReplicaSet<'a> for () {
-    type Replica = NetId;
-    type ReplicaPack = NetId;
+    type Replica = (NetId, MaybePlayerId);
+    type ReplicaPack = (NetId, Option<PlayerId>);
 
     fn replicate(
         id_gen: &mut IdGen,
         mapper: &mut EntityMapper,
         world: &mut World,
         scope: &'a Scope<'_>,
-    ) -> &'a [NetId] {
+    ) -> &'a [(NetId, Option<PlayerId>)] {
         let mut new_nids = Vec::new_in(scope);
 
         let mut vec = Vec::with_capacity_in(65536, scope);
         vec.extend(
             world
-                .query_mut::<Option<&NetId>>()
+                .query_mut::<(Option<&NetId>, Option<&PlayerId>)>()
                 .with::<ServerOwned>()
                 .into_iter()
-                .map(|(e, nid_opt)| {
+                .map(|(e, (nid_opt, pid_opt))| {
                     let nid = match nid_opt {
                         None => {
-                            let nid = id_gen.gen_nid();
+                            let nid = mapper.new_nid(id_gen, e);
                             new_nids.push((e, nid));
                             nid
                         }
                         Some(nid) => *nid,
                     };
-                    nid
+                    (nid, pid_opt.copied())
                 }),
         );
 
         for (e, nid) in new_nids {
-            mapper.entity_by_id.insert(nid, e);
             world.insert_one(e, nid);
         }
 
@@ -151,43 +116,44 @@ macro_rules! replica_set_tuple {
         where
             $($a: ReplicaSetElem<'a>,)+
         {
-            type Replica = (NetId, $(Option<$a::Replica>),+);
-            type ReplicaPack = (NetId, $(Option<$a::ReplicaPack>),+);
+            type Replica = (NetId, MaybePlayerId, $(Option<$a::Replica>),+);
+            type ReplicaPack = (NetId, Option<PlayerId>, $(Option<$a::ReplicaPack>),+);
 
             fn replicate(
                 id_gen: &mut IdGen,
                 mapper: &mut EntityMapper,
-                world: &mut World,
+                world: &'a mut World,
                 scope: &'a Scope<'_>
-            ) -> &'a[(NetId, $(Option<$a::ReplicaPack>),+)] {
+            ) -> &'a[(NetId, Option<PlayerId>, $(Option<$a::ReplicaPack>),+)] {
                 #![allow(non_snake_case)]
 
                 let mut new_nids = Vec::new_in(scope);
 
+                for (e, nid_opt) in world.query_mut::<Option<&NetId>>().with::<ServerOwned>() {
+                    let nid = match nid_opt {
+                        None => {
+                            let nid = mapper.new_nid(id_gen, e);
+                            new_nids.push((e, nid));
+                            nid
+                        },
+                        Some(nid) => *nid,
+                    };
+                }
+
+                for (e, nid) in new_nids {
+                    world.insert_one(e, nid);
+                }
+
                 let mut vec = Vec::with_capacity_in(65536, scope);
                 vec.extend(
                     world
-                        .query_mut::<(Option<&NetId>, $(Option<$a::Query>),+)>()
+                        .query_mut::<(&NetId, Option<&PlayerId>, $(Option<&$a::Component>),+)>()
                         .with::<ServerOwned>()
                         .into_iter()
-                        .map(|(e, (nid_opt, $($a,)+))| {
-                            let nid = match nid_opt {
-                                None => {
-                                    let nid = id_gen.gen_nid();
-                                    new_nids.push((e, nid));
-                                    nid
-                                },
-                                Some(nid) => *nid,
-                            };
-
-                            (nid, $($a.map(|$a| $a::replicate($a, scope)),)+)
+                        .map(|(e, (&nid, pid_opt, $($a,)+))| {
+                            (nid, pid_opt.copied(), $($a.map(|$a| $a::replicate($a, scope)),)+)
                         })
                 );
-
-                for (e, nid) in new_nids {
-                    mapper.entity_by_id.insert(nid, e);
-                    world.insert_one(e, nid);
-                }
 
                 vec.leak()
             }
@@ -215,8 +181,9 @@ pub trait RemotePlayer: Send + Sync + 'static {
     fn accept(
         info: Unpacked<'_, Self::Info>,
         pid: PlayerId,
-        res: &mut Res,
         world: &mut World,
+        res: &mut Res,
+        spawner: &mut Spawner,
     ) -> eyre::Result<Self>
     where
         Self: Sized;
@@ -276,10 +243,11 @@ where
     P: RemotePlayer,
     R: for<'b> ReplicaSet<'b>,
 {
-    let scope: &'a Scope<'static> = &*cx.scope;
-    let res = cx.res;
     let world = cx.world;
+    let res = cx.res;
+    let spawner = cx.spawner;
     let clock = cx.clock;
+    let scope: &'a Scope<'static> = &*cx.scope;
 
     Box::pin(async move {
         let current_step = session.current_step();
@@ -310,7 +278,7 @@ where
                                     let pid = id_gen.gen_pid();
 
                                     tracing::trace!("Generated {:?} for {:?} ", pid, cid);
-                                    let player = P::accept(info, pid, res, world)?;
+                                    let player = P::accept(info, pid, world, res, spawner)?;
 
                                     tracing::info!("{:?}@{:?} spawned", pid, cid);
 
@@ -335,34 +303,30 @@ where
                             event.step(),
                             current_step
                         );
-                        for (pid, (nid_opt, input)) in event.inputs() {
+                        for (pid, (nid_res, input)) in event.inputs() {
                             if let Some(player) = players.get_mut(&pid) {
                                 let player = player.player.downcast_mut::<P>().unwrap();
 
-                                match nid_opt {
-                                    None => {
-                                        tracing::error!("Zero NetId received with client inputs")
+                                match nid_res {
+                                    Err(err) => {
+                                        tracing::error!("{:?}", err)
                                     }
-                                    Some(nid) => {
+                                    Ok(nid) => {
                                         tracing::trace!("Received inputs from {:?}@{:?}", pid, cid);
-                                        match mapper.entity_by_id.get(&nid) {
-                                            None => {}
-                                            Some(&entity) => {
-                                                match world
-                                                    .query_one_mut::<&mut CommandQueue<P::Command>>(
-                                                        entity,
-                                                    ) {
-                                                    Err(QueryOneError::NoSuchEntity) => {}
-                                                    Err(QueryOneError::Unsatisfied) => {
-                                                        let mut queue = CommandQueue::new();
-                                                        player.replicate_input(
-                                                            input, &mut queue, scope,
-                                                        );
-                                                        world.insert_one(entity, queue);
-                                                    }
-                                                    Ok(queue) => {
-                                                        player.replicate_input(input, queue, scope);
-                                                    }
+                                        if let Some(entity) = mapper.get(nid) {
+                                            match world
+                                                .query_one_mut::<&mut CommandQueue<P::Command>>(
+                                                    entity,
+                                                ) {
+                                                Err(QueryOneError::NoSuchEntity) => {}
+                                                Err(QueryOneError::Unsatisfied) => {
+                                                    let mut queue = CommandQueue::new();
+                                                    player
+                                                        .replicate_input(input, &mut queue, scope);
+                                                    world.insert_one(entity, queue);
+                                                }
+                                                Ok(queue) => {
+                                                    player.replicate_input(input, queue, scope);
                                                 }
                                             }
                                         }
@@ -379,7 +343,7 @@ where
             }
         }
 
-        let slice = R::replicate(id_gen, mapper, world, scope);
+        let slice: &[R::ReplicaPack] = R::replicate(id_gen, mapper, world, scope);
 
         session
             .advance::<Seq<R::Replica>, _>(clock.delta.as_nanos(), slice.iter().copied(), scope)

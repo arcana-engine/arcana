@@ -102,3 +102,6 @@ bitsetium = "0.0"
 [workspace]
 members = ["import", "examples/blocks", "examples/tanks/client", "examples/tanks/server", "examples/bunnymark", "examples/gltf-test", "examples/sponza"]
 
+[patch.crates-io]
+alkahest = { path = "../alkahest" }
+alkahest-proc = { path = "../alkahest/proc" }
