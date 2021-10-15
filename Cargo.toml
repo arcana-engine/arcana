@@ -74,7 +74,7 @@ thiserror = "1.0"
 # Serialization
 percent-encoding = "2.1"
 base64 = "0.13"
-serde = "1.0"
+serde = { version = "1.0", features = ["derive"] }
 serde_json = "1.0"
 serde_bytes = "0.11"
 ron = "0.6"

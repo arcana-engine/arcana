@@ -65,6 +65,12 @@ pub struct Global2 {
     pub iso: na::Isometry2<f32>,
 }
 
+#[cfg(feature = "client")]
+impl client::TrivialDescriptor for Global2 {}
+
+#[cfg(feature = "server")]
+impl server::TrivialDescriptor for Global2 {}
+
 #[cfg(feature = "2d")]
 impl Default for Global2 {
     fn default() -> Self {
@@ -429,31 +435,5 @@ fn update_global_3<'a, 'b>(
                 }
             }
         }
-    }
-}
-
-#[cfg(feature = "client")]
-impl client::ReplicaSetElem for Global2 {
-    type Component = Self;
-    type Replica = [f32; 3];
-
-    fn build(unpacked: [f32; 3]) -> Self {
-        Global2 {
-            iso: na::Isometry2::new([unpacked[1], unpacked[2]].into(), unpacked[0]),
-        }
-    }
-}
-
-#[cfg(feature = "server")]
-impl<'a> server::ReplicaSetElem<'a> for Global2 {
-    type Component = Self;
-    type Replica = [f32; 3];
-    type ReplicaPack = [f32; 3];
-
-    fn replicate<'b>(item: &'b Self, _scope: &'a Scope<'_>) -> [f32; 3] {
-        let angle = item.iso.rotation.angle();
-        let x = item.iso.translation.vector.x;
-        let y = item.iso.translation.vector.y;
-        [angle, x, y]
     }
 }

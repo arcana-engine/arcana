@@ -88,6 +88,27 @@
       "source_format": "image",
       "native_format": "rgba.png",
       "tags": []
+    },
+    {
+      "uuid": "d5b2c243-bfff-4eb3-b10f-615faf210574",
+      "source": "tanks-map1.json",
+      "source_format": "arcana.tile-map",
+      "native_format": "arcana.tile-map",
+      "tags": []
+    },
+    {
+      "uuid": "5c6154dc-a98b-431d-8cf7-3627f9e5e6e0",
+      "source": "tanks-map2.json",
+      "source_format": "arcana.tile-map",
+      "native_format": "arcana.tile-map",
+      "tags": []
+    },
+    {
+      "uuid": "5c1fe447-bc12-496a-b713-9cf3a811b4d1",
+      "source": "tanks-map3.json",
+      "source_format": "arcana.tile-map",
+      "native_format": "arcana.tile-map",
+      "tags": []
     }
   ]
 }

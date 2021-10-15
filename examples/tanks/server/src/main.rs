@@ -2,6 +2,7 @@
 
 use std::{
     net::Ipv4Addr,
+    str::FromStr,
     sync::atomic::{AtomicU32, Ordering},
 };
 
@@ -12,17 +13,19 @@ use arcana::{
     hecs::{QueryOneError, World},
     na,
     net::{
-        server::{RemotePlayer, ServerOwned, ServerSystem},
-        PlayerId, ReplicaSerde,
+        server::{RemotePlayer, SelfDescriptor, ServerOwned, ServerSystem},
+        PlayerId,
     },
     palette::{FromColor, Hsl, Hsv, Lch, Srgb},
     physics2::Physics2,
     scoped_arena::Scope,
     timespan, CommandQueue, Global2, Res, Spawner, TimeSpan,
 };
+use eyre::Context;
 use tokio::net::TcpListener;
 
 use tanks::*;
+use uuid::Uuid;
 
 fn random_color() -> [f32; 3] {
     const FI: f32 = 1.618033988;
@@ -43,7 +46,6 @@ struct RemoteTankPlayer;
 impl RemotePlayer for RemoteTankPlayer {
     type Command = tanks::TankCommand;
     type Info = ();
-    type Input = Seq<(u8, u8)>;
 
     fn accept(
         (): (),
@@ -61,7 +63,12 @@ impl RemotePlayer for RemoteTankPlayer {
             "e12e16cd-9faf-4d61-b8cd-667ddecc823b".parse().unwrap(),
         );
 
-        let entity = tank.spawn(world, res, spawner);
+        let entity = tank.spawn(
+            &na::Translation2::new(rand::random(), rand::random()).into(),
+            world,
+            res,
+            spawner,
+        );
         world
             .insert(entity, (ServerOwned, pid))
             .expect("Just spawned");
@@ -70,52 +77,66 @@ impl RemotePlayer for RemoteTankPlayer {
 
         Ok(RemoteTankPlayer)
     }
-
-    fn replicate_input(
-        &mut self,
-        input: SeqUnpacked<'_, (u8, u8)>,
-        queue: &mut CommandQueue<tanks::TankCommand>,
-        _scope: &Scope<'_>,
-    ) {
-        let commands = input.filter_map(|(d, v)| match d {
-            0 => Some(TankCommand::Drive(i8::from_le_bytes([v]))),
-            1 => Some(TankCommand::Rotate(i8::from_le_bytes([v]))),
-            2 => Some(TankCommand::Fire(v > 0)),
-            _ => None,
-        });
-
-        queue.enque(commands);
-    }
 }
-
-type ReplicaSet = (Global2, TankState, Tank, TileMapComponent);
 
 fn main() {
     game(|mut game| async move {
+        let maps = [
+            game.loader
+                .load::<TileMap>(&Uuid::from_str("d5b2c243-bfff-4eb3-b10f-615faf210574").unwrap())
+                .await
+                .get(&mut ())
+                .wrap_err("Failed to load tile map")?
+                .clone(),
+            game.loader
+                .load::<TileMap>(&Uuid::from_str("5c6154dc-a98b-431d-8cf7-3627f9e5e6e0").unwrap())
+                .await
+                .get(&mut ())
+                .wrap_err("Failed to load tile map")?
+                .clone(),
+            game.loader
+                .load::<TileMap>(&Uuid::from_str("5c1fe447-bc12-496a-b713-9cf3a811b4d1").unwrap())
+                .await
+                .get(&mut ())
+                .wrap_err("Failed to load tile map")?
+                .clone(),
+        ];
+
         // Bind listener for incoming connections.
         let listener = TcpListener::bind((Ipv4Addr::LOCALHOST, 12345)).await?;
 
         // Create server-side game session.
-        let server = ServerSystem::new::<RemoteTankPlayer, ReplicaSet>(listener, timespan!(20ms));
+        let server = ServerSystem::builder()
+            .with(Global2::descriptor())
+            .with(TankState::descriptor())
+            .with(Tank::descriptor())
+            .with(TileMapComponent::descriptor())
+            .build::<RemoteTankPlayer>(listener);
 
         // Set it to be executed in game loop.
         game.server = Some(server);
 
         tracing::info!("START");
 
-        let map = TileMap::load_and_spawn(
-            &"a20280d4-a3e8-4a2a-8c51-381f021c11a7".parse().unwrap(),
-            &na::Isometry2::identity(),
-            &mut game.world,
-            &mut game.res,
-            &game.loader,
-            &mut game.spawner,
-        )
-        .await?;
+        for i in -5..=5 {
+            for j in -5..=5 {
+                let index = rand::random::<usize>() % maps.len();
+                let map = &maps[index];
 
-        game.world
-            .insert_one(map, ServerOwned)
-            .expect("Entity just spawned");
+                let offset =
+                    na::Vector2::new(i as f32 - 0.5, j as f32 - 0.5).component_mul(&map.size());
+
+                let entity = map.spawn(
+                    &na::Isometry2::new(offset.into(), 0.0),
+                    &mut game.world,
+                    &mut game.res,
+                )?;
+
+                game.world
+                    .insert_one(entity, ServerOwned)
+                    .expect("Entity just spawned");
+            }
+        }
 
         game.scheduler
             .add_fixed_system(Physics2::new(), TimeSpan::MILLISECOND * 20);

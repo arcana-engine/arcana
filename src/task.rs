@@ -108,14 +108,17 @@ pub fn with_async_task_context<F, R>(f: F) -> R
 where
     F: for<'a> FnOnce(TaskContext<'a>) -> R,
 {
-    TASK_CONTEXT.with(|tcx| unsafe {
-        let tcx = (&mut *tcx.get())
-            .as_mut()
+    TASK_CONTEXT.with(|cell| unsafe {
+        let mut tcx = (&mut *cell.get())
+            .take()
             .expect("Called outside task executor");
 
-        f(tcx.from_raw())
+        let r = f(tcx.from_raw());
+        *cell.get() = Some(tcx);
+        r
     })
 }
+
 /// Task spawner.
 pub struct Spawner {
     new_tasks: Vec<Pin<Box<dyn Future<Output = eyre::Result<()>>>>>,
@@ -267,7 +270,7 @@ impl RawTaskContext {
         }
     }
 
-    unsafe fn from_raw<'a>(&self) -> TaskContext<'a> {
+    unsafe fn from_raw<'a>(&mut self) -> TaskContext<'a> {
         TaskContext {
             world: &mut *self.world.as_ptr(),
             res: &mut *self.res.as_ptr(),

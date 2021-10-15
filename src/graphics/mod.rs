@@ -459,6 +459,14 @@ impl Graphics {
     }
 }
 
+impl Drop for Graphics {
+    fn drop(&mut self) {
+        if !std::thread::panicking() {
+            self.wait_idle();
+        }
+    }
+}
+
 impl Deref for Graphics {
     type Target = Device;
 

@@ -10,8 +10,8 @@ use crate::CommandQueue;
 #[cfg(feature = "client")]
 use super::client;
 
-#[cfg(feature = "server")]
-use super::server;
+// #[cfg(feature = "server")]
+// use super::server;
 
 pub struct ReplicaSerde<T>(PhantomData<fn() -> T>);
 
@@ -29,21 +29,21 @@ where
     }
 }
 
-#[cfg(feature = "server")]
-impl<'a, T> server::ReplicaSetElem<'a> for ReplicaSerde<T>
-where
-    T: serde::Serialize + Component,
-{
-    type Component = T;
-    type Replica = Bytes;
-    type ReplicaPack = &'a [u8];
+// #[cfg(feature = "server")]
+// impl<'a, T> server::ReplicaSetElem<'a> for ReplicaSerde<T>
+// where
+//     T: serde::Serialize + Component,
+// {
+//     type Component = T;
+//     type Replica = Bytes;
+//     type ReplicaPack = &'a [u8];
 
-    fn replicate(component: &T, scope: &'a Scope<'_>) -> &'a [u8] {
-        let mut out = Vec::new_in(scope);
-        bincode::serialize_into(&mut out, component).expect("Failed to serialize item");
-        out.leak()
-    }
-}
+//     fn replicate(component: &T, scope: &'a Scope<'_>) -> &'a [u8] {
+//         let mut out = Vec::new_in(scope);
+//         bincode::serialize_into(&mut out, component).expect("Failed to serialize item");
+//         out.leak()
+//     }
+// }
 
 #[cfg(feature = "client")]
 impl<'a, C> client::InputsReplicate<'a> for ReplicaSerde<C>

@@ -220,6 +220,10 @@ impl<T> CommandQueue<T> {
         self.commands.iter()
     }
 
+    pub fn add(&mut self, command: T) {
+        self.commands.push_back(command)
+    }
+
     pub fn enque(&mut self, commands: impl IntoIterator<Item = T>) {
         self.commands.extend(commands)
     }

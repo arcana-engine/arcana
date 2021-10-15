@@ -1,226 +1,312 @@
-use std::{future::Future, pin::Pin};
+use std::{
+    any::{type_name, TypeId},
+    future::Future,
+    io::Cursor,
+    marker::PhantomData,
+    num::NonZeroU64,
+    pin::Pin,
+};
 
-use alkahest::{Pack, Schema, Seq, SeqUnpacked, Unpacked};
+use alkahest::{Bytes, FixedUsize, Pack};
 use astral::{
     channel::tcp::TcpChannel,
-    client_server::{ClientSession, MaybePlayerId, PlayerId},
+    client_server::{ClientSession, PlayerId},
 };
+use bincode::Options as _;
+use bitsetium::BitTest;
 use eyre::Context;
 use hashbrown::HashSet;
-use hecs::{Component, Entity, QueryOneError, World};
+use hecs::{Component, Entity, Fetch, Query, World};
 use scoped_arena::Scope;
 use tokio::net::{TcpStream, ToSocketAddrs};
 use tracing::instrument;
 
 use crate::{control::CommandQueue, resources::Res, system::SystemContext, task::Spawner};
 
-use super::{EntityMapper, NetId};
+use super::{EntityHeader, EntityMapper, InputPacked, InputSchema, NetId, WorldSchema};
 
-pub trait ReplicaSetElem {
-    type Component: Component;
-    type Replica: Schema;
+pub type DescriptorFetchItem<'a, T> =
+    <<<T as Descriptor>::Query as Query>::Fetch as Fetch<'a>>::Item;
 
-    fn build(unpacked: Unpacked<'_, Self::Replica>) -> Self::Component;
+pub type DescriptorPackType<T> = <T as Descriptor>::Pack;
 
-    #[inline(always)]
-    fn replicate(unpacked: Unpacked<'_, Self::Replica>, component: &mut Self::Component) {
-        *component = Self::build(unpacked)
-    }
+pub trait Descriptor: 'static {
+    type Query: Query;
 
-    #[inline(always)]
-    fn pre_insert(
-        component: &mut Self::Component,
+    /// Data ready to be unpacked.
+    type Pack: serde::de::DeserializeOwned;
+
+    fn modify(
+        pack: DescriptorPackType<Self>,
+        item: DescriptorFetchItem<'_, Self>,
+        entity: Entity,
+        spawner: &mut Spawner,
+    );
+    fn insert(
+        pack: DescriptorPackType<Self>,
         entity: Entity,
         world: &mut World,
         res: &mut Res,
         spawner: &mut Spawner,
-    ) {
-        (entity, world, res, spawner);
+    );
+    fn on_remove(item: DescriptorFetchItem<'_, Self>, entity: Entity, spawner: &mut Spawner);
+    fn remove(entity: Entity, world: &mut World);
+}
+
+pub trait SelfDescriptor: Component + serde::de::DeserializeOwned {
+    /// Get descriptor
+    fn descriptor() -> PhantomData<Self> {
+        PhantomData
+    }
+
+    fn modify(&mut self, new: Self, entity: Entity, spawner: &mut Spawner);
+    fn insert(self, entity: Entity, world: &mut World, res: &mut Res, spawner: &mut Spawner);
+    fn on_remove(&mut self, entity: Entity, spawner: &mut Spawner);
+}
+
+impl<T> Descriptor for PhantomData<T>
+where
+    T: SelfDescriptor,
+{
+    type Query = &'static mut T;
+    type Pack = T;
+
+    #[inline(always)]
+    fn modify(pack: T, item: &mut T, entity: Entity, spawner: &mut Spawner) {
+        item.modify(pack, entity, spawner)
+    }
+
+    #[inline(always)]
+    fn insert(pack: T, entity: Entity, world: &mut World, res: &mut Res, spawner: &mut Spawner) {
+        pack.insert(entity, world, res, spawner)
+    }
+
+    #[inline(always)]
+    fn on_remove(item: &mut T, entity: Entity, spawner: &mut Spawner) {
+        item.on_remove(entity, spawner);
+    }
+
+    #[inline(always)]
+    fn remove(entity: Entity, world: &mut World) {
+        let _ = world.remove_one::<T>(entity);
     }
 }
 
-pub trait ReplicaSet {
-    type Replica: Schema;
+pub trait TrivialDescriptor: Component + serde::de::DeserializeOwned + Clone + PartialEq {}
 
-    fn replicate(
-        unpacked: Unpacked<'_, Seq<Self::Replica>>,
-        world: &mut World,
-        res: &mut Res,
-        spawner: &mut Spawner,
-        mapper: &mut EntityMapper,
-        scope: &Scope<'_>,
-    );
+impl<T> SelfDescriptor for T
+where
+    T: TrivialDescriptor,
+{
+    #[inline(always)]
+    fn modify(&mut self, new: Self, _entity: Entity, _spawner: &mut Spawner) {
+        *self = new;
+    }
+
+    #[inline(always)]
+    fn insert(self, entity: Entity, world: &mut World, _res: &mut Res, _spawner: &mut Spawner) {
+        world.insert_one(entity, self).unwrap();
+    }
+
+    #[inline(always)]
+    fn on_remove(&mut self, _entity: Entity, _spawner: &mut Spawner) {}
 }
 
-impl ReplicaSet for () {
-    type Replica = (NetId, MaybePlayerId);
+struct PlayerIdDescriptor {}
 
-    fn replicate(
-        unpacked: SeqUnpacked<'_, (NetId, MaybePlayerId)>,
+impl Descriptor for PlayerIdDescriptor {
+    type Query = &'static mut PlayerId;
+    type Pack = NonZeroU64;
+
+    fn modify(pack: NonZeroU64, item: &mut PlayerId, _entity: Entity, _spawner: &mut Spawner) {
+        item.0 = pack;
+    }
+    fn insert(
+        pack: NonZeroU64,
+        entity: Entity,
         world: &mut World,
         _res: &mut Res,
         _spawner: &mut Spawner,
-        mapper: &mut EntityMapper,
-        scope: &Scope<'_>,
     ) {
-        let mut set = HashSet::new_in(scope);
+        world.insert_one(entity, PlayerId(pack)).unwrap();
+    }
+    fn on_remove(_item: &mut PlayerId, _entity: Entity, _spawner: &mut Spawner) {}
+    fn remove(entity: Entity, world: &mut World) {
+        world.remove_one::<PlayerId>(entity).unwrap();
+    }
+}
 
-        tracing::debug!("Replicate {} entities", unpacked.len());
+trait Replicator {
+    fn replicate<B>(
+        data: &[u8],
+        mapper: &mut EntityMapper,
+        world: &mut World,
+        res: &mut Res,
+        spawner: &mut Spawner,
+        scope: &Scope<'_>,
+    ) -> Result<(), BadPacked>
+    where
+        B: BitTest + serde::de::DeserializeOwned;
+}
 
-        for (nid_res, pid_opt) in unpacked {
-            let nid = match nid_res {
-                Err(err) => {
-                    tracing::error!("{:?}", err);
-                    continue;
-                }
-                Ok(nid) => nid,
-            };
+enum TrackReplicate {
+    Unmodified,
+    Modified,
+    Removed,
+}
 
-            set.insert(nid);
+#[derive(Debug, thiserror::Error)]
+pub enum BadPacked {
+    #[error("Invalid entity mask")]
+    InvalidMask,
 
-            let entity = mapper.get_or_spawn(world, nid);
+    #[error("Invalid bincode")]
+    InvalidBincode,
+}
 
-            if let Some(pid) = pid_opt {
-                world.insert_one(entity, pid);
-            }
-        }
-
-        let mut despawn = Vec::new_in(scope);
-        for (e, nid) in world.query_mut::<&NetId>() {
-            if !set.contains(nid) {
-                despawn.push(e);
-            }
-        }
-
-        for e in despawn {
-            world.despawn(e).unwrap();
+impl TrackReplicate {
+    pub fn from_mask<'a, B>(idx: usize, mask: &B) -> Result<Self, BadPacked>
+    where
+        B: BitTest,
+    {
+        match (mask.test(idx * 2), mask.test(idx * 2 + 1)) {
+            (false, false) => Ok(TrackReplicate::Unmodified),
+            (true, true) => Ok(TrackReplicate::Modified),
+            (true, false) => Ok(TrackReplicate::Removed),
+            (false, true) => Err(BadPacked::InvalidMask),
         }
     }
 }
 
-macro_rules! replica_set_tuple {
-    ($($a:ident),+; $($b:ident),+) => {
-        impl<$($a),+> ReplicaSet for ($($a,)+)
-        where
-            $($a: ReplicaSetElem,)+
-        {
-            type Replica = (NetId, MaybePlayerId, $(Option<$a::Replica>),+);
-
-            fn replicate(
-                unpacked: SeqUnpacked<'_, (NetId, MaybePlayerId, $(Option<$a::Replica>),+)>,
-                world: &mut World,
-                res: &mut Res,
-                spawner: &mut Spawner,
-                mapper: &mut EntityMapper,
-                scope: &Scope<'_>,
-            ) {
-                #![allow(non_snake_case)]
-
-                tracing::debug!("Replicate {} entities", unpacked.len());
-
-                let mut set = HashSet::new_in(scope);
-
-                for (nid_res, pid_opt, $($a),+) in unpacked {
-                    let nid = match nid_res {
-                        Err(err) => {
-                            tracing::error!("{:?}", err);
-                            continue;
-                        }
-                        Ok(nid) => nid,
-                    };
-
-                    set.insert(nid);
-
-                    let entity = mapper.get_or_spawn(world, nid);
-
-                    match world.query_one_mut::<(&NetId, Option<&mut PlayerId>, $(Option<&mut $a::Component>,)+)>(entity) {
-                        Ok((nid_, pid_opt_, $($b, )+)) => {
-                            debug_assert_eq!(*nid_, nid);
-
-                            enum Action<I, R> {
-                                Insert(I),
-                                Remove(R),
-                                Nothing,
-                            }
-
-                            let pid = match (pid_opt, pid_opt_) {
-                                (None, None) => Action::Nothing,
-                                (None, Some(_)) => Action::Remove(move |world: &mut World| {
-                                    world.remove_one::<PlayerId>(entity);
-                                }),
-                                (Some(pid), None) => Action::Insert(move |world: &mut World| {
-                                    world.insert_one(entity, pid).unwrap();
-                                }),
-                                (Some(pid), Some(pid_)) => { *pid_ = pid; Action::Nothing }
-                            };
-
-                            let ($($b,)+) = ($(
-                                match ($a, $b) {
-                                    (None, None) => Action::Nothing,
-                                    (None, Some($b)) => Action::Remove(move |world: &mut World| {
-                                        world.remove_one::<$a::Component>(entity);
-                                    }),
-                                    (Some($a), None) => Action::Insert(move |world: &mut World, res: &mut Res, spawner: &mut Spawner| {
-                                        let mut $b = $a::build($a);
-                                        $a::pre_insert(&mut $b, entity, world, res, spawner);
-                                        world.insert_one(entity, $b).unwrap();
-                                    }),
-                                    (Some($a), Some($b)) => {$a::replicate($a, $b); Action::Nothing }
-                                },
-                            )+);
-
-                            match pid {
-                                Action::Insert(f) => f(world),
-                                Action::Remove(f) => f(world),
-                                Action::Nothing => {}
-                            }
-
-                            $(
-                                match $b {
-                                    Action::Insert(f) => f(world, res, spawner),
-                                    Action::Remove(f) => f(world),
-                                    Action::Nothing => {}
-                                }
-                            )+
-                        }
-                        Err(QueryOneError::Unsatisfied) => unreachable!(),
-                        Err(QueryOneError::NoSuchEntity) => unreachable!(),
-                    }
-                }
-
-                let mut despawn = Vec::new_in(scope);
-                for (e, nid) in world.query_mut::<&NetId>() {
-                    if !set.contains(nid) {
-                        despawn.push(e);
-                    }
-                }
-
-                for e in despawn {
-                    world.despawn(e).unwrap();
-                }
-            }
+fn replicate_one<'a, T, O>(
+    track: TrackReplicate,
+    entity: Entity,
+    world: &mut World,
+    res: &mut Res,
+    spawner: &mut Spawner,
+    opts: O,
+    cursor: &'a mut Cursor<&[u8]>,
+) -> Result<(), BadPacked>
+where
+    O: bincode::Options,
+    T: Descriptor,
+{
+    let item = world.query_one_mut::<T::Query>(entity).ok();
+    match (item.is_some(), track) {
+        (false, TrackReplicate::Removed | TrackReplicate::Unmodified) => {
+            drop(item);
         }
-    };
+        (true, TrackReplicate::Unmodified) => {
+            drop(item);
+        }
+        (true, TrackReplicate::Removed) => {
+            T::on_remove(item.unwrap(), entity, spawner);
+            T::remove(entity, world);
+        }
+        (false, TrackReplicate::Modified) => {
+            drop(item);
+            let pack = opts.deserialize_from(cursor).map_err(|err| {
+                tracing::error!("Error deserializing bincode: {}", err);
+                BadPacked::InvalidBincode
+            })?;
+            T::insert(pack, entity, world, res, spawner);
+        }
+        (true, TrackReplicate::Modified) => {
+            let pack = opts.deserialize_from(cursor).map_err(|err| {
+                tracing::error!("Error deserializing bincode: {}", err);
+                BadPacked::InvalidBincode
+            })?;
+            T::modify(pack, item.unwrap(), entity, spawner)
+        }
+    }
+    Ok(())
 }
 
-replica_set_tuple!(A1; a2);
-replica_set_tuple!(A1, B1; a2, b2);
-replica_set_tuple!(A1, B1, C1; a2, b2, c2);
-replica_set_tuple!(A1, B1, C1, D1; a2, b2, c2, d2);
+impl Replicator for () {
+    fn replicate<B>(
+        data: &[u8],
+        mapper: &mut EntityMapper,
+        world: &mut World,
+        res: &mut Res,
+        spawner: &mut Spawner,
+        _scope: &Scope<'_>,
+    ) -> Result<(), BadPacked>
+    where
+        B: BitTest + serde::de::DeserializeOwned,
+    {
+        let opts = bincode::DefaultOptions::new().allow_trailing_bytes();
+
+        let mut cursor = Cursor::new(data);
+
+        while cursor.get_ref().len() > cursor.position() as usize {
+            let header: EntityHeader<B> = opts.deserialize_from(&mut cursor).map_err(|err| {
+                tracing::error!("Error deserializing bincode: {}", err);
+                BadPacked::InvalidBincode
+            })?;
+
+            let entity = mapper.get_or_spawn(world, header.nid);
+
+            // Begin for each component + player_id.
+
+            let pid = TrackReplicate::from_mask(0, &header.mask)?;
+            replicate_one::<PlayerIdDescriptor, _>(
+                pid,
+                entity,
+                world,
+                res,
+                spawner,
+                opts,
+                &mut cursor,
+            )?;
+
+            // End for each component + player_id.
+        }
+
+        Ok(())
+    }
+}
 
 pub struct ServerStep {
     pub value: u64,
 }
 
-pub trait InputsReplicate<'a>: Send + Sync + 'static {
-    type Command: Component;
-    type Replica: Schema;
-    type ReplicaPack: Pack<Self::Replica>;
+pub struct ClientBuilder<R> {
+    ids: Vec<TypeId>,
+    marker: PhantomData<fn(R)>,
+}
 
-    fn replicate(
-        queue: &mut CommandQueue<Self::Command>,
-        scope: &'a Scope<'_>,
-    ) -> Self::ReplicaPack;
+impl ClientBuilder<()> {
+    pub fn new() -> Self {
+        ClientBuilder {
+            ids: Vec::new(),
+            marker: PhantomData,
+        }
+    }
+
+    pub fn with<T>(mut self, descriptor: T) -> ClientBuilder<(T,)>
+    where
+        T: 'static,
+    {
+        drop(descriptor);
+        let tid = TypeId::of::<T>();
+        assert!(
+            !self.ids.contains(&tid),
+            "Duplicate replica descriptor '{}'",
+            type_name::<T>()
+        );
+        self.ids.push(tid);
+        ClientBuilder {
+            ids: self.ids,
+            marker: PhantomData,
+        }
+    }
+
+    pub fn build<I>(&self) -> ClientSystem
+    where
+        I: Component + serde::Serialize,
+    {
+        ClientSystem::new::<I, ()>()
+    }
 }
 
 pub struct ClientSystem {
@@ -240,17 +326,21 @@ pub struct ClientSystem {
 }
 
 impl ClientSystem {
-    pub fn new<I, R>() -> Self
+    pub fn builder() -> ClientBuilder<()> {
+        ClientBuilder::new()
+    }
+
+    fn new<I, R>() -> Self
     where
-        I: for<'a> InputsReplicate<'a>,
-        R: ReplicaSet,
+        I: Component + serde::Serialize,
+        R: Replicator,
     {
         ClientSystem {
             session: None,
             mapper: EntityMapper::new(),
             controlled: HashSet::new(),
             send_inputs: send_inputs::<I>,
-            replicate: replicate::<R>,
+            replicate: replicate::<R, u32>,
         }
     }
 
@@ -279,16 +369,19 @@ impl ClientSystem {
         Ok(())
     }
 
-    pub async fn add_player<P, K>(&mut self, player: K, scope: &Scope<'_>) -> eyre::Result<PlayerId>
-    where
-        P: Schema,
-        K: Pack<P> + 'static,
-    {
+    pub async fn add_player(
+        &mut self,
+        player: &impl serde::Serialize,
+        scope: &Scope<'_>,
+    ) -> eyre::Result<PlayerId> {
+        let opts = bincode::DefaultOptions::new().allow_trailing_bytes();
+        let player = opts.serialize(player)?;
+
         let id = self
             .session
             .as_mut()
             .expect("Attempt to add player in disconnected ClientSystem")
-            .add_player::<P, PlayerId, _>(player, scope)
+            .add_player::<Bytes, PlayerId, _>(player, scope)
             .await
             .map_or_else(
                 |err| Err(eyre::Report::from(err)),
@@ -304,59 +397,89 @@ impl ClientSystem {
     }
 }
 
+struct InputPack<'a, T> {
+    queue: &'a mut CommandQueue<T>,
+}
+
+impl<'a, T> Pack<InputSchema> for InputPack<'a, T>
+where
+    T: serde::Serialize,
+{
+    fn pack(self, offset: usize, output: &mut [u8]) -> (InputPacked, usize) {
+        let opts = bincode::DefaultOptions::new().allow_trailing_bytes();
+        let mut cursor = Cursor::new(output);
+        for command in self.queue.drain() {
+            opts.serialize_into(&mut cursor, &command).unwrap();
+        }
+
+        let len = cursor.position() as usize;
+
+        (
+            InputPacked {
+                offset: offset as FixedUsize,
+                len: len as FixedUsize,
+            },
+            len,
+        )
+    }
+}
+
 fn send_inputs<'a, I>(
     controlled: &HashSet<PlayerId>,
     session: &'a mut ClientSession<TcpChannel>,
     cx: SystemContext<'a>,
 ) -> Pin<Box<dyn Future<Output = eyre::Result<()>> + 'a>>
 where
-    I: for<'b> InputsReplicate<'b>,
+    I: Component + serde::Serialize,
 {
     let scope: &'a Scope<'static> = &*cx.scope;
 
-    let mut inputs = Vec::with_capacity_in(controlled.len(), scope);
-
-    for (_, (pid, nid, queue)) in cx
+    let inputs = cx
         .world
-        .query_mut::<(&PlayerId, &NetId, &mut CommandQueue<I::Command>)>()
-    {
-        if controlled.contains(pid) {
-            let input = I::replicate(queue, scope);
-            inputs.push((*pid, (*nid, input)));
-        }
-    }
+        .query_mut::<(&PlayerId, &NetId, &mut CommandQueue<I>)>()
+        .into_iter()
+        .filter_map(|(_, (pid, nid, queue))| {
+            controlled
+                .contains(pid)
+                .then(move || (*pid, (*nid, InputPack { queue })))
+        });
+
+    let mut vec_inputs = Vec::new_in(scope);
+
+    vec_inputs.extend(inputs);
 
     tracing::debug!("Sending input ({})", session.current_step());
     Box::pin(async move {
         session
-            .send_inputs::<(NetId, I::Replica), _, _>(inputs, scope)
+            .send_inputs::<(NetId, InputSchema), _, _>(vec_inputs, scope)
             .await
             .wrap_err("Failed to send inputs from client to server")
     })
 }
 
-fn replicate<R>(
+fn replicate<R, B>(
     session: &mut ClientSession<TcpChannel>,
     mapper: &mut EntityMapper,
     cx: SystemContext<'_>,
 ) -> eyre::Result<()>
 where
-    R: ReplicaSet,
+    R: Replicator,
+    B: BitTest + serde::de::DeserializeOwned,
 {
-    let updates = session.advance::<Seq<R::Replica>>(cx.clock.delta.as_nanos(), cx.scope)?;
+    let updates = session.advance::<WorldSchema>(cx.scope)?;
     if let Some(updates) = updates {
         tracing::debug!("Received updates ({})", updates.server_step);
 
         cx.res.with(|| ServerStep { value: 0 }).value = updates.server_step;
 
-        R::replicate(
+        R::replicate::<B>(
             updates.updates,
+            mapper,
             cx.world,
             cx.res,
             cx.spawner,
-            mapper,
             cx.scope,
-        );
+        )?;
     }
 
     Ok(())
@@ -372,3 +495,101 @@ impl ClientSystem {
         Ok(())
     }
 }
+
+macro_rules! for_tuple {
+    ($($t:ident $b:ident),+ $(,)?) => {
+        impl<$( $t ),+> ClientBuilder<($( $t, )+)> {
+            pub fn with<T>(mut self, descriptor: T) -> ClientBuilder<($($t,)+ T,)>
+            where
+                T: 'static,
+            {
+                drop(descriptor);
+                let tid = TypeId::of::<T>();
+                assert!(
+                    !self.ids.contains(&tid),
+                    "Duplicate replica descriptor {}",
+                    type_name::<T>()
+                );
+                self.ids.push(tid);
+                ClientBuilder {
+                    ids: self.ids,
+                    marker: PhantomData,
+                }
+            }
+
+            pub fn build<INPUT>(&self) -> ClientSystem
+            where
+                INPUT: Component + serde::Serialize,
+                $(
+                    $t: Descriptor,
+                )+
+            {
+                ClientSystem::new::<INPUT, ($($t,)+)>()
+            }
+        }
+
+        impl<$( $t ),+> Replicator for ($( $t, )+)
+        where
+            $(
+                $t: Descriptor,
+            )+
+        {
+            fn replicate<BITSET>(
+                data: &[u8],
+                mapper: &mut EntityMapper,
+                world: &mut World,
+                res: &mut Res,
+                spawner: &mut Spawner,
+                _scope: &Scope<'_>,
+            ) -> Result<(), BadPacked>
+            where
+                BITSET: BitTest + serde::de::DeserializeOwned,
+            {
+                let opts = bincode::DefaultOptions::new().allow_trailing_bytes();
+
+                let mut cursor = Cursor::new(data);
+
+                // tracing::error!("DATA: {:?}", data);
+
+                while cursor.get_ref().len() > cursor.position() as usize {
+                    // tracing::error!("REST: {:?}", &cursor.get_ref()[cursor.position() as usize..]);
+
+                    let header: EntityHeader<BITSET> = opts
+                        .deserialize_from(&mut cursor)
+                        .map_err(|_| BadPacked::InvalidBincode)?;
+
+                    // tracing::error!("NetId: {:?}", header.nid);
+
+                    let entity = mapper.get_or_spawn(world, header.nid);
+
+                    let mut mask_idx = 0;
+
+                    // Begin for each component + player_id.
+
+                    $(
+                        let $b = TrackReplicate::from_mask(mask_idx, &header.mask)?;
+                        replicate_one::<$t, _>($b, entity, world, res, spawner, opts, &mut cursor)?;
+                        mask_idx += 1;
+                    )+
+
+                    let pid = TrackReplicate::from_mask(mask_idx, &header.mask)?;
+                    replicate_one::<PlayerIdDescriptor, _>(pid, entity, world, res, spawner, opts, &mut cursor)?;
+
+                    // End for each component + player_id.
+                }
+
+                Ok(())
+            }
+        }
+    };
+}
+
+for_tuple!(A a);
+for_tuple!(A a, B b);
+for_tuple!(A a, B b, C c);
+for_tuple!(A a, B b, C c, D d);
+for_tuple!(A a, B b, C c, D d, E e);
+for_tuple!(A a, B b, C c, D d, E e, F f);
+for_tuple!(A a, B b, C c, D d, E e, F f, G g);
+for_tuple!(A a, B b, C c, D d, E e, F f, G g, H h);
+for_tuple!(A a, B b, C c, D d, E e, F f, G g, H h, I i);

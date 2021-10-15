@@ -1,4 +1,5 @@
 #![feature(allocator_api, future_poll_fn)]
+#![cfg_attr(windows, windows_subsystem = "windows")]
 
 use std::net::Ipv4Addr;
 
@@ -8,7 +9,10 @@ use arcana::{
     event::{ElementState, KeyboardInput, VirtualKeyCode},
     game2,
     hecs::Entity,
-    net::{client::ClientSystem, PlayerId},
+    net::{
+        client::{ClientSystem, SelfDescriptor},
+        PlayerId,
+    },
     physics2::Physics2,
     Controlled, EntityController, Global2, InputCommander, InputEvent, SystemContext, TimeSpan,
 };
@@ -143,13 +147,15 @@ impl InputCommander for TankComander {
     }
 }
 
-type ReplicaInput = tanks::TankCommand;
-type ReplicaSet = (Global2, TankState, Tank, TileMapComponent);
-
 fn main() {
     game2(|mut game| async move {
         // Create client system to communicate with game server.
-        let mut client = ClientSystem::new::<ReplicaInput, ReplicaSet>();
+        let mut client = ClientSystem::builder()
+            .with(Global2::descriptor())
+            .with(TankState::descriptor())
+            .with(Tank::descriptor())
+            .with(TileMapComponent::descriptor())
+            .build::<tanks::TankCommand>();
 
         // Connect to local server. It must be running.
         client
@@ -159,7 +165,15 @@ fn main() {
         tracing::info!("Connected");
 
         // Add player to game session.
-        let pid = client.add_player((), &game.scope).await?;
+        let pid = client.add_player(&(), &game.scope).await?;
+
+        // Setup camera.
+        let camera = game.viewport.camera();
+
+        game.world
+            .get_mut::<Camera2>(camera)
+            .unwrap()
+            .set_scaley(0.2);
 
         struct RemoteControl {
             entity: Option<Entity>,
@@ -195,20 +209,20 @@ fn main() {
                     }
                 }
             }
+
+            if let Some(entity) = rc.entity {
+                if let Some(pos) = cx.world.query_one_mut::<&Global2>(entity).ok().copied() {
+                    if let Ok(cam) = cx.world.query_one_mut::<&mut Global2>(camera) {
+                        cam.iso.translation = pos.iso.translation;
+                    }
+                }
+            }
         });
 
         tracing::info!("Player added");
 
         // Set client session to be executed in game loop.
         game.client = Some(client);
-
-        // Setup camera.
-        let camera = game.viewport.camera();
-
-        game.world
-            .get_mut::<Camera2>(camera)
-            .unwrap()
-            .set_scaley(0.2);
 
         game.scheduler.add_system(tanks::TankAnimationSystem::new());
 

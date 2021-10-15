@@ -22,12 +22,16 @@ use sierra::{
     VertexInputRate,
 };
 
-use super::vertex::{
-    Joints, Normal3, Position3, Semantics, Tangent3, VertexLayout, VertexLocation, VertexType,
-    Weights, UV, V2, V3, V4,
+use super::{
+    vertex::{
+        Joints, Normal3, Position3, Semantics, Tangent3, VertexLayout, VertexLocation, VertexType,
+        Weights, UV, V2, V3, V4,
+    },
+    Graphics,
 };
 
-use super::Graphics;
+#[cfg(feature = "genmesh")]
+use super::vertex::VertexAttribute;
 
 #[derive(Clone, Debug, Hash, PartialEq, Eq)]
 pub struct Binding {

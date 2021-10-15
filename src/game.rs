@@ -301,6 +301,9 @@ where
 
         let mut executor = Executor::new();
 
+        let main_step = cfg.main_step;
+        let mut step_ns = 0;
+
         // Begin game loop.
         loop {
             loop {
@@ -357,9 +360,6 @@ where
 
                 drop(renderer);
                 drop(world);
-
-                // Wait for graphics to finish pending work.
-                graphics.wait_idle();
                 return Ok(());
             }
 
@@ -380,20 +380,26 @@ where
                 .run(cx.reborrow())
                 .wrap_err_with(|| "System returned error")?;
 
-            #[cfg(feature = "client")]
-            if let Some(client) = &mut client {
-                client
-                    .run(cx.reborrow())
-                    .await
-                    .wrap_err("Client system run failed")?;
-            }
+            step_ns += clock.delta.as_nanos();
 
-            #[cfg(feature = "server")]
-            if let Some(server) = &mut server {
-                server
-                    .run(cx.reborrow())
-                    .await
-                    .wrap_err("Server system run failed")?;
+            if step_ns > main_step.as_nanos() {
+                step_ns -= main_step.as_nanos();
+
+                #[cfg(feature = "client")]
+                if let Some(client) = &mut client {
+                    client
+                        .run(cx.reborrow())
+                        .await
+                        .wrap_err("Client system run failed")?;
+                }
+
+                #[cfg(feature = "server")]
+                if let Some(server) = &mut server {
+                    server
+                        .run(cx.reborrow())
+                        .await
+                        .wrap_err("Server system run failed")?;
+                }
             }
 
             executor.append(&mut spawner);
@@ -619,7 +625,6 @@ struct Config {
     #[serde(default = "default_teardown_timeout")]
     teardown_timeout: TimeSpan,
 
-    #[cfg(not(feature = "visible"))]
     #[serde(default = "default_main_step")]
     main_step: TimeSpan,
 }
@@ -628,9 +633,8 @@ fn default_teardown_timeout() -> TimeSpan {
     TimeSpan::from_seconds(5)
 }
 
-#[cfg(not(feature = "visible"))]
 fn default_main_step() -> TimeSpan {
-    TimeSpan::from_millis(5)
+    TimeSpan::from_millis(20)
 }
 
 #[tracing::instrument]

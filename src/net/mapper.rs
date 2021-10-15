@@ -5,7 +5,7 @@ use hecs::{Entity, QueryOneError, World};
 use super::NetId;
 
 #[cfg(feature = "server")]
-use super::server;
+use super::IdGen;
 
 pub struct EntityMapper {
     entity_by_id: HashMap<NetId, Entity>,
@@ -56,7 +56,7 @@ impl EntityMapper {
 
     #[cfg(feature = "server")]
     #[inline(always)]
-    pub fn new_nid(&mut self, gen: &mut server::IdGen, entity: Entity) -> NetId {
+    pub(super) fn new_nid(&mut self, gen: &mut IdGen, entity: Entity) -> NetId {
         let nid = gen.gen_nid();
         let old = self.entity_by_id.insert(nid, entity);
         debug_assert!(old.is_none(), "Non-unique NetId mapped");
