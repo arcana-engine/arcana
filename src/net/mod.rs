@@ -59,14 +59,23 @@ struct WorldSchema;
 #[repr(C)]
 struct WorldPacked {
     offset: FixedUsize,
-    len: FixedUsize,
+    updated: FixedUsize,
+    removed: FixedUsize,
+}
+
+#[derive(Clone, Copy)]
+#[repr(C)]
+struct WorldUnpacked<'a> {
+    raw: &'a [u8],
+    updated: usize,
+    removed: usize,
 }
 
 unsafe impl bytemuck::Zeroable for WorldPacked {}
 unsafe impl bytemuck::Pod for WorldPacked {}
 
 impl<'a> SchemaUnpack<'a> for WorldSchema {
-    type Unpacked = &'a [u8];
+    type Unpacked = WorldUnpacked<'a>;
 }
 
 impl Schema for WorldSchema {
@@ -76,10 +85,17 @@ impl Schema for WorldSchema {
         align_of::<FixedUsize>()
     }
 
-    fn unpack<'a>(packed: WorldPacked, input: &'a [u8]) -> &'a [u8] {
+    fn unpack<'a>(packed: WorldPacked, input: &'a [u8]) -> WorldUnpacked<'a> {
         let offset = packed.offset as usize;
-        let len = packed.len as usize;
-        &input[offset..][..len]
+        let raw = &input[offset..];
+        let updated = packed.updated as usize;
+        let removed = packed.removed as usize;
+
+        WorldUnpacked {
+            raw,
+            updated,
+            removed,
+        }
     }
 }
 

@@ -263,6 +263,7 @@ struct ServerEntity<T> {
 struct WorldReplicaPack<'a, T, B> {
     world: &'a World,
     scope: &'a Scope<'a>,
+    mapper: &'a EntityMapper,
     back: u64,
     marker: PhantomData<fn(T, B)>,
 }
@@ -273,7 +274,14 @@ where
     R: Replicator,
 {
     fn pack(self, offset: usize, output: &mut [u8]) -> (WorldPacked, usize) {
-        <R as Replicator>::pack::<B>(self.world, self.scope, self.back, offset, output)
+        <R as Replicator>::pack::<B>(
+            self.world,
+            self.scope,
+            self.mapper,
+            self.back,
+            offset,
+            output,
+        )
     }
 }
 
@@ -290,6 +298,7 @@ trait Replicator {
     fn pack<BITSET>(
         world: &World,
         scope: &Scope<'_>,
+        mapper: &EntityMapper,
         back: u64,
         offset: usize,
         output: &mut [u8],
@@ -342,6 +351,7 @@ impl Replicator for () {
     fn pack<BITSET>(
         world: &World,
         scope: &Scope<'_>,
+        mapper: &EntityMapper,
         back: u64,
         offset: usize,
         output: &mut [u8],
@@ -354,6 +364,8 @@ impl Replicator for () {
         let mut query = world.query::<(&ServerEntity<(History<PlayerId>,)>, Option<&PlayerId>)>();
 
         let mut cursor = std::io::Cursor::new(output);
+
+        let mut updated = 0;
 
         for (_, (server, pid)) in query.iter() {
             let mut header = EntityHeader {
@@ -381,7 +393,15 @@ impl Replicator for () {
                 }
 
                 // End for each component + player_id.
+
+                updated += 1;
             }
+        }
+
+        let mut removed = 0;
+        for nid in mapper.iter_removed(world) {
+            opts.serialize_into(&mut cursor, &nid);
+            removed += 1;
         }
 
         let len = cursor.position() as usize;
@@ -389,7 +409,8 @@ impl Replicator for () {
         (
             WorldPacked {
                 offset: offset as FixedUsize,
-                len: len as FixedUsize,
+                updated,
+                removed,
             },
             len,
         )
@@ -416,6 +437,14 @@ pub trait RemotePlayer: Send + Sync + 'static {
     ) -> eyre::Result<Self>
     where
         Self: Sized;
+
+    #[inline(always)]
+    fn disconnected(self, world: &mut World, res: &mut Res, spawner: &mut Spawner)
+    where
+        Self: Sized,
+    {
+        let _ = (world, res, spawner);
+    }
 }
 
 pub struct ServerBuilder<R> {
@@ -638,7 +667,14 @@ where
                     }
                     Event::Disconnected => {
                         tracing::info!("{:?} disconnected", cid);
-                        players.retain(|_, player| player.cid != cid);
+                        let removed_players = players.drain_filter(|_, player| player.cid == cid);
+
+                        for (_, player) in removed_players {
+                            let player =
+                                player.player.downcast::<P>().expect("Invalid player type");
+
+                            player.disconnected(world, res, spawner);
+                        }
                     }
                 }
             }
@@ -651,6 +687,7 @@ where
                 |back| WorldReplicaPack::<R, B> {
                     world,
                     scope,
+                    mapper,
                     back,
                     marker: PhantomData,
                 },
@@ -659,6 +696,8 @@ where
             .await;
 
         R::update_history(world);
+
+        mapper.clear_removed(world);
 
         Ok(())
     })
@@ -761,6 +800,7 @@ macro_rules! for_tuple {
             fn pack<BITSET>(
                 world: &World,
                 scope: &Scope<'_>,
+                mapper: &EntityMapper,
                 back: u64,
                 offset: usize, output: &mut [u8]) -> (WorldPacked, usize)
             where
@@ -775,6 +815,7 @@ macro_rules! for_tuple {
 
                 let mut cursor = std::io::Cursor::new(output);
 
+                let mut updated = 0;
                 for (_, (server, $( $b, )+ pid)) in query.iter() {
                     let mut header = EntityHeader {
                         nid: server.nid,
@@ -814,17 +855,24 @@ macro_rules! for_tuple {
                         }
 
                         // End for each component + player_id.
+
+                        updated += 1;
                     }
+                }
+
+                let mut removed = 0;
+                for nid in mapper.iter_removed(world) {
+                    opts.serialize_into(&mut cursor, &nid);
+                    removed += 1;
                 }
 
                 let len = cursor.position() as usize;
 
-                // tracing::error!("DATA: {:?}", &cursor.into_inner()[..len]);
-
                 (
                     WorldPacked {
-                        offset: offset as u32,
-                        len: len as u32,
+                        offset: offset as FixedUsize,
+                        updated,
+                        removed,
                     },
                     len,
                 )

@@ -62,4 +62,18 @@ impl EntityMapper {
         debug_assert!(old.is_none(), "Non-unique NetId mapped");
         nid
     }
+
+    #[cfg(feature = "server")]
+    #[inline(always)]
+    pub(super) fn iter_removed<'a>(&'a self, world: &'a World) -> impl Iterator<Item = NetId> + 'a {
+        self.entity_by_id
+            .iter()
+            .filter_map(move |(nid, e)| (!world.contains(*e)).then(|| *nid))
+    }
+
+    #[cfg(feature = "server")]
+    #[inline(always)]
+    pub(super) fn clear_removed<'a>(&'a mut self, world: &'a World) {
+        self.entity_by_id.retain(|_, e| world.contains(*e))
+    }
 }

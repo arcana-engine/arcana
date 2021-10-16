@@ -1,5 +1,5 @@
 // #![deny(missing_docs)]
-#![feature(allocator_api)]
+#![feature(allocator_api, hash_drain_filter, ready_macro)]
 
 //!
 //! Arcana is a game engine built with focus on ease of use without compromising on level of control.

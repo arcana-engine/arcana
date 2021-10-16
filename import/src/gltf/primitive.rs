@@ -1,8 +1,10 @@
 use super::{align_vec, read_accessor, Error};
+
 use arcana_mesh_file::{
     BindingFileHeader, IndexType, IndicesFileHeader, MeshFileHeader, PrimitiveTopology,
     VertexLayout,
 };
+
 use byteorder::{ByteOrder, LittleEndian};
 use gltf::{
     accessor::{Accessor, DataType, Dimensions},

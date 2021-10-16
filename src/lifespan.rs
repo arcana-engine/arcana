@@ -6,12 +6,17 @@ use crate::{
 /// Component for entities with limited lifespan.
 #[repr(transparent)]
 pub struct LifeSpan {
-    left: TimeSpan,
+    pub left: TimeSpan,
 }
 
 impl LifeSpan {
     pub fn new(span: TimeSpan) -> Self {
         LifeSpan { left: span }
+    }
+
+    // Shortens lifetime to specified span.
+    pub fn truncate(&mut self, span: TimeSpan) {
+        self.left = std::cmp::min(self.left, span);
     }
 }
 

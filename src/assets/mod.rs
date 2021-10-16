@@ -2,7 +2,7 @@
 
 #[cfg(feature = "visible")]
 pub mod image;
-#[cfg(feature = "visible")]
+#[cfg(all(feature = "visible", feature = "3d"))]
 pub mod object;
 #[cfg(feature = "visible")]
 pub mod sprite_sheet;

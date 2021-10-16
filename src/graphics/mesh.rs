@@ -10,7 +10,9 @@ use std::{
 #[cfg(feature = "genmesh")]
 use std::mem::size_of;
 
+#[cfg(feature = "mesh-asset")]
 use arcana_mesh_file::{MeshFile, MeshFileHeader};
+
 use bytemuck::cast_slice;
 use goods::{Asset, AssetBuild, Loader};
 use scoped_arena::Scope;
@@ -873,6 +875,7 @@ fn build_triangles_blas<'a>(
     Ok(blas)
 }
 
+#[cfg(feature = "mesh-asset")]
 #[derive(Debug, thiserror::Error)]
 pub enum MeshFileDecodeError {
     #[error("Failed to verify magic number")]
@@ -882,6 +885,7 @@ pub enum MeshFileDecodeError {
     HeaderError { source: bincode::Error },
 }
 
+#[cfg(feature = "mesh-asset")]
 impl Asset for Mesh {
     type Decoded = MeshFile;
     type DecodeError = MeshFileDecodeError;
@@ -917,6 +921,7 @@ impl Asset for Mesh {
     }
 }
 
+#[cfg(feature = "arcana_mesh_file")]
 impl<B> AssetBuild<B> for Mesh
 where
     B: BorrowMut<Graphics>,

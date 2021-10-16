@@ -6,20 +6,19 @@ use std::{
     sync::atomic::{AtomicU32, Ordering},
 };
 
-use alkahest::{Seq, SeqUnpacked, Unpacked};
 use arcana::{
     assets::tiles::{TileMap, TileMapComponent},
-    bincode, game,
-    hecs::{QueryOneError, World},
+    game,
+    hecs::{Entity, World},
+    lifespan::LifeSpan,
     na,
     net::{
         server::{RemotePlayer, SelfDescriptor, ServerOwned, ServerSystem},
         PlayerId,
     },
-    palette::{FromColor, Hsl, Hsv, Lch, Srgb},
+    palette::{FromColor, Lch, Srgb},
     physics2::Physics2,
-    scoped_arena::Scope,
-    timespan, CommandQueue, Global2, Res, Spawner, TimeSpan,
+    Global2, Res, Spawner, TimeSpan,
 };
 use eyre::Context;
 use tokio::net::TcpListener;
@@ -41,7 +40,9 @@ fn random_color() -> [f32; 3] {
     [rgb.red, rgb.green, rgb.blue]
 }
 
-struct RemoteTankPlayer;
+struct RemoteTankPlayer {
+    entity: Entity,
+}
 
 impl RemotePlayer for RemoteTankPlayer {
     type Command = tanks::TankCommand;
@@ -75,7 +76,24 @@ impl RemotePlayer for RemoteTankPlayer {
 
         tracing::info!("Player's tank spawned");
 
-        Ok(RemoteTankPlayer)
+        Ok(RemoteTankPlayer { entity })
+    }
+
+    #[inline(always)]
+    fn disconnected(self, world: &mut World, _res: &mut Res, _spawner: &mut Spawner)
+    where
+        Self: Sized,
+    {
+        tracing::error!("Set 5s TTL for tank of disconnected player");
+
+        const KEEP_DISCONNECTED_FOR: TimeSpan = TimeSpan::from_seconds(5);
+
+        match world.query_one_mut::<&mut LifeSpan>(self.entity) {
+            Ok(lifespan) => lifespan.truncate(KEEP_DISCONNECTED_FOR),
+            _ => {
+                let _ = world.insert_one(self.entity, LifeSpan::new(KEEP_DISCONNECTED_FOR));
+            }
+        }
     }
 }
 
@@ -103,7 +121,7 @@ fn main() {
         ];
 
         // Bind listener for incoming connections.
-        let listener = TcpListener::bind((Ipv4Addr::LOCALHOST, 12345)).await?;
+        let listener = TcpListener::bind((Ipv4Addr::UNSPECIFIED, 12345)).await?;
 
         // Create server-side game session.
         let server = ServerSystem::builder()

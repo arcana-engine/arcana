@@ -1,5 +1,5 @@
 #![feature(allocator_api, future_poll_fn)]
-#![cfg_attr(windows, windows_subsystem = "windows")]
+// #![cfg_attr(windows, windows_subsystem = "windows")]
 
 use std::net::Ipv4Addr;
 
@@ -149,6 +149,8 @@ impl InputCommander for TankComander {
 
 fn main() {
     game2(|mut game| async move {
+        tracing::info!("START");
+
         // Create client system to communicate with game server.
         let mut client = ClientSystem::builder()
             .with(Global2::descriptor())
@@ -157,9 +159,12 @@ fn main() {
             .with(TileMapComponent::descriptor())
             .build::<tanks::TankCommand>();
 
+        tracing::info!("Connecting to server");
+
         // Connect to local server. It must be running.
         client
-            .connect((Ipv4Addr::LOCALHOST, 12345), &game.scope)
+            .connect((Ipv4Addr::new(62, 84, 122, 89), 12345), &game.scope)
+            // .connect((Ipv4Addr::new(127, 0, 0, 1), 12345), &game.scope)
             .await?;
 
         tracing::info!("Connected");

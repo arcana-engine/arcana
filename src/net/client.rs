@@ -23,7 +23,9 @@ use tracing::instrument;
 
 use crate::{control::CommandQueue, resources::Res, system::SystemContext, task::Spawner};
 
-use super::{EntityHeader, EntityMapper, InputPacked, InputSchema, NetId, WorldSchema};
+use super::{
+    EntityHeader, EntityMapper, InputPacked, InputSchema, NetId, WorldSchema, WorldUnpacked,
+};
 
 pub type DescriptorFetchItem<'a, T> =
     <<<T as Descriptor>::Query as Query>::Fetch as Fetch<'a>>::Item;
@@ -138,7 +140,7 @@ impl Descriptor for PlayerIdDescriptor {
 
 trait Replicator {
     fn replicate<B>(
-        data: &[u8],
+        unpacked: WorldUnpacked<'_>,
         mapper: &mut EntityMapper,
         world: &mut World,
         res: &mut Res,
@@ -224,7 +226,7 @@ where
 
 impl Replicator for () {
     fn replicate<B>(
-        data: &[u8],
+        unpacked: WorldUnpacked<'_>,
         mapper: &mut EntityMapper,
         world: &mut World,
         res: &mut Res,
@@ -236,9 +238,9 @@ impl Replicator for () {
     {
         let opts = bincode::DefaultOptions::new().allow_trailing_bytes();
 
-        let mut cursor = Cursor::new(data);
+        let mut cursor = Cursor::new(unpacked.raw);
 
-        while cursor.get_ref().len() > cursor.position() as usize {
+        for _ in 0..unpacked.updated {
             let header: EntityHeader<B> = opts.deserialize_from(&mut cursor).map_err(|err| {
                 tracing::error!("Error deserializing bincode: {}", err);
                 BadPacked::InvalidBincode
@@ -260,6 +262,20 @@ impl Replicator for () {
             )?;
 
             // End for each component + player_id.
+        }
+
+        for _ in 0..unpacked.removed {
+            let nid: NetId = opts.deserialize_from(&mut cursor).map_err(|err| {
+                tracing::error!("Error deserializing bincode: {}", err);
+                BadPacked::InvalidBincode
+            })?;
+
+            if let Some(entity) = mapper.get(nid) {
+                // Begin for each component.
+                // End for each component.
+
+                let _ = world.despawn(entity);
+            }
         }
 
         Ok(())
@@ -535,7 +551,7 @@ macro_rules! for_tuple {
             )+
         {
             fn replicate<BITSET>(
-                data: &[u8],
+                unpacked: WorldUnpacked<'_>,
                 mapper: &mut EntityMapper,
                 world: &mut World,
                 res: &mut Res,
@@ -547,11 +563,9 @@ macro_rules! for_tuple {
             {
                 let opts = bincode::DefaultOptions::new().allow_trailing_bytes();
 
-                let mut cursor = Cursor::new(data);
+                let mut cursor = Cursor::new(unpacked.raw);
 
-                // tracing::error!("DATA: {:?}", data);
-
-                while cursor.get_ref().len() > cursor.position() as usize {
+                for _ in 0..unpacked.updated {
                     // tracing::error!("REST: {:?}", &cursor.get_ref()[cursor.position() as usize..]);
 
                     let header: EntityHeader<BITSET> = opts
@@ -576,6 +590,33 @@ macro_rules! for_tuple {
                     replicate_one::<PlayerIdDescriptor, _>(pid, entity, world, res, spawner, opts, &mut cursor)?;
 
                     // End for each component + player_id.
+                }
+
+                for _ in 0..unpacked.removed {
+                    let nid: NetId = opts.deserialize_from(&mut cursor).map_err(|err| {
+                        tracing::error!("Error deserializing bincode: {}", err);
+                        BadPacked::InvalidBincode
+                    })?;
+
+                    if let Some(entity) = mapper.get(nid) {
+                        {
+                            let ($( $b, )+) = world
+                                .query_one_mut::<($( Option<<$t as Descriptor>::Query>, )+)>(entity)
+                                .unwrap();
+
+                            // Begin for each component.
+
+                            $(
+                                if let Some($b) = $b {
+                                    <$t as Descriptor>::on_remove($b, entity, spawner)
+                                }
+                            )+
+
+                            // End for each component.
+                        }
+
+                        let _ = world.despawn(entity);
+                    }
                 }
 
                 Ok(())
