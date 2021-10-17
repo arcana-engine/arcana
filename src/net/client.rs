@@ -8,15 +8,15 @@ use std::{
 };
 
 use alkahest::{Bytes, FixedUsize, Pack};
-use astral::{
-    channel::tcp::TcpChannel,
-    client_server::{ClientSession, PlayerId},
-};
 use bincode::Options as _;
 use bitsetium::BitTest;
 use eyre::Context;
 use hashbrown::HashSet;
 use hecs::{Component, Entity, Fetch, Query, World};
+use lloth::{
+    channel::tcp::TcpChannel,
+    client_server::{ClientSession, PlayerId},
+};
 use scoped_arena::Scope;
 use tokio::net::{TcpStream, ToSocketAddrs};
 use tracing::instrument;

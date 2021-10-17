@@ -100,7 +100,7 @@ pub fn load_primitive(
     if let Some(colors) = vertices.colors {
         bindings.push(BindingFileHeader {
             offset: colors.start,
-            layout: VertexLayout::Color,
+            layout: VertexLayout::ColorSrgba,
         });
     }
 

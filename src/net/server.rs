@@ -11,13 +11,13 @@ use std::{
 
 use alkahest::{Bytes, FixedUsize, Pack, Schema, Unpacked};
 
-use astral::{
-    channel::tcp::TcpChannel,
-    client_server::{ClientId, Event, PlayerId, ServerSession},
-};
 use bincode::Options as _;
 use bitsetium::{BitEmpty, BitSet, BitTestNone};
 use hecs::{Component, Entity, Fetch, Query, QueryOneError, World};
+use lloth::{
+    channel::tcp::TcpChannel,
+    client_server::{ClientId, Event, PlayerId, ServerSession},
+};
 use scoped_arena::Scope;
 use tokio::net::TcpListener;
 use tracing::instrument;

@@ -1,7 +1,7 @@
 use std::{mem::align_of, num::NonZeroU64};
 
 use alkahest::{FixedUsize, Schema, SchemaUnpack};
-pub use astral::client_server::PlayerId;
+pub use lloth::client_server::PlayerId;
 
 pub use self::{mapper::EntityMapper, nid::NetId};
 
