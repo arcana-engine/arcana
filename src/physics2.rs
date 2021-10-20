@@ -109,9 +109,11 @@ impl System for Physics2 {
         let mut remove_bodies = Vec::with_capacity_in(data.bodies.len(), &*cx.scope);
         let world = &*cx.world;
         data.bodies.iter().for_each(|(handle, body)| {
-            let e = Entity::from_bits(body.user_data as u64);
-            if !world.contains(e) {
-                remove_bodies.push(handle);
+            if body.user_data > 0 {
+                let e = Entity::from_bits((body.user_data - 1) as u64);
+                if !world.contains(e) {
+                    remove_bodies.push(handle);
+                }
             }
         });
         for handle in remove_bodies {
@@ -127,7 +129,7 @@ impl System for Physics2 {
             let body = data.bodies.get_mut(*body).unwrap();
 
             if body.user_data == 0 {
-                body.user_data = entity.to_bits().into();
+                body.user_data = (entity.to_bits() as u128) + 1;
 
                 for (index, &collider) in body.colliders().iter().enumerate() {
                     data.colliders.get_mut(collider).unwrap().user_data =

@@ -17,8 +17,8 @@ physics3d = ["3d", "rapier3d", "parry3d"]
 visible = ["sierra", "winit", "raw-window-handle"]
 mesh-asset = ["arcana-mesh-file"]
 
-client = []
-server = []
+client = ["evoke/client"]
+server = ["evoke/server"]
 
 default = ["visible"]
 
@@ -54,8 +54,7 @@ tracing-subscriber = "0.2"
 futures = "0.3"
 flume = "0.10"
 tokio = { version = "1.0", features = ["rt", "net", "io-util", "time"] }
-# lloth = { path = "../lloth", features = ["tcp"] }
-lloth = { git = "https://github.com/zakarumych/lloth.git", features = ["tcp"] }
+evoke = { version = "0.1", features = ["tcp"] }
 
 # Math
 na = { package = "nalgebra", version = "0.29", features = ["serde-serialize"] }

@@ -15,7 +15,7 @@ use scoped_arena::Scope;
 #[cfg(feature = "visible")]
 use crate::{control::Control, graphics::Graphics};
 
-/// Context in which [`System`] runs.
+/// Context in which [`Task`]s runs.
 pub struct TaskContext<'a> {
     /// Main world.
     pub world: &'a mut World,
@@ -139,7 +139,7 @@ impl Spawner {
     }
 }
 
-pub(crate) struct Executor {
+pub struct Executor {
     tasks: Vec<Pin<Box<dyn Future<Output = eyre::Result<()>>>>>,
 }
 

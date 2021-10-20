@@ -1,6 +1,6 @@
 use hecs::{Component, Entity, World};
 
-use crate::{Res, Spawner};
+use crate::Res;
 
 /// Prefabs are predefined sets of components that can be spawned onto the World.
 /// Prefabs serve as higher-level composition blocks of the World.
@@ -13,7 +13,7 @@ pub trait Prefab {
     /// Additional entities *should* be child entities if they are part of the scene-graph.
     /// Spawning can also spawn tasks to finish entity creation asynchronously.
     /// This function *must* return main spawned entity index.
-    fn spawn(self, res: &mut Res, world: &mut World, spawner: &mut Spawner) -> Entity;
+    fn spawn(self, res: &mut Res, world: &mut World) -> Entity;
 }
 
 // /// Prefab component is a component that can add components and spawn entities when inserted.

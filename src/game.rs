@@ -1,6 +1,7 @@
 use {
     crate::{
         clocks::{Clocks, TimeSpan},
+        fps::FpsMeter,
         lifespan::LifeSpanSystem,
         resources::Res,
         system::{Scheduler, SystemContext},
@@ -21,7 +22,6 @@ use {
     crate::{
         control::Control,
         event::{Event, Loop, WindowEvent},
-        fps::FpsMeter,
         funnel::Funnel,
         graphics::{Graphics, Renderer, RendererContext},
         hecs::DynamicBundle,
@@ -34,10 +34,10 @@ use {
 use crate::graphics::renderer::forward::ForwardRenderer;
 
 #[cfg(feature = "client")]
-use crate::net::client::ClientSystem;
+use evoke::client::ClientSystem;
 
 #[cfg(feature = "server")]
-use crate::net::server::ServerSystem;
+use evoke::server::ServerSystem;
 
 #[cfg(all(feature = "2d", feature = "visible"))]
 use crate::{camera::Camera2, graphics::renderer::sprite::SpriteDraw, scene::Global2};
@@ -285,10 +285,9 @@ where
         let mut clocks = Clocks::new();
 
         // Schedule default systems.
-        scheduler.add_system(LifeSpanSystem);
-
         #[cfg(any(feature = "2d", feature = "3d"))]
         scheduler.add_system(SceneSystem);
+        scheduler.add_system(LifeSpanSystem);
 
         res.insert(FpsMeter::new(TimeSpan::SECOND));
         scheduler.add_fixed_system(
@@ -364,7 +363,6 @@ where
             }
 
             let clock = clocks.advance();
-
             let mut cx = SystemContext {
                 world: &mut world,
                 res: &mut res,
@@ -388,7 +386,7 @@ where
                 #[cfg(feature = "client")]
                 if let Some(client) = &mut client {
                     client
-                        .run(cx.reborrow())
+                        .run(cx.world, cx.scope)
                         .await
                         .wrap_err("Client system run failed")?;
                 }
@@ -396,7 +394,7 @@ where
                 #[cfg(feature = "server")]
                 if let Some(server) = &mut server {
                     server
-                        .run(cx.reborrow())
+                        .run(cx.world, cx.scope)
                         .await
                         .wrap_err("Server system run failed")?;
                 }
@@ -441,8 +439,17 @@ where
     });
 }
 
+#[cfg(feature = "visible")]
+pub fn headless<F, Fut>(f: F)
+where
+    F: FnOnce(Game) -> Fut + 'static,
+    Fut: Future<Output = eyre::Result<Game>>,
+{
+    panic!("This function must be used only with \"visible\" feature disabled")
+}
+
 #[cfg(not(feature = "visible"))]
-pub fn game<F, Fut>(f: F)
+pub fn headless<F, Fut>(f: F)
 where
     F: FnOnce(Game) -> Fut + 'static,
     Fut: Future<Output = eyre::Result<Game>>,
@@ -518,8 +525,18 @@ where
             let mut next = clocks.get_start();
 
             // Schedule default systems.
-            scheduler.add_ticking_system(LifeSpanSystem);
+            #[cfg(any(feature = "2d", feature = "3d"))]
             scheduler.add_ticking_system(SceneSystem);
+            scheduler.add_ticking_system(LifeSpanSystem);
+
+            res.insert(FpsMeter::new(TimeSpan::SECOND));
+            scheduler.add_fixed_system(
+                |cx: SystemContext<'_>| {
+                    let fps = cx.res.get::<FpsMeter>().unwrap();
+                    tracing::info!("FPS: {}", fps.fps());
+                },
+                TimeSpan::SECOND,
+            );
 
             let mut executor = Executor::new();
 
@@ -562,7 +579,7 @@ where
                 #[cfg(feature = "client")]
                 if let Some(client) = &mut client {
                     client
-                        .run(cx.reborrow())
+                        .run(cx.world, cx.scope)
                         .await
                         .wrap_err("Client system run failed")?;
                 }
@@ -570,7 +587,7 @@ where
                 #[cfg(feature = "server")]
                 if let Some(server) = &mut server {
                     server
-                        .run(cx.reborrow())
+                        .run(cx.world, cx.scope)
                         .await
                         .wrap_err("Server system run failed")?;
                 }
@@ -585,6 +602,10 @@ where
                         scope: &mut scope,
                     })
                     .wrap_err_with(|| "Task returned error")?;
+
+                res.get_mut::<FpsMeter>()
+                    .unwrap()
+                    .add_frame_time(clock.delta);
 
                 next += Duration::from(main_step);
                 tokio::time::sleep_until(next.into()).await;

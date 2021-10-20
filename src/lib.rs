@@ -18,7 +18,7 @@ mod clocks;
 mod debug;
 mod game;
 pub mod lifespan;
-pub mod net;
+// pub mod net;
 pub mod prefab;
 
 #[cfg(feature = "physics2d")]
@@ -33,6 +33,7 @@ mod resources;
 #[cfg(any(feature = "2d", feature = "3d"))]
 mod scene;
 
+pub mod fps;
 mod scoped_vec_iter;
 mod system;
 mod task;
@@ -42,8 +43,6 @@ pub mod camera;
 #[cfg(feature = "visible")]
 pub mod event;
 #[cfg(feature = "visible")]
-pub mod fps;
-#[cfg(feature = "visible")]
 mod funnel;
 #[cfg(feature = "visible")]
 pub mod graphics;
@@ -51,7 +50,7 @@ pub mod graphics;
 mod viewport;
 
 // Reexport crates widely used in public API.
-pub use {bincode, hecs, na, palette, scoped_arena, uuid};
+pub use {bincode, evoke, hecs, na, palette, scoped_arena, uuid};
 
 #[cfg(feature = "visible")]
 pub use sierra;

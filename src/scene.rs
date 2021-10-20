@@ -9,12 +9,6 @@ use crate::{
     system::{System, SystemContext},
 };
 
-#[cfg(feature = "client")]
-use crate::net::client;
-
-#[cfg(feature = "server")]
-use crate::net::server;
-
 #[cfg(feature = "2d")]
 #[derive(Clone, Copy, Debug, PartialEq)]
 pub struct Local2 {
@@ -64,12 +58,6 @@ impl Local2 {
 pub struct Global2 {
     pub iso: na::Isometry2<f32>,
 }
-
-#[cfg(feature = "client")]
-impl client::TrivialDescriptor for Global2 {}
-
-#[cfg(feature = "server")]
-impl server::TrivialDescriptor for Global2 {}
 
 #[cfg(feature = "2d")]
 impl Default for Global2 {

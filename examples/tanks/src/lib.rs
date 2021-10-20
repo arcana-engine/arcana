@@ -3,6 +3,7 @@
 use alkahest::Schema;
 
 use arcana::{
+    assets::{AssetLoadSystemCache, WithUuid, WithUuidVisible},
     hecs::{Entity, World},
     lifespan::LifeSpan,
     na,
@@ -12,16 +13,15 @@ use arcana::{
         pipeline::ActiveEvents,
         ContactQueue2, PhysicsData2,
     },
+    scoped_arena::Scope,
     uuid::Uuid,
-    with_async_task_context, CommandQueue, Global2, Res, Spawner, System, SystemContext, TimeSpan,
+    CommandQueue, Global2, Res, System, SystemContext, TimeSpan,
 };
-use eyre::WrapErr;
 
-#[cfg(feature = "client")]
-use arcana::net::client;
+#[cfg(any(feature = "client", feature = "server"))]
+use arcana::evoke;
 
-#[cfg(feature = "server")]
-use arcana::net::server;
+use goods::Asset;
 
 use ordered_float::OrderedFloat;
 
@@ -84,35 +84,50 @@ fn tank_graph_animation(sheet: &SpriteSheet) -> SpriteGraphAnimation<TankAnimTra
     )
 }
 
-#[derive(Clone, Debug, PartialEq, serde::Serialize, serde::Deserialize)]
+#[cfg(feature = "visible")]
+fn tank_sprite_sheet_uuid(tank: &Tank) -> Uuid {
+    WithUuid::uuid(&tank.sprite_sheet)
+}
+
+#[cfg(not(feature = "visible"))]
+fn tank_sprite_sheet_uuid(tank: &Tank) -> Uuid {
+    tank.sprite_sheet
+}
+
+#[derive(Clone, Debug, Asset)]
 pub struct Tank {
     size: na::Vector2<f32>,
     color: [f32; 3],
+
+    #[cfg(feature = "visible")]
+    #[external]
+    sprite_sheet: WithUuid<SpriteSheet>,
+
+    #[cfg(not(feature = "visible"))]
     sprite_sheet: Uuid,
 }
 
 impl Tank {
-    pub fn new(size: na::Vector2<f32>, color: [f32; 3], sprite_sheet: Uuid) -> Self {
+    pub fn new(
+        size: na::Vector2<f32>,
+        color: [f32; 3],
+        #[cfg(feature = "visible")] sprite_sheet: WithUuid<SpriteSheet>,
+        #[cfg(not(feature = "visible"))] sprite_sheet: Uuid,
+    ) -> Self {
         Tank {
             size,
             color,
-            sprite_sheet,
+            sprite_sheet: sprite_sheet.into(),
         }
     }
 
     /// Spawn this tank.
-    pub fn spawn(
-        self,
-        iso: &na::Isometry2<f32>,
-        world: &mut World,
-        res: &mut Res,
-        spawner: &mut Spawner,
-    ) -> Entity {
+    pub fn spawn(self, iso: &na::Isometry2<f32>, world: &mut World, res: &mut Res) -> Entity {
         let physics = res.with(PhysicsData2::new);
         let hs = self.size * 0.5;
 
         #[cfg(feature = "visible")]
-        let sprite_sheet = self.sprite_sheet;
+        let sprite_sheet = &self.sprite_sheet;
 
         let body = physics.bodies.insert(
             RigidBodyBuilder::new_dynamic()
@@ -135,6 +150,13 @@ impl Tank {
         let entity = world.spawn((
             Global2::new(*iso),
             body,
+            ContactQueue2::new(),
+            TankState {
+                drive: 0,
+                rotate: 0,
+                alive: true,
+                fire: false,
+            },
             #[cfg(feature = "visible")]
             Sprite {
                 world: Rect {
@@ -147,285 +169,26 @@ impl Tank {
                 tex: Rect::ONE_QUAD,
                 layer: 1,
             },
-            ContactQueue2::new(),
-            TankState {
-                drive: 0,
-                rotate: 0,
-                alive: true,
-                fire: false,
+            #[cfg(feature = "visible")]
+            tank_graph_animation(&sprite_sheet),
+            #[cfg(feature = "visible")]
+            Material {
+                albedo_coverage: Some(sprite_sheet.texture.clone()),
+                albedo_factor: [
+                    OrderedFloat(color[0]),
+                    OrderedFloat(color[1]),
+                    OrderedFloat(color[2]),
+                ],
+                ..Default::default()
             },
             self,
         ));
 
-        #[cfg(feature = "visible")]
-        spawner.spawn(async move {
-            let mut sprite_sheet =
-                with_async_task_context(|cx| cx.loader.load::<SpriteSheet>(&sprite_sheet)).await;
-
-            with_async_task_context(|cx| {
-                let sprite_sheet = sprite_sheet
-                    .get(cx.graphics)
-                    .wrap_err_with(|| "Failed to load tank spritesheet")?;
-                cx.world.insert(
-                    entity,
-                    (
-                        tank_graph_animation(&sprite_sheet),
-                        Material {
-                            albedo_coverage: Some(sprite_sheet.texture.clone()),
-                            albedo_factor: [
-                                OrderedFloat(color[0]),
-                                OrderedFloat(color[1]),
-                                OrderedFloat(color[2]),
-                            ],
-                            ..Default::default()
-                        },
-                    ),
-                )?;
-
-                tracing::info!("Tank is fully loaded");
-
-                Ok(())
-            })
-        });
+        tracing::info!("Tank is fully loaded");
 
         entity
     }
 }
-
-#[cfg(feature = "client")]
-impl client::SelfDescriptor for Tank {
-    fn modify(&mut self, new: Self, entity: Entity, spawner: &mut Spawner) {
-        // Note modified fields
-        #[cfg(feature = "visible")]
-        let modify_sprite = self.sprite_sheet != new.sprite_sheet;
-
-        #[cfg(feature = "visible")]
-        let modify_color = self.color != new.color;
-
-        let modify_size = self.size != new.size;
-
-        // Update component.
-        *self = new;
-
-        #[cfg(feature = "visible")]
-        let color = self.color;
-
-        #[cfg(feature = "visible")]
-        let sprite_sheet = self.sprite_sheet;
-
-        // Process modifications.
-        if modify_size {
-            let size = self.size;
-
-            spawner.spawn(async move {
-                with_async_task_context(|cx| {
-                    let physics = cx.res.with(PhysicsData2::new);
-                    let hs = size * 0.5;
-
-                    let body = physics
-                        .bodies
-                        .insert(RigidBodyBuilder::new_kinematic_position_based().build());
-
-                    physics.colliders.insert_with_parent(
-                        ColliderBuilder::cuboid(hs.x * 0.625, hs.y * 0.6875)
-                            .active_events(ActiveEvents::CONTACT_EVENTS)
-                            .build(),
-                        body,
-                        &mut physics.bodies,
-                    );
-
-                    let _ = cx.world.insert(
-                        entity,
-                        (
-                            body,
-                            #[cfg(feature = "visible")]
-                            Sprite {
-                                world: Rect {
-                                    left: -hs.x,
-                                    right: hs.x,
-                                    top: -hs.y,
-                                    bottom: hs.y,
-                                },
-                                src: Rect::ONE_QUAD,
-                                tex: Rect::ONE_QUAD,
-                                layer: 1,
-                            },
-                        ),
-                    );
-                });
-
-                #[cfg(feature = "visible")]
-                {
-                    if modify_sprite {
-                        let mut sprite_sheet = with_async_task_context(|cx| {
-                            cx.loader.load::<SpriteSheet>(&sprite_sheet)
-                        })
-                        .await;
-
-                        with_async_task_context(|cx| {
-                            let sprite_sheet = sprite_sheet
-                                .get(cx.graphics)
-                                .wrap_err_with(|| "Failed to load tank spritesheet")?;
-
-                            let _ = cx.world.insert(
-                                entity,
-                                (
-                                    tank_graph_animation(&sprite_sheet),
-                                    Material {
-                                        albedo_coverage: Some(sprite_sheet.texture.clone()),
-                                        albedo_factor: [
-                                            OrderedFloat(color[0]),
-                                            OrderedFloat(color[1]),
-                                            OrderedFloat(color[2]),
-                                        ],
-                                        ..Default::default()
-                                    },
-                                ),
-                            );
-                            Ok::<_, eyre::Report>(())
-                        })?;
-                    } else if modify_color {
-                        with_async_task_context(|cx| {
-                            if let Ok(material) = cx.world.query_one_mut::<&mut Material>(entity) {
-                                material.albedo_factor = [
-                                    OrderedFloat(color[0]),
-                                    OrderedFloat(color[1]),
-                                    OrderedFloat(color[2]),
-                                ];
-                            }
-                        })
-                    }
-                }
-                Ok(())
-            })
-        } else {
-            #[cfg(feature = "visible")]
-            {
-                if modify_sprite {
-                    spawner.spawn(async move {
-                        let mut sprite_sheet = with_async_task_context(|cx| {
-                            cx.loader.load::<SpriteSheet>(&sprite_sheet)
-                        })
-                        .await;
-
-                        with_async_task_context(|cx| {
-                            let sprite_sheet = sprite_sheet
-                                .get(cx.graphics)
-                                .wrap_err_with(|| "Failed to load tank spritesheet")?;
-                            cx.world.insert(
-                                entity,
-                                (
-                                    tank_graph_animation(&sprite_sheet),
-                                    Material {
-                                        albedo_coverage: Some(sprite_sheet.texture.clone()),
-                                        albedo_factor: [
-                                            OrderedFloat(color[0]),
-                                            OrderedFloat(color[1]),
-                                            OrderedFloat(color[2]),
-                                        ],
-                                        ..Default::default()
-                                    },
-                                ),
-                            )?;
-
-                            Ok(())
-                        })
-                    });
-                } else if modify_color {
-                    spawner.spawn(async move {
-                        with_async_task_context(|cx| {
-                            if let Ok(material) = cx.world.query_one_mut::<&mut Material>(entity) {
-                                material.albedo_factor = [
-                                    OrderedFloat(color[0]),
-                                    OrderedFloat(color[1]),
-                                    OrderedFloat(color[2]),
-                                ];
-                            }
-                        });
-                        Ok(())
-                    })
-                }
-            }
-        }
-    }
-
-    fn insert(self, entity: Entity, world: &mut World, res: &mut Res, spawner: &mut Spawner) {
-        let physics = res.with(PhysicsData2::new);
-        let hs = self.size * 0.5;
-
-        let sprite_sheet = self.sprite_sheet;
-
-        let body = physics
-            .bodies
-            .insert(RigidBodyBuilder::new_kinematic_position_based().build());
-
-        physics.colliders.insert_with_parent(
-            ColliderBuilder::cuboid(hs.x * 0.625, hs.y * 0.6875)
-                .active_events(ActiveEvents::CONTACT_EVENTS)
-                .build(),
-            body,
-            &mut physics.bodies,
-        );
-
-        let color = self.color;
-
-        world
-            .insert(
-                entity,
-                (
-                    body,
-                    #[cfg(feature = "visible")]
-                    Sprite {
-                        world: Rect {
-                            left: -hs.x,
-                            right: hs.x,
-                            top: -hs.y,
-                            bottom: hs.y,
-                        },
-                        src: Rect::ONE_QUAD,
-                        tex: Rect::ONE_QUAD,
-                        layer: 1,
-                    },
-                    self,
-                ),
-            )
-            .unwrap();
-
-        #[cfg(feature = "visible")]
-        spawner.spawn(async move {
-            let mut sprite_sheet =
-                with_async_task_context(|cx| cx.loader.load::<SpriteSheet>(&sprite_sheet)).await;
-
-            with_async_task_context(|cx| {
-                let sprite_sheet = sprite_sheet
-                    .get(cx.graphics)
-                    .wrap_err_with(|| "Failed to load tank spritesheet")?;
-                cx.world.insert(
-                    entity,
-                    (
-                        tank_graph_animation(&sprite_sheet),
-                        Material {
-                            albedo_coverage: Some(sprite_sheet.texture.clone()),
-                            albedo_factor: [
-                                OrderedFloat(color[0]),
-                                OrderedFloat(color[1]),
-                                OrderedFloat(color[2]),
-                            ],
-                            ..Default::default()
-                        },
-                    ),
-                )?;
-
-                Ok(())
-            })
-        });
-    }
-
-    fn on_remove(&mut self, _entity: Entity, _spawner: &mut Spawner) {}
-}
-
-#[cfg(feature = "server")]
-impl server::TrivialDescriptor for Tank {}
 
 #[derive(Clone, Copy, Debug, Schema, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct TankState {
@@ -436,6 +199,15 @@ pub struct TankState {
 }
 
 impl TankState {
+    pub fn new() -> Self {
+        TankState {
+            drive: 0,
+            rotate: 0,
+            fire: false,
+            alive: true,
+        }
+    }
+
     pub fn set_commands(&mut self, commands: impl Iterator<Item = TankCommand>) {
         for cmd in commands {
             match cmd {
@@ -446,12 +218,6 @@ impl TankState {
         }
     }
 }
-
-#[cfg(feature = "client")]
-impl client::TrivialDescriptor for TankState {}
-
-#[cfg(feature = "server")]
-impl server::TrivialDescriptor for TankState {}
 
 #[derive(Clone, Copy, Debug, serde::Serialize, serde::Deserialize)]
 pub enum TankCommand {
@@ -678,3 +444,283 @@ impl System for BulletSystem {
 
 #[cfg(feature = "visible")]
 pub type TankAnimationSystem = SpriteGraphAnimationSystem<TankState, TankAnimTransitionRule>;
+
+#[cfg(any(feature = "client", feature = "server"))]
+#[derive(serde::Serialize, serde::Deserialize)]
+pub struct TankReplica {
+    pub size: na::Vector2<f32>,
+    pub color: [f32; 3],
+    pub sprite_sheet: Uuid,
+    pub state: TankState,
+}
+
+#[cfg(any(feature = "client", feature = "server"))]
+impl TankReplica {
+    fn equivalent(&self, tank: &Tank, state: &TankState) -> bool {
+        self.size == tank.size
+            && self.color == tank.color
+            && self.sprite_sheet == tank_sprite_sheet_uuid(&tank)
+            && self.state == *state
+    }
+
+    fn from_tank_state(tank: &Tank, state: &TankState) -> Self {
+        TankReplica {
+            size: tank.size,
+            color: tank.color,
+            sprite_sheet: tank_sprite_sheet_uuid(&tank),
+            state: *state,
+        }
+    }
+}
+
+#[cfg(feature = "visible")]
+type TankReplicaSystemCache = AssetLoadSystemCache<SpriteSheet>;
+
+pub struct TankReplicaSystem;
+
+impl System for TankReplicaSystem {
+    fn name(&self) -> &str {
+        "TankReplicaSystem"
+    }
+
+    fn run(&mut self, cx: SystemContext<'_>) -> eyre::Result<()> {
+        #[cfg(feature = "visible")]
+        let cache = cx.res.with(TankReplicaSystemCache::new);
+
+        let mut spawn = Vec::new_in(&*cx.scope);
+        let mut remove_replica = Vec::new_in(&*cx.scope);
+
+        #[cfg(feature = "visible")]
+        type MaterialFetch = Option<&'static mut Material>;
+
+        #[cfg(not(feature = "visible"))]
+        type MaterialFetch = ();
+
+        let query = cx.world.query_mut::<(
+            &Global2,
+            &TankReplica,
+            Option<&mut Tank>,
+            Option<&mut TankState>,
+            MaterialFetch,
+        )>();
+
+        for (entity, (global, replica, tank, state, mat)) in query {
+            match tank {
+                Some(tank) if tank_sprite_sheet_uuid(&tank) == replica.sprite_sheet => {
+                    *state.unwrap() = replica.state;
+
+                    #[cfg(feature = "visible")]
+                    let () = mat.unwrap().albedo_factor = [
+                        OrderedFloat(replica.color[0]),
+                        OrderedFloat(replica.color[1]),
+                        OrderedFloat(replica.color[2]),
+                    ];
+
+                    remove_replica.push(entity);
+                    continue;
+                }
+                _ => {}
+            }
+
+            #[cfg(feature = "visible")]
+            match &tank {
+                Some(tank) if tank_sprite_sheet_uuid(&tank) == replica.sprite_sheet => {}
+                _ => {
+                    cache.ensure_load(replica.sprite_sheet, cx.loader);
+                }
+            }
+
+            #[cfg(feature = "visible")]
+            match tank {
+                None => {
+                    if let Some(sheet) = cache.get_ready(&replica.sprite_sheet) {
+                        spawn.push((entity, global.iso, sheet.clone()));
+                    }
+                }
+                Some(tank) => {
+                    if tank_sprite_sheet_uuid(&tank) != replica.sprite_sheet {
+                        if let Some(sheet) = cache.get_ready(&replica.sprite_sheet) {
+                            spawn.push((entity, global.iso, sheet.clone()));
+                        }
+                    } else {
+                        spawn.push((entity, global.iso, (&*tank.sprite_sheet).clone()));
+                    }
+                }
+            }
+
+            #[cfg(not(feature = "visible"))]
+            spawn.push((entity, global.iso, ()));
+        }
+
+        #[cfg(feature = "visible")]
+        cache.ensure_task(cx.spawner, |cx| cx.graphics);
+
+        for (entity, iso, sheet) in spawn {
+            let replica = cx.world.remove_one::<TankReplica>(entity).unwrap();
+
+            let tank = Tank {
+                #[cfg(feature = "visible")]
+                sprite_sheet: WithUuid::new(sheet, replica.sprite_sheet),
+                #[cfg(not(feature = "visible"))]
+                sprite_sheet: replica.sprite_sheet,
+                color: replica.color,
+                size: replica.size,
+            };
+            let state = replica.state;
+
+            let physics = cx.res.with(PhysicsData2::new);
+            let hs = tank.size * 0.5;
+
+            #[cfg(feature = "visible")]
+            let sprite_sheet = &tank.sprite_sheet;
+
+            let body = physics.bodies.insert(
+                RigidBodyBuilder::new_dynamic()
+                    .linear_damping(0.3)
+                    .angular_damping(0.3)
+                    .position(iso)
+                    .build(),
+            );
+
+            physics.colliders.insert_with_parent(
+                ColliderBuilder::cuboid(hs.x * 0.625, hs.y * 0.6875)
+                    .active_events(ActiveEvents::CONTACT_EVENTS)
+                    .build(),
+                body,
+                &mut physics.bodies,
+            );
+
+            tracing::error!("Add {:?} to {:?}", body, entity);
+
+            cx.world
+                .insert(
+                    entity,
+                    (
+                        body,
+                        ContactQueue2::new(),
+                        state,
+                        #[cfg(feature = "visible")]
+                        Sprite {
+                            world: Rect {
+                                left: -hs.x,
+                                right: hs.x,
+                                top: -hs.y,
+                                bottom: hs.y,
+                            },
+                            src: Rect::ONE_QUAD,
+                            tex: Rect::ONE_QUAD,
+                            layer: 1,
+                        },
+                        #[cfg(feature = "visible")]
+                        tank_graph_animation(&sprite_sheet),
+                        #[cfg(feature = "visible")]
+                        Material {
+                            albedo_coverage: Some(sprite_sheet.texture.clone()),
+                            albedo_factor: [
+                                OrderedFloat(tank.color[0]),
+                                OrderedFloat(tank.color[1]),
+                                OrderedFloat(tank.color[2]),
+                            ],
+                            ..Default::default()
+                        },
+                        tank,
+                    ),
+                )
+                .unwrap();
+        }
+
+        for entity in remove_replica {
+            let _ = cx.world.remove_one::<TankReplica>(entity);
+        }
+
+        #[cfg(feature = "visible")]
+        {
+            let cache = cx.res.get_mut::<TankReplicaSystemCache>().unwrap();
+            cache.clear_ready();
+        }
+
+        Ok(())
+    }
+}
+
+#[cfg(any(feature = "client", feature = "server"))]
+pub enum TankDescriptor {}
+
+#[cfg(feature = "client")]
+impl evoke::client::Descriptor for TankDescriptor {
+    type Query = &'static mut TankReplica;
+    type Pack = TankReplica;
+
+    fn insert(pack: TankReplica, entity: Entity, world: &mut World) {
+        let _ = world.insert_one(entity, pack);
+    }
+
+    fn modify(pack: TankReplica, item: &mut TankReplica) {
+        *item = pack;
+    }
+
+    fn remove(entity: Entity, world: &mut World) {
+        let _ = world.remove_one::<TankReplica>(entity);
+
+        #[cfg(feature = "visible")]
+        type Bundle = (
+            Tank,
+            TankState,
+            RigidBodyHandle,
+            ContactQueue2,
+            Material,
+            Sprite,
+            SpriteGraphAnimation<TankAnimTransitionRule>,
+        );
+
+        #[cfg(not(feature = "visible"))]
+        type Bundle = (Tank, TankState, RigidBodyHandle, ContactQueue2);
+
+        if let Err(arcana::hecs::ComponentError::MissingComponent(component)) =
+            world.remove::<Bundle>(entity)
+        {
+            tracing::error!("Tank components missing: '{}'", component);
+
+            let _ = world.remove_one::<Tank>(entity);
+            let _ = world.remove_one::<TankState>(entity);
+            let _ = world.remove_one::<ContactQueue2>(entity);
+            let _ = world.remove_one::<RigidBodyHandle>(entity);
+
+            #[cfg(feature = "visible")]
+            let _ = world.remove_one::<Material>(entity);
+
+            #[cfg(feature = "visible")]
+            let _ = world.remove_one::<Sprite>(entity);
+
+            #[cfg(feature = "visible")]
+            let _ = world.remove_one::<SpriteGraphAnimation<TankAnimTransitionRule>>(entity);
+        }
+    }
+}
+#[cfg(feature = "server")]
+impl evoke::server::DescriptorPack<'_> for TankDescriptor {
+    type Pack = TankReplica;
+}
+
+#[cfg(feature = "server")]
+impl evoke::server::Descriptor for TankDescriptor {
+    type Query = (&'static Tank, &'static TankState);
+    type History = TankReplica;
+
+    fn history((tank, state): (&Tank, &TankState)) -> TankReplica {
+        TankReplica::from_tank_state(tank, state)
+    }
+
+    fn replicate<'a>(
+        (tank, state): (&Tank, &TankState),
+        history: Option<&TankReplica>,
+        _scope: &'a Scope<'_>,
+    ) -> evoke::server::Replicate<TankReplica> {
+        match history {
+            Some(history) if history.equivalent(tank, state) => {
+                evoke::server::Replicate::Unmodified
+            }
+            _ => evoke::server::Replicate::Modified(TankReplica::from_tank_state(tank, state)),
+        }
+    }
+}

@@ -4,17 +4,19 @@
 use std::net::Ipv4Addr;
 
 use arcana::{
-    assets::tiles::TileMapComponent,
+    assets::tiles::{TileMapDescriptor, TileMapReplicaSystem},
     camera::Camera2,
     event::{ElementState, KeyboardInput, VirtualKeyCode},
-    game2,
-    hecs::Entity,
-    net::{
-        client::{ClientSystem, SelfDescriptor},
+    evoke::{
+        client::{ClientSystem, LocalPlayer, LocalPlayerPack},
         PlayerId,
     },
+    game2,
+    hecs::Entity,
     physics2::Physics2,
-    Controlled, EntityController, Global2, InputCommander, InputEvent, SystemContext, TimeSpan,
+    scoped_arena::Scope,
+    CommandQueue, Controlled, EntityController, Global2, InputCommander, InputEvent, SystemContext,
+    TimeSpan,
 };
 
 use tanks::*;
@@ -147,30 +149,26 @@ impl InputCommander for TankComander {
     }
 }
 
+enum LocalTankPlayer {}
+
+impl<'a> LocalPlayerPack<'a> for LocalTankPlayer {
+    type Pack = &'a [TankCommand];
+}
+
+impl LocalPlayer for LocalTankPlayer {
+    type Query = &'static mut CommandQueue<TankCommand>;
+
+    fn replicate<'a>(
+        queue: &mut CommandQueue<TankCommand>,
+        scope: &'a Scope<'_>,
+    ) -> &'a [TankCommand] {
+        scope.to_scope_from_iter(queue.drain())
+    }
+}
+
 fn main() {
     game2(|mut game| async move {
         tracing::info!("START");
-
-        // Create client system to communicate with game server.
-        let mut client = ClientSystem::builder()
-            .with(Global2::descriptor())
-            .with(TankState::descriptor())
-            .with(Tank::descriptor())
-            .with(TileMapComponent::descriptor())
-            .build::<tanks::TankCommand>();
-
-        tracing::info!("Connecting to server");
-
-        // Connect to local server. It must be running.
-        client
-            .connect((Ipv4Addr::new(62, 84, 122, 89), 12345), &game.scope)
-            // .connect((Ipv4Addr::new(127, 0, 0, 1), 12345), &game.scope)
-            .await?;
-
-        tracing::info!("Connected");
-
-        // Add player to game session.
-        let pid = client.add_player(&(), &game.scope).await?;
 
         // Setup camera.
         let camera = game.viewport.camera();
@@ -179,6 +177,42 @@ fn main() {
             .get_mut::<Camera2>(camera)
             .unwrap()
             .set_scaley(0.2);
+
+        game.scheduler.add_system(tanks::TankAnimationSystem::new());
+
+        game.scheduler
+            .add_fixed_system(Physics2::new(), TimeSpan::MILLISECOND * 20);
+
+        game.scheduler.add_ticking_system(tanks::TankReplicaSystem);
+        game.scheduler.add_ticking_system(TileMapReplicaSystem);
+        game.scheduler.add_system(tanks::TankClientSystem);
+        game.scheduler.add_system(tanks::BulletSystem);
+
+        // Create client system to communicate with game server.
+        let mut client = ClientSystem::builder()
+            .with_descriptor::<TankDescriptor>()
+            .with_descriptor::<TileMapDescriptor>()
+            .with_descriptor::<Global2>()
+            .with_player::<LocalTankPlayer>()
+            .build();
+
+        tracing::info!("Connecting to server");
+
+        // Connect to local server. It must be running.
+        client
+            .connect((Ipv4Addr::new(62, 84, 122, 89), 12345), &game.scope)
+            // .connect((Ipv4Addr::LOCALHOST, 12345), &game.scope)
+            .await?;
+
+        tracing::info!("Connected");
+
+        // Add player to game session.
+        let pid = client.add_player(&(), &game.scope).await?;
+
+        tracing::info!("Player added");
+
+        // Set client session to be executed in game loop.
+        game.client = Some(client);
 
         struct RemoteControl {
             entity: Option<Entity>,
@@ -193,7 +227,7 @@ fn main() {
                 if cx.world.query_one_mut::<&PlayerId>(entity).is_err() {
                     tracing::error!("Controlled entity is broken");
 
-                    cx.world.despawn(entity);
+                    let _ = cx.world.despawn(entity);
                     rc.entity = None;
                 }
             }
@@ -223,19 +257,6 @@ fn main() {
                 }
             }
         });
-
-        tracing::info!("Player added");
-
-        // Set client session to be executed in game loop.
-        game.client = Some(client);
-
-        game.scheduler.add_system(tanks::TankAnimationSystem::new());
-
-        game.scheduler
-            .add_fixed_system(Physics2::new(), TimeSpan::MILLISECOND * 20);
-
-        game.scheduler.add_system(tanks::TankClientSystem);
-        game.scheduler.add_system(tanks::BulletSystem);
 
         // Game configured. Run it.
         Ok(game)

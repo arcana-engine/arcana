@@ -201,6 +201,7 @@ impl Funnel<Event> for Control {
 
 /// A queue of commands.
 /// It should be used as a component on controlled entity.
+#[repr(transparent)]
 pub struct CommandQueue<T> {
     commands: VecDeque<T>,
 }
