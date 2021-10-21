@@ -235,7 +235,7 @@ fn main() {
             if rc.entity.is_none() {
                 for (e, pid) in cx.world.query_mut::<&PlayerId>().without::<Controlled>() {
                     if rc.pid == *pid {
-                        tracing::error!("Found player's entity");
+                        tracing::info!("Found player's entity");
 
                         let controller =
                             EntityController::assume_control(TankComander::main(), 10, e, cx.world)

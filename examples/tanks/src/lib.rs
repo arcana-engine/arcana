@@ -590,8 +590,6 @@ impl System for TankReplicaSystem {
                 &mut physics.bodies,
             );
 
-            tracing::error!("Add {:?} to {:?}", body, entity);
-
             cx.world
                 .insert(
                     entity,
