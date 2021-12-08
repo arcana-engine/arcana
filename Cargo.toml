@@ -5,11 +5,10 @@ edition = "2018"
 authors = ["Zakarum <zakarumych@ya.ru>"]
 license = "MIT OR Apache-2.0"
 documentation = "https://docs.rs/arcana"
-homepage = "https://github.com/zakarumych/arcana"
-repository = "https://github.com/zakarumych/arcana"
+homepage = "https://github.com/arcana-engine/arcana"
+repository = "https://github.com/arcana-engine/arcana"
 
 [features]
-asset-reimport = ["goods/fetch-reimport"]
 2d = []
 3d = ["mesh-asset"]
 physics2d = ["2d", "rapier2d", "parry2d"]
@@ -28,33 +27,36 @@ arcana-proc = { version = "0.1", path = "proc" }
 arcana-mesh-file = { version = "0.1", path = "mesh-file", optional = true }
 
 # Animation
-skelly = { version = "0.5", features = ["serde-1"], git = "https://github.com/zakarumych/skelly.git" }
+skelly = { version = "0.5", features = ["serde-1"], git = "https://github.com/arcana-engine/skelly.git" }
 
 # Windowing
-winit = { version = "0.25", features = ["serde"], optional = true }
-raw-window-handle = { version = "0.3", optional = true }
+winit = { version = "0.26", features = ["serde"], optional = true }
+raw-window-handle = { version = "0.4", optional = true }
 
 # Graphics
-sierra = { version = "0.3", features = ["serde-1"], git = "https://github.com/zakarumych/sierra", optional = true }
+#sierra = { version = "0.3", features = ["serde-1"], git = "https://github.com/arcana-engine/sierra", optional = true }
 #sierra = { version = "0.3", features = ["serde-1"], optional = true }
-#sierra = { version = "0.3", features = ["serde-1"], path = "../sierra", optional = true }
+sierra = { version = "0.3", features = ["serde-1"], path = "../sierra", optional = true }
+
+# Gui
+sigils = { path = "../sigils", optional = true }
 
 # Colors
 palette = { version = "0.6", features = ["bytemuck", "serializing"] }
 
 # Ecs
-hecs = "0.6.5"
+hecs = "0.7"
 
 # Logging
 tracing = "0.1"
-tracing-error = "0.1"
-tracing-subscriber = "0.2"
+tracing-error = "0.2"
+tracing-subscriber = { version = "0.3", features = ["env-filter"] }
 
 # Async and networking
 futures = "0.3"
 flume = "0.10"
 tokio = { version = "1.0", features = ["rt", "net", "io-util", "time"] }
-evoke = { version = "0.1", features = ["tcp"] }
+evoke = { version = "0.2", path = "../evoke", features = ["tcp"] }
 
 # Math
 na = { package = "nalgebra", version = "0.29", features = ["serde-serialize"] }
@@ -78,14 +80,13 @@ base64 = "0.13"
 serde = { version = "1.0", features = ["derive"] }
 serde_json = "1.0"
 serde_bytes = "0.11"
-ron = "0.6"
+ron = "0.7"
 bincode = "1.3"
 alkahest = { version = "0.1", features = ["nightly"] }
 
 # Asset processing
-png = "0.17"
-goods = { version = "0.11.1" }
-uuid = { version = "0.8", features = ["serde"] }
+rapid-qoi = "0.1"
+goods = { path = "../goods", features = ["treasury"] }
 
 # Utility
 parking_lot = "0.11"
@@ -98,7 +99,7 @@ bytemuck = "1.0"
 lazy_static = "1.0"
 slab = "0.4"
 cfg-if = "1.0"
-bitsetium = "0.0"
+bitsetium = { version = "0.0.2", path = "../bitsetium" }
 
 [workspace]
 members = ["import", "examples/blocks", "examples/tanks/client", "examples/tanks/server", "examples/bunnymark", "examples/gltf-test", "examples/sponza"]

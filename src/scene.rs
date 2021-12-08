@@ -1,13 +1,12 @@
-use std::fmt::{self, Display};
-
-use hashbrown::HashSet;
-use hecs::{Entity, EntityRef, World};
-use scoped_arena::Scope;
-
-use crate::{
-    debug::EntityRefDisplay as _,
-    system::{System, SystemContext},
+use std::{
+    collections::VecDeque,
+    fmt::{self, Display},
 };
+
+use bitsetium::{BitEmpty, BitSet, BitTest, Bits65536};
+use hecs::Entity;
+
+use crate::system::{System, SystemContext};
 
 #[cfg(feature = "2d")]
 #[derive(Clone, Copy, Debug, PartialEq)]
@@ -217,7 +216,23 @@ impl Global3 {
     }
 }
 
-pub struct SceneSystem;
+pub struct SceneSystem {
+    #[cfg(feature = "2d")]
+    cap_2: usize,
+    #[cfg(feature = "3d")]
+    cap_3: usize,
+}
+
+impl SceneSystem {
+    pub const fn new() -> Self {
+        SceneSystem {
+            #[cfg(feature = "2d")]
+            cap_2: 0,
+            #[cfg(feature = "3d")]
+            cap_3: 0,
+        }
+    }
+}
 
 impl System for SceneSystem {
     fn name(&self) -> &str {
@@ -225,203 +240,122 @@ impl System for SceneSystem {
     }
 
     fn run(&mut self, cx: SystemContext<'_>) -> eyre::Result<()> {
-        let mut despawn = Vec::new_in(&*cx.scope);
-
         #[cfg(feature = "2d")]
-        let mut updated = HashSet::new_in(&*cx.scope);
+        {
+            let mut update = VecDeque::with_capacity_in(self.cap_2, &*cx.scope);
+            let mut ready = Bits65536::empty();
 
-        #[cfg(feature = "2d")]
-        for (entity, local) in cx.world.query::<&Local2>().with::<Global2>().iter() {
-            if updated.insert(entity.id()) {
-                update_global_2(
-                    entity,
-                    cx.world.entity(entity).unwrap(),
-                    local,
-                    cx.world,
-                    &*cx.scope,
-                    &mut updated,
-                    &mut despawn,
-                );
+            let mut count_2 = 0;
+
+            let query = cx.world.query_mut::<&Local2>().with::<Global2>();
+
+            for (entity, local) in query {
+                update.push_back((entity, *local));
+            }
+
+            while let Some((entity, local)) = update.front() {
+                if !ready.test(entity.id() as usize) {
+                    ready.set(entity.id() as usize);
+                    count_2 += 1;
+                    match cx
+                        .world
+                        .query_one_mut::<(Option<&Local2>, &Global2)>(local.parent)
+                    {
+                        Ok((None, parent_global)) => {
+                            let iso = parent_global.iso * local.iso;
+                            cx.world.query_one_mut::<&mut Global2>(*entity).unwrap().iso = iso;
+                            update.pop_front();
+                        }
+                        Ok((Some(parent_local), parent_global)) => {
+                            if !ready.test(local.parent.id() as usize) {
+                                ready.set(local.parent.id() as usize);
+                                let elem = (local.parent, *parent_local);
+                                update.push_front(elem);
+                            } else {
+                                let iso = parent_global.iso * local.iso;
+                                cx.world.query_one_mut::<&mut Global2>(*entity).unwrap().iso = iso;
+                                update.pop_front();
+                            }
+                        }
+                        Err(hecs::QueryOneError::NoSuchEntity) => {
+                            let entity = *entity;
+                            let _ = cx.world.despawn(entity);
+                            update.pop_front();
+                        }
+                        Err(hecs::QueryOneError::Unsatisfied) => {
+                            let entity = *entity;
+                            let _ = cx.world.remove_one::<Global2>(entity);
+                            update.pop_front();
+                        }
+                    }
+                }
+            }
+
+            if count_2 > self.cap_2 {
+                self.cap_2 = count_2;
+            } else {
+                self.cap_2 = self.cap_2 / 2 + count_2 / 2;
             }
         }
 
         #[cfg(feature = "3d")]
-        let mut updated = HashSet::new_in(&*cx.scope);
+        {
+            let mut update = VecDeque::with_capacity_in(self.cap_3, &*cx.scope);
+            let mut ready = Bits65536::empty();
 
-        #[cfg(feature = "3d")]
-        for (entity, local) in cx.world.query::<&Local3>().with::<Global3>().iter() {
-            if updated.insert(entity.id()) {
-                update_global_3(
-                    entity,
-                    cx.world.entity(entity).unwrap(),
-                    local,
-                    cx.world,
-                    &*cx.scope,
-                    &mut updated,
-                    &mut despawn,
-                );
+            let mut count_3 = 0;
+
+            let query = cx.world.query_mut::<&Local3>().with::<Global3>();
+
+            for (entity, local) in query {
+                update.push_back((entity, *local));
             }
-        }
 
-        // Despawn entities whose parents are despawned.
-        for entity in despawn {
-            let _ = cx.world.despawn(entity);
+            while let Some((entity, local)) = update.front() {
+                if !ready.test(entity.id() as usize) {
+                    ready.set(entity.id() as usize);
+                    count_3 += 1;
+                    match cx
+                        .world
+                        .query_one_mut::<(Option<&Local3>, &Global3)>(local.parent)
+                    {
+                        Ok((None, parent_global)) => {
+                            let iso = parent_global.iso * local.iso;
+                            cx.world.query_one_mut::<&mut Global3>(*entity).unwrap().iso = iso;
+                            update.pop_front();
+                        }
+                        Ok((Some(parent_local), parent_global)) => {
+                            if !ready.test(local.parent.id() as usize) {
+                                ready.set(local.parent.id() as usize);
+                                let elem = (local.parent, *parent_local);
+                                update.push_front(elem);
+                            } else {
+                                let iso = parent_global.iso * local.iso;
+                                cx.world.query_one_mut::<&mut Global3>(*entity).unwrap().iso = iso;
+                                update.pop_front();
+                            }
+                        }
+                        Err(hecs::QueryOneError::NoSuchEntity) => {
+                            let entity = *entity;
+                            let _ = cx.world.despawn(entity);
+                            update.pop_front();
+                        }
+                        Err(hecs::QueryOneError::Unsatisfied) => {
+                            let entity = *entity;
+                            let _ = cx.world.remove_one::<Global3>(entity);
+                            update.pop_front();
+                        }
+                    }
+                }
+            }
+
+            if count_3 > self.cap_3 {
+                self.cap_3 = count_3;
+            } else {
+                self.cap_3 = self.cap_3 / 2 + count_3 / 2;
+            }
         }
 
         Ok(())
-    }
-}
-
-#[cfg(feature = "2d")]
-fn update_global_2<'a, 'b>(
-    entity: Entity,
-    entity_ref: EntityRef<'a>,
-    local: &Local2,
-    world: &'a World,
-    scope: &'b Scope<'_>,
-    updated: &mut HashSet<u32, ahash::RandomState, &'b Scope<'_>>,
-    despawn: &mut Vec<Entity, &'b Scope<'_>>,
-) -> Option<hecs::RefMut<'a, Global2>> {
-    let parent_ref = match world.entity(local.parent) {
-        Ok(parent_ref) => parent_ref,
-        Err(hecs::NoSuchEntity) => {
-            despawn.push(entity);
-            return None;
-        }
-    };
-    let parent_local = parent_ref.get::<Local2>();
-
-    match parent_local {
-        None => {
-            // Parent is root node.
-            match parent_ref.get::<Global2>() {
-                Some(parent_global_ref) => {
-                    // Parent is root node.
-                    let mut global = Global2::clone(&*parent_global_ref);
-                    drop(parent_global_ref);
-                    global.append_local(local);
-                    let mut global_ref = entity_ref.get_mut::<Global2>().unwrap();
-                    *global_ref = global;
-
-                    Some(global_ref)
-                }
-                None => {
-                    // Parent is not in hierarchy.
-                    tracing::warn!(
-                        "Entity's ({}) parent is not in scene and shall be despawned",
-                        entity_ref.display(entity)
-                    );
-                    despawn.push(entity);
-                    None
-                }
-            }
-        }
-        Some(parent_local) => {
-            let parent_global = if updated.insert(local.parent.id()) {
-                update_global_2(
-                    local.parent,
-                    parent_ref,
-                    &parent_local,
-                    world,
-                    scope,
-                    updated,
-                    despawn,
-                )
-            } else {
-                parent_ref.get_mut::<Global2>()
-            };
-
-            match parent_global {
-                Some(parent_global) => {
-                    let mut global = Global2::clone(&*parent_global);
-                    drop(parent_global);
-                    global.append_local(local);
-                    let mut global_ref = entity_ref.get_mut::<Global2>().unwrap();
-                    *global_ref = global;
-                    Some(global_ref)
-                }
-                None => {
-                    despawn.push(entity);
-                    None
-                }
-            }
-        }
-    }
-}
-
-#[cfg(feature = "3d")]
-fn update_global_3<'a, 'b>(
-    entity: Entity,
-    entity_ref: EntityRef<'a>,
-    local: &Local3,
-    world: &'a World,
-    scope: &'b Scope<'_>,
-    updated: &mut HashSet<u32, ahash::RandomState, &'b Scope<'_>>,
-    despawn: &mut Vec<Entity, &'b Scope<'_>>,
-) -> Option<hecs::RefMut<'a, Global3>> {
-    let parent_ref = match world.entity(local.parent) {
-        Ok(parent_ref) => parent_ref,
-        Err(hecs::NoSuchEntity) => {
-            despawn.push(entity);
-            return None;
-        }
-    };
-    let parent_local = parent_ref.get::<Local3>();
-
-    match parent_local {
-        None => {
-            // Parent has no parent node.
-            match parent_ref.get::<Global3>() {
-                Some(parent_global_ref) => {
-                    // Parent is root node.
-                    let mut global = Global3::clone(&*parent_global_ref);
-                    drop(parent_global_ref);
-                    global.append_local(local);
-                    let mut global_ref = entity_ref.get_mut::<Global3>().unwrap();
-                    *global_ref = global;
-
-                    Some(global_ref)
-                }
-                None => {
-                    // Parent is not in hierarchy.
-                    tracing::warn!(
-                        "Entity's ({}) parent is not in scene and shall be despawned",
-                        entity_ref.display(entity)
-                    );
-                    despawn.push(entity);
-                    None
-                }
-            }
-        }
-        Some(parent_local) => {
-            let parent_global = if updated.insert(local.parent.id()) {
-                update_global_3(
-                    local.parent,
-                    parent_ref,
-                    &parent_local,
-                    world,
-                    scope,
-                    updated,
-                    despawn,
-                )
-            } else {
-                parent_ref.get_mut::<Global3>()
-            };
-
-            match parent_global {
-                Some(parent_global) => {
-                    let mut global = Global3::clone(&*parent_global);
-                    drop(parent_global);
-                    global.append_local(local);
-                    let mut global_ref = entity_ref.get_mut::<Global3>().unwrap();
-                    *global_ref = global;
-                    Some(global_ref)
-                }
-                None => {
-                    despawn.push(entity);
-                    None
-                }
-            }
-        }
     }
 }

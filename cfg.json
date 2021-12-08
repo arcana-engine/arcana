@@ -1,4 +1,4 @@
 {
     "treasury": "examples/assets",
-    "main_step": "10ms"
+    "main_step": "20ms"
 }

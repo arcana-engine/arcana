@@ -1,3 +1,5 @@
+//!
+
 #[macro_export]
 /// Macro to simplify building of VertexLayout in const context.
 macro_rules! vertex_location {
@@ -112,11 +114,8 @@ use sierra::{
     SwapchainImage,
 };
 
-pub use {
-    self::{
-        format::*, material::*, mesh::*, renderer::*, scale::*, sprite::*, texture::*, vertex::*,
-    },
-    sierra::*,
+pub use self::{
+    format::*, material::*, mesh::*, renderer::*, scale::*, sprite::*, texture::*, vertex::*,
 };
 
 /// Graphics context.
@@ -208,43 +207,48 @@ impl Graphics {
         &self,
         buffer: &'a Buffer,
         offset: u64,
-        data: &[T],
+        data: &'a [T],
         encoder: &mut Encoder<'a>,
     ) -> Result<(), MapError>
     where
         T: Pod,
     {
+        const UPDATE_LIMIT: usize = 16384;
+
+        assert_eq!(
+            size_of_val(data) & 3,
+            0,
+            "Buffer uploading data size must be a multiple of 4"
+        );
+
         if data.is_empty() {
             return Ok(());
         }
 
-        let staging = self.device.create_buffer_static(
-            BufferInfo {
-                align: 15,
-                size: size_of_val(data) as u64,
-                usage: BufferUsage::TRANSFER_SRC,
-            },
-            data,
-        )?;
+        if size_of_val(data) <= UPDATE_LIMIT {
+            encoder.update_buffer(buffer, offset, data);
+        } else {
+            let staging = self.device.create_buffer_static(
+                BufferInfo {
+                    align: 15,
+                    size: size_of_val(data) as u64,
+                    usage: BufferUsage::TRANSFER_SRC,
+                },
+                data,
+            )?;
 
-        let staging = encoder.scope().to_scope(staging);
+            let staging = encoder.scope().to_scope(staging);
 
-        encoder.copy_buffer(
-            &*staging,
-            buffer,
-            encoder.scope().to_scope([BufferCopy {
-                src_offset: 0,
-                dst_offset: offset,
-                size: staging.info().size,
-            }]),
-        );
-
-        encoder.memory_barrier(
-            PipelineStageFlags::TRANSFER,
-            AccessFlags::TRANSFER_WRITE,
-            PipelineStageFlags::ALL_COMMANDS,
-            AccessFlags::all(),
-        );
+            encoder.copy_buffer(
+                &*staging,
+                buffer,
+                encoder.scope().to_scope([BufferCopy {
+                    src_offset: 0,
+                    dst_offset: offset,
+                    size: size_of_val(data) as u64,
+                }]),
+            );
+        }
 
         Ok(())
     }

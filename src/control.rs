@@ -1,4 +1,3 @@
-#[cfg(feature = "visible")]
 use {
     crate::{
         event::{
@@ -13,9 +12,6 @@ use {
     std::collections::hash_map::{Entry, HashMap},
 };
 
-use std::collections::VecDeque;
-
-#[cfg(feature = "visible")]
 #[derive(Clone, Copy, Debug)]
 pub enum InputEvent {
     CursorMoved {
@@ -44,7 +40,6 @@ pub enum InputEvent {
     },
 }
 
-#[cfg(feature = "visible")]
 /// Device is already associated with a controller.
 #[derive(Clone, Copy, Debug, PartialEq, Eq, thiserror::Error)]
 #[error("Device ({device_id:?}) is already associated with a controller")]
@@ -53,7 +48,6 @@ pub struct DeviceUsed {
 }
 
 /// Result of `InputController::control` method
-#[cfg(feature = "visible")]
 pub enum ControlResult {
     /// Event was consumed by the controller.
     /// It should not be propagated further.
@@ -70,14 +64,12 @@ pub enum ControlResult {
 
 /// An input controller.
 /// Receives device events from `Control` hub.
-#[cfg(feature = "visible")]
 pub trait InputController: Send + 'static {
     /// Translates device event into controls.
     fn control(&mut self, event: InputEvent, res: &mut Res, world: &mut World) -> ControlResult;
 }
 
 /// Collection of controllers.
-#[cfg(feature = "visible")]
 pub struct Control {
     /// Controllers bound to specific devices.
     devices: HashMap<DeviceId, Box<dyn InputController>>,
@@ -90,12 +82,10 @@ pub struct Control {
 /// See [`Control::add_global_controller`].
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
 #[repr(transparent)]
-#[cfg(feature = "visible")]
 pub struct GlobalControllerId {
     idx: usize,
 }
 
-#[cfg(feature = "visible")]
 impl Control {
     /// Returns empty collection of controllers
     pub fn new() -> Control {
@@ -129,8 +119,6 @@ impl Control {
         }
     }
 }
-
-#[cfg(feature = "visible")]
 impl Funnel<Event> for Control {
     fn filter(&mut self, res: &mut Res, world: &mut World, event: Event) -> Option<Event> {
         let (input_event, device_id) = match event {
@@ -199,47 +187,14 @@ impl Funnel<Event> for Control {
     }
 }
 
-/// A queue of commands.
-/// It should be used as a component on controlled entity.
-#[repr(transparent)]
-pub struct CommandQueue<T> {
-    commands: VecDeque<T>,
-}
-
-impl<T> CommandQueue<T> {
-    pub fn new() -> Self {
-        CommandQueue {
-            commands: VecDeque::new(),
-        }
-    }
-
-    pub fn drain(&mut self) -> impl Iterator<Item = T> + '_ {
-        self.commands.drain(..)
-    }
-
-    pub fn iter(&self) -> impl Iterator<Item = &T> + '_ {
-        self.commands.iter()
-    }
-
-    pub fn add(&mut self, command: T) {
-        self.commands.push_back(command)
-    }
-
-    pub fn enque(&mut self, commands: impl IntoIterator<Item = T>) {
-        self.commands.extend(commands)
-    }
-}
-
 /// Translates device events into commands and
-#[cfg(feature = "visible")]
-pub trait InputCommander {
+pub trait EventTranslator {
     type Command;
 
     fn translate(&mut self, event: InputEvent) -> Option<Self::Command>;
 }
 
 /// Error that can occur when assuming control over an entity.
-#[cfg(feature = "visible")]
 #[derive(Clone, Copy, Debug, PartialEq, Eq, thiserror::Error)]
 pub enum AssumeControlError {
     /// Failed to assume control of non-existing entity.
@@ -252,26 +207,22 @@ pub enum AssumeControlError {
 }
 
 /// Marker component. Marks that entity is being controlled.
-#[cfg(feature = "visible")]
 pub struct Controlled {
     // Forbid construction outside of this module.
     __: (),
 }
 
-#[cfg(feature = "visible")]
 const CONTROLLED: Controlled = Controlled { __: () };
 
 /// A kind of [`InputController`]s that yield commands and sends them to a command queue of an entity.
-#[cfg(feature = "visible")]
 pub struct EntityController<T> {
     commander: T,
     entity: Entity,
 }
 
-#[cfg(feature = "visible")]
 impl<T> EntityController<T>
 where
-    T: InputCommander,
+    T: EventTranslator,
     T::Command: Send + Sync + 'static,
 {
     pub fn assume_control(
@@ -300,10 +251,9 @@ where
     }
 }
 
-#[cfg(feature = "visible")]
 impl<T> InputController for EntityController<T>
 where
-    T: InputCommander + Send + 'static,
+    T: EventTranslator + Send + 'static,
     T::Command: Send + Sync + 'static,
 {
     fn control(&mut self, event: InputEvent, _res: &mut Res, world: &mut World) -> ControlResult {

@@ -2,7 +2,7 @@
 
 layout(location = 0) in vec4 pos_aabb;
 layout(location = 1) in vec4 uv_aabb;
-layout(location = 2) in uint layer;
+layout(location = 2) in float layer;
 layout(location = 3) in uint albedo;
 layout(location = 4) in vec4 albedo_factor;
 layout(location = 5) in mat3 tr;
@@ -27,9 +27,9 @@ void main() {
     vec2 pos = pt_from_aabb(pos_aabb);
     vec2 uv = pt_from_aabb(uv_aabb);
     vec2 global = (camera * tr * vec3(pos, 1)).xy;
-    gl_Position = vec4(global.xy, layer * 0.00001525902189669642, 1);
+    gl_Position = vec4(global.xy, layer, 1);
 
+    uv_out = uv;
     albedo_out = albedo;
     albedo_factor_out = albedo_factor;
-    uv_out = uv;
 }

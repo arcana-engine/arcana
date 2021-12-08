@@ -12,7 +12,7 @@ pub struct Material {
     pub transmission: Option<Texture>,
     #[container]
     pub normal: Option<Texture>,
-    pub albedo_factor: [OrderedFloat<f32>; 3],
+    pub albedo_factor: [OrderedFloat<f32>; 4],
     pub coverage_factor: OrderedFloat<f32>,
     pub metalness_factor: OrderedFloat<f32>,
     pub roughness_factor: OrderedFloat<f32>,
@@ -48,10 +48,15 @@ impl Material {
         }
     }
 
-    pub const fn color(rgb: [f32; 3]) -> Self {
-        let [r, g, b] = rgb;
+    pub const fn color(rgba: [f32; 4]) -> Self {
+        let [r, g, b, a] = rgba;
         let mut material = Material::new();
-        material.albedo_factor = [OrderedFloat(r), OrderedFloat(g), OrderedFloat(b)];
+        material.albedo_factor = [
+            OrderedFloat(r),
+            OrderedFloat(g),
+            OrderedFloat(b),
+            OrderedFloat(a),
+        ];
         material
     }
 
@@ -69,8 +74,8 @@ impl Material {
 mod defaults {
     use ordered_float::OrderedFloat;
 
-    pub const fn albedo_factor() -> [OrderedFloat<f32>; 3] {
-        [OrderedFloat(1.0); 3]
+    pub const fn albedo_factor() -> [OrderedFloat<f32>; 4] {
+        [OrderedFloat(1.0); 4]
     }
 
     pub const fn coverage_factor() -> OrderedFloat<f32> {

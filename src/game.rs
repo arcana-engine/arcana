@@ -31,7 +31,7 @@ use {
 };
 
 #[cfg(all(any(feature = "2d", feature = "3d"), feature = "visible"))]
-use crate::graphics::renderer::forward::ForwardRenderer;
+use crate::graphics::renderer::simple::SimpleRenderer;
 
 #[cfg(feature = "client")]
 use evoke::client::ClientSystem;
@@ -155,7 +155,7 @@ where
 {
     tracing::debug!("Starting 2D game");
     game::<_, _, _, (Camera2, Global2)>(f, |g| {
-        Ok(Box::new(ForwardRenderer::new(SpriteDraw::new(g)?)))
+        Ok(Box::new(SimpleRenderer::new(SpriteDraw::new(0.0..1.0, g)?)))
     })
 }
 
@@ -167,7 +167,7 @@ where
 {
     tracing::debug!("Starting 3D game");
     game::<_, _, _, (Camera3, Global3)>(f, |g| {
-        Ok(Box::new(ForwardRenderer::new(BasicDraw::new(g)?)))
+        Ok(Box::new(SimpleRenderer::new(BasicDraw::new(g)?)))
     })
 }
 
@@ -189,7 +189,8 @@ where
         // Initialize asset loader.
         let mut loader_builder = Loader::builder();
         if let Some(path) = cfg.treasury {
-            let treasury = goods::source::treasury::TreasurySource::open(path)
+            let treasury = goods::source::treasury::TreasurySource::open_local(&path)
+                .await
                 .wrap_err_with(|| "Failed to initialize treasury loader")?;
             loader_builder.add(treasury);
         }
@@ -236,7 +237,7 @@ where
         let game = f(Game {
             res,
             world,
-            scheduler: Scheduler::new(),
+            scheduler: Scheduler::with_tick_span(cfg.main_step),
             control: Control::new(),
             graphics,
             renderer: None,
@@ -286,7 +287,8 @@ where
 
         // Schedule default systems.
         #[cfg(any(feature = "2d", feature = "3d"))]
-        scheduler.add_system(SceneSystem);
+        scheduler.add_system(SceneSystem::new());
+
         scheduler.add_system(LifeSpanSystem);
 
         res.insert(FpsMeter::new(TimeSpan::SECOND));
@@ -426,9 +428,11 @@ where
                     RendererContext {
                         world: &mut world,
                         res: &mut res,
-                        graphics: &mut graphics,
+                        spawner: &mut spawner,
+                        loader: &loader,
                         scope: &scope,
                         clock,
+                        graphics: &mut graphics,
                     },
                     &mut [&mut viewport],
                 )
@@ -440,7 +444,7 @@ where
 }
 
 #[cfg(feature = "visible")]
-pub fn headless<F, Fut>(f: F)
+pub fn headless<F, Fut>(_f: F)
 where
     F: FnOnce(Game) -> Fut + 'static,
     Fut: Future<Output = eyre::Result<Game>>,
@@ -489,7 +493,7 @@ where
             let game = f(Game {
                 res,
                 world,
-                scheduler: Scheduler::new(),
+                scheduler: Scheduler::with_tick_span(main_step),
                 loader,
                 spawner,
                 scope: Scope::new(),
@@ -526,7 +530,7 @@ where
 
             // Schedule default systems.
             #[cfg(any(feature = "2d", feature = "3d"))]
-            scheduler.add_ticking_system(SceneSystem);
+            scheduler.add_ticking_system(SceneSystem::new());
             scheduler.add_ticking_system(LifeSpanSystem);
 
             res.insert(FpsMeter::new(TimeSpan::SECOND));

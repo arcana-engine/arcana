@@ -7,25 +7,23 @@ pub mod object;
 #[cfg(feature = "visible")]
 pub mod sprite_sheet;
 
-#[cfg(feature = "physics2d")]
-pub mod tiles;
+#[cfg(feature = "visible")]
+pub mod font;
 
 use std::{
     collections::hash_map::{Entry, HashMap},
     convert::Infallible,
     future::Future,
-    marker::PhantomData,
     mem::swap,
     ops::{Deref, DerefMut},
     pin::Pin,
     task::{ready, Context, Poll},
 };
 
-use goods::{
-    Asset, AssetBuild, AssetField, AssetFieldBuild, AssetHandle, AssetResult, Error, External,
-    Loader,
+pub use goods::{
+    Asset, AssetBuild, AssetField, AssetFieldBuild, AssetHandle, AssetId, AssetResult, Error,
+    External, Loader,
 };
-use uuid::Uuid;
 
 use crate::{with_async_task_context, Spawner, TaskContext};
 
@@ -35,16 +33,16 @@ pub use self::{
     sprite_sheet::{SpriteAnimation, SpriteFrame, SpriteRect, SpriteSheet, SpriteSize},
 };
 
-#[cfg(feature = "physics2d")]
-pub use self::tiles::{Tile, TileMap, TileSet};
+#[cfg(not(feature = "visible"))]
+use std::marker::PhantomData;
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq, PartialOrd, Ord, Hash)]
-pub struct WithUuid<A> {
+pub struct WithId<A> {
     asset: A,
-    uuid: Uuid,
+    id: AssetId,
 }
 
-impl<A> Deref for WithUuid<A> {
+impl<A> Deref for WithId<A> {
     type Target = A;
 
     #[inline(always)]
@@ -53,93 +51,93 @@ impl<A> Deref for WithUuid<A> {
     }
 }
 
-impl<A> DerefMut for WithUuid<A> {
+impl<A> DerefMut for WithId<A> {
     #[inline(always)]
     fn deref_mut(&mut self) -> &mut Self::Target {
         &mut self.asset
     }
 }
 
-impl<A> WithUuid<A> {
+impl<A> WithId<A> {
     #[inline(always)]
-    pub fn new(asset: A, uuid: Uuid) -> Self {
-        WithUuid { asset, uuid }
+    pub fn new(asset: A, id: AssetId) -> Self {
+        WithId { asset, id }
     }
 
     #[inline(always)]
-    pub fn asset(with_uuid: Self) -> A {
-        with_uuid.asset
+    pub fn asset(with_id: Self) -> A {
+        with_id.asset
     }
 
     #[inline(always)]
-    pub fn asset_ref(with_uuid: &Self) -> &A {
-        &with_uuid.asset
+    pub fn asset_ref(with_id: &Self) -> &A {
+        &with_id.asset
     }
 
     #[inline(always)]
-    pub fn asset_mut(with_uuid: &mut Self) -> &mut A {
-        &mut with_uuid.asset
+    pub fn asset_mut(with_id: &mut Self) -> &mut A {
+        &mut with_id.asset
     }
 
     #[inline(always)]
-    pub fn uuid(with_uuid: &Self) -> Uuid {
-        with_uuid.uuid
+    pub fn id(with_id: &Self) -> AssetId {
+        with_id.id
     }
 }
 
-impl<A> AssetField<External> for WithUuid<A>
+impl<A> AssetField<External> for WithId<A>
 where
     A: Asset,
 {
-    type Info = Uuid;
+    type Info = AssetId;
     type DecodeError = Infallible;
     type BuildError = Error;
-    type Decoded = WithUuid<AssetResult<A>>;
-    type Fut = ExternAssetWithUuidFut<A>;
+    type Decoded = WithId<AssetResult<A>>;
+    type Fut = ExternAssetWithIdFut<A>;
 
     #[inline(always)]
-    fn decode(uuid: Uuid, loader: &Loader) -> Self::Fut {
-        ExternAssetWithUuidFut(loader.load(&uuid), uuid)
+    fn decode(id: AssetId, loader: &Loader) -> Self::Fut {
+        ExternAssetWithIdFut(loader.load(&id), id)
     }
 }
 
-pub struct ExternAssetWithUuidFut<A>(AssetHandle<A>, Uuid);
+pub struct ExternAssetWithIdFut<A>(AssetHandle<A>, AssetId);
 
-impl<A> Future for ExternAssetWithUuidFut<A>
+impl<A> Future for ExternAssetWithIdFut<A>
 where
     A: Asset,
 {
-    type Output = Result<WithUuid<AssetResult<A>>, Infallible>;
+    type Output = Result<WithId<AssetResult<A>>, Infallible>;
 
     #[inline(always)]
     fn poll(self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<Self::Output> {
         let me = self.get_mut();
 
         let result = ready!(Pin::new(&mut me.0).poll(cx));
-        Poll::Ready(Ok(WithUuid {
+        Poll::Ready(Ok(WithId {
             asset: result,
-            uuid: me.1,
+            id: me.1,
         }))
     }
 }
 
-impl<A, B> AssetFieldBuild<External, B> for WithUuid<A>
+impl<A, B> AssetFieldBuild<External, B> for WithId<A>
 where
     A: Asset + AssetBuild<B>,
 {
     #[inline(always)]
-    fn build(mut result: WithUuid<AssetResult<A>>, builder: &mut B) -> Result<WithUuid<A>, Error> {
-        Ok(WithUuid {
-            asset: result.asset.get(builder)?.clone(),
-            uuid: result.uuid,
+    fn build(mut result: WithId<AssetResult<A>>, builder: &mut B) -> Result<WithId<A>, Error> {
+        Ok(WithId {
+            asset: result.asset.build(builder)?.clone(),
+            id: result.id,
         })
     }
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq, PartialOrd, Ord, Hash)]
 #[cfg_attr(not(feature = "visible"), repr(transparent))]
-pub struct WithUuidVisible<A> {
-    uuid: Uuid,
+pub struct WithIdVisible<A> {
+    id: AssetId,
     #[cfg(feature = "visible")]
     asset: A,
     #[cfg(not(feature = "visible"))]
@@ -147,7 +145,7 @@ pub struct WithUuidVisible<A> {
 }
 
 #[cfg(feature = "visible")]
-impl<A> Deref for WithUuidVisible<A> {
+impl<A> Deref for WithIdVisible<A> {
     type Target = A;
 
     #[inline(always)]
@@ -157,77 +155,77 @@ impl<A> Deref for WithUuidVisible<A> {
 }
 
 #[cfg(feature = "visible")]
-impl<A> DerefMut for WithUuidVisible<A> {
+impl<A> DerefMut for WithIdVisible<A> {
     #[inline(always)]
     fn deref_mut(&mut self) -> &mut Self::Target {
         &mut self.asset
     }
 }
 
-impl<A> WithUuidVisible<A> {
+impl<A> WithIdVisible<A> {
     #[cfg(feature = "visible")]
     #[inline(always)]
-    pub fn new(uuid: Uuid, asset: A) -> Self {
-        WithUuidVisible { uuid, asset }
+    pub fn new(id: AssetId, asset: A) -> Self {
+        WithIdVisible { id, asset }
     }
 
     #[cfg(not(feature = "visible"))]
     #[inline(always)]
-    pub fn new(uuid: Uuid) -> Self {
-        WithUuidVisible {
-            uuid,
+    pub fn new(id: AssetId) -> Self {
+        WithIdVisible {
+            id,
             marker: PhantomData,
         }
     }
 
     #[cfg(feature = "visible")]
     #[inline(always)]
-    pub fn asset(with_uuid: Self) -> A {
-        with_uuid.asset
+    pub fn asset(with_id: Self) -> A {
+        with_id.asset
     }
 
     #[cfg(feature = "visible")]
     #[inline(always)]
-    pub fn asset_ref(with_uuid: &Self) -> &A {
-        &with_uuid.asset
+    pub fn asset_ref(with_id: &Self) -> &A {
+        &with_id.asset
     }
 
     #[cfg(feature = "visible")]
     #[inline(always)]
-    pub fn asset_mut(with_uuid: &mut Self) -> &mut A {
-        &mut with_uuid.asset
+    pub fn asset_mut(with_id: &mut Self) -> &mut A {
+        &mut with_id.asset
     }
 
     #[inline(always)]
-    pub fn uuid(with_uuid: &Self) -> Uuid {
-        with_uuid.uuid
+    pub fn id(with_id: &Self) -> AssetId {
+        with_id.id
     }
 }
 
-impl<A> AssetField<External> for WithUuidVisible<A>
+impl<A> AssetField<External> for WithIdVisible<A>
 where
     A: Asset,
 {
-    type Info = Uuid;
+    type Info = AssetId;
     type DecodeError = Infallible;
     type BuildError = Error;
-    type Decoded = WithUuidVisible<AssetResult<A>>;
-    type Fut = ExternAssetWithUuidVisibleFut<A>;
+    type Decoded = WithIdVisible<AssetResult<A>>;
+    type Fut = ExternAssetWithIdVisibleFut<A>;
 
     #[inline(always)]
-    fn decode(uuid: Uuid, loader: &Loader) -> Self::Fut {
-        ExternAssetWithUuidVisibleFut {
-            uuid,
+    fn decode(id: AssetId, loader: &Loader) -> Self::Fut {
+        ExternAssetWithIdVisibleFut {
+            id,
             #[cfg(feature = "visible")]
-            asset: loader.load(&uuid),
+            asset: loader.load(&id),
             #[cfg(not(feature = "visible"))]
             marker: PhantomData,
         }
     }
 }
 
-pub struct ExternAssetWithUuidVisibleFut<A> {
-    uuid: Uuid,
+pub struct ExternAssetWithIdVisibleFut<A> {
+    id: AssetId,
     #[cfg(feature = "visible")]
     asset: AssetHandle<A>,
 
@@ -235,11 +233,11 @@ pub struct ExternAssetWithUuidVisibleFut<A> {
     marker: PhantomData<AssetHandle<A>>,
 }
 
-impl<A> Future for ExternAssetWithUuidVisibleFut<A>
+impl<A> Future for ExternAssetWithIdVisibleFut<A>
 where
     A: Asset,
 {
-    type Output = Result<WithUuidVisible<AssetResult<A>>, Infallible>;
+    type Output = Result<WithIdVisible<AssetResult<A>>, Infallible>;
 
     #[inline(always)]
     fn poll(self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<Self::Output> {
@@ -248,8 +246,8 @@ where
         #[cfg(feature = "visible")]
         let result = ready!(Pin::new(&mut me.asset).poll(cx));
 
-        Poll::Ready(Ok(WithUuidVisible {
-            uuid: me.uuid,
+        Poll::Ready(Ok(WithIdVisible {
+            id: me.id,
 
             #[cfg(feature = "visible")]
             asset: result,
@@ -261,38 +259,36 @@ where
 }
 
 #[cfg(feature = "visible")]
-impl<A, B> AssetFieldBuild<External, B> for WithUuidVisible<A>
+impl<A, B> AssetFieldBuild<External, B> for WithIdVisible<A>
 where
     A: Asset + AssetBuild<B>,
 {
     #[inline(always)]
     fn build(
-        mut result: WithUuidVisible<AssetResult<A>>,
+        mut result: WithIdVisible<AssetResult<A>>,
         builder: &mut B,
-    ) -> Result<WithUuidVisible<A>, Error> {
-        Ok(WithUuidVisible {
-            uuid: result.uuid,
-
-            #[cfg(feature = "visible")]
-            asset: result.asset.get(builder)?.clone(),
+    ) -> Result<WithIdVisible<A>, Error> {
+        Ok(WithIdVisible {
+            id: result.id,
+            asset: result.asset.build(builder)?.clone(),
         })
     }
 }
 
 #[cfg(feature = "visible")]
-impl<A> From<WithUuidVisible<A>> for WithUuid<A> {
-    fn from(value: WithUuidVisible<A>) -> Self {
-        WithUuid {
+impl<A> From<WithIdVisible<A>> for WithId<A> {
+    fn from(value: WithIdVisible<A>) -> Self {
+        WithId {
             asset: value.asset,
-            uuid: value.uuid,
+            id: value.id,
         }
     }
 }
 
-impl<A> From<WithUuid<A>> for WithUuidVisible<A> {
-    fn from(value: WithUuid<A>) -> Self {
-        WithUuidVisible {
-            uuid: value.uuid,
+impl<A> From<WithId<A>> for WithIdVisible<A> {
+    fn from(value: WithId<A>) -> Self {
+        WithIdVisible {
+            id: value.id,
             #[cfg(feature = "visible")]
             asset: value.asset,
             #[cfg(not(feature = "visible"))]
@@ -301,21 +297,21 @@ impl<A> From<WithUuid<A>> for WithUuidVisible<A> {
     }
 }
 
-impl<A> From<WithUuid<A>> for Uuid {
-    fn from(value: WithUuid<A>) -> Self {
-        value.uuid
+impl<A> From<WithId<A>> for AssetId {
+    fn from(value: WithId<A>) -> Self {
+        value.id
     }
 }
 
-impl<A> From<WithUuidVisible<A>> for Uuid {
-    fn from(value: WithUuidVisible<A>) -> Self {
-        value.uuid
+impl<A> From<WithIdVisible<A>> for AssetId {
+    fn from(value: WithIdVisible<A>) -> Self {
+        value.id
     }
 }
 
 pub struct AssetLoadSystemCache<A: Asset> {
-    to_load: Vec<(Uuid, Option<AssetHandle<A>>, Option<AssetResult<A>>)>,
-    loaded: HashMap<Uuid, Option<A>>,
+    to_load: Vec<(AssetId, Option<AssetHandle<A>>, Option<AssetResult<A>>)>,
+    loaded: HashMap<AssetId, Option<A>>,
     task_running: bool,
 }
 
@@ -331,19 +327,19 @@ where
         }
     }
 
-    pub fn ensure_load(&mut self, uuid: Uuid, loader: &Loader) {
-        match self.loaded.entry(uuid) {
+    pub fn ensure_load(&mut self, id: AssetId, loader: &Loader) {
+        match self.loaded.entry(id) {
             Entry::Occupied(_) => return,
             Entry::Vacant(entry) => {
-                let handle = loader.load::<A>(&uuid);
+                let handle = loader.load::<A>(&id);
                 entry.insert(None);
-                self.to_load.push((uuid, Some(handle), None));
+                self.to_load.push((id, Some(handle), None));
             }
         }
     }
 
-    pub fn get_ready(&self, uuid: &Uuid) -> Option<&A> {
-        self.loaded.get(uuid).and_then(Option::as_ref)
+    pub fn get_ready(&self, id: &AssetId) -> Option<&A> {
+        self.loaded.get(id).and_then(Option::as_ref)
     }
 
     pub fn ensure_task<B, F>(&mut self, spawner: &mut Spawner, builder: F)
@@ -387,20 +383,20 @@ where
                     }
 
                     with_async_task_context(|mut cx| {
-                        for (uuid, handle, result) in to_load.drain(..) {
+                        for (id, handle, result) in to_load.drain(..) {
                             debug_assert!(result.is_some());
                             debug_assert!(handle.is_none());
 
                             let mut result = result.unwrap();
-                            let set = result.get(builder(cx.reborrow()));
+                            let set = result.build(builder(cx.reborrow()));
 
                             match set {
                                 Ok(set) => {
                                     let me = cx.res.get_mut::<Self>().unwrap();
-                                    me.loaded.insert(uuid, Some(set.clone()));
+                                    me.loaded.insert(id, Some(set.clone()));
                                 }
                                 Err(err) => {
-                                    tracing::error!("Failed to load set '{}': {:#}", uuid, err);
+                                    tracing::error!("Failed to load set '{}': {:#}", id, err);
                                 }
                             }
                         }

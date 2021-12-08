@@ -3,7 +3,7 @@
 use alkahest::Schema;
 
 use arcana::{
-    assets::{AssetLoadSystemCache, WithUuid, WithUuidVisible},
+    assets::{AssetLoadSystemCache, WithUuid},
     hecs::{Entity, World},
     lifespan::LifeSpan,
     na,
@@ -14,14 +14,13 @@ use arcana::{
         ContactQueue2, PhysicsData2,
     },
     scoped_arena::Scope,
-    uuid::Uuid,
     CommandQueue, Global2, Res, System, SystemContext, TimeSpan,
 };
 
 #[cfg(any(feature = "client", feature = "server"))]
 use arcana::evoke;
 
-use goods::Asset;
+use arcana::assets::Asset;
 
 use ordered_float::OrderedFloat;
 
@@ -178,6 +177,7 @@ impl Tank {
                     OrderedFloat(color[0]),
                     OrderedFloat(color[1]),
                     OrderedFloat(color[2]),
+                    OrderedFloat(1.0),
                 ],
                 ..Default::default()
             },
@@ -284,7 +284,12 @@ impl System for TankClientSystem {
                     },
                     #[cfg(feature = "visible")]
                     Material {
-                        albedo_factor: [OrderedFloat(1.0), OrderedFloat(0.8), OrderedFloat(0.2)],
+                        albedo_factor: [
+                            OrderedFloat(1.0),
+                            OrderedFloat(0.8),
+                            OrderedFloat(0.2),
+                            OrderedFloat(1.0),
+                        ],
                         ..Default::default()
                     },
                     ContactQueue2::new(),
@@ -429,7 +434,12 @@ impl System for BulletSystem {
                         layer: 0,
                     },
                     Material {
-                        albedo_factor: [OrderedFloat(1.0), OrderedFloat(0.3), OrderedFloat(0.1)],
+                        albedo_factor: [
+                            OrderedFloat(1.0),
+                            OrderedFloat(0.3),
+                            OrderedFloat(0.1),
+                            OrderedFloat(1.0),
+                        ],
                         ..Default::default()
                     },
                     LifeSpan::new(TimeSpan::SECOND * 5),
@@ -452,25 +462,6 @@ pub struct TankReplica {
     pub color: [f32; 3],
     pub sprite_sheet: Uuid,
     pub state: TankState,
-}
-
-#[cfg(any(feature = "client", feature = "server"))]
-impl TankReplica {
-    fn equivalent(&self, tank: &Tank, state: &TankState) -> bool {
-        self.size == tank.size
-            && self.color == tank.color
-            && self.sprite_sheet == tank_sprite_sheet_uuid(&tank)
-            && self.state == *state
-    }
-
-    fn from_tank_state(tank: &Tank, state: &TankState) -> Self {
-        TankReplica {
-            size: tank.size,
-            color: tank.color,
-            sprite_sheet: tank_sprite_sheet_uuid(&tank),
-            state: *state,
-        }
-    }
 }
 
 #[cfg(feature = "visible")]
@@ -514,6 +505,7 @@ impl System for TankReplicaSystem {
                         OrderedFloat(replica.color[0]),
                         OrderedFloat(replica.color[1]),
                         OrderedFloat(replica.color[2]),
+                        OrderedFloat(1.0),
                     ];
 
                     remove_replica.push(entity);
@@ -618,6 +610,7 @@ impl System for TankReplicaSystem {
                                 OrderedFloat(tank.color[0]),
                                 OrderedFloat(tank.color[1]),
                                 OrderedFloat(tank.color[2]),
+                                OrderedFloat(1.0),
                             ],
                             ..Default::default()
                         },

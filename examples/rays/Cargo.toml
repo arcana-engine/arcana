@@ -10,6 +10,3 @@ publish = false
 arcana = { path = "../.." }
 color-eyre = "0.5"
 eyre = "0.6"
-hecs = "0.6"
-sierra = { version = "0.1", git = "https://github.com/zakarumych/sierra.git" }
-

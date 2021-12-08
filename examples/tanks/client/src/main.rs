@@ -4,7 +4,6 @@
 use std::net::Ipv4Addr;
 
 use arcana::{
-    assets::tiles::{TileMapDescriptor, TileMapReplicaSystem},
     camera::Camera2,
     event::{ElementState, KeyboardInput, VirtualKeyCode},
     evoke::{
@@ -14,9 +13,12 @@ use arcana::{
     game2,
     hecs::Entity,
     physics2::Physics2,
+    renderer::{sigils::SigilsDraw, simple::SimpleRenderer, sprite::SpriteDraw, DrawNode},
     scoped_arena::Scope,
-    CommandQueue, Controlled, EntityController, Global2, InputCommander, InputEvent, SystemContext,
-    TimeSpan,
+    sigils,
+    tiles::{TileMapDescriptor, TileMapSystem},
+    CommandQueue, Controlled, EntityController, Global2, InputCommander, InputEvent, SigilsUI,
+    SystemContext, TimeSpan,
 };
 
 use tanks::*;
@@ -170,6 +172,56 @@ fn main() {
     game2(|mut game| async move {
         tracing::info!("START");
 
+        let ui = game.res.with(SigilsUI::new);
+
+        ui.enable_text_rendering(
+            "7f0f3e88-f2b6-4969-b6e6-4f4cd3b6db54".parse().unwrap(),
+            sigils::Vector2 { x: 256, y: 256 },
+        );
+
+        let title = ui.add_node(
+            sigils::Node::new()
+                .with_anchor(sigils::Anchor::Top)
+                .with_width_percents(40.0)
+                .with_height_pixels(50.0)
+                .with_color([0.294, 0.325, 0.125, 1.0]),
+        );
+
+        ui.add_text_node(
+            sigils::Node::new()
+                .with_parent(title)
+                .with_color([0.1, 0.1, 0.2, 1.0])
+                .text("HELLO TANKS!".into()), // .with_fitting(TextFitting::Stretch),
+        );
+
+        let button = ui.add_textured_node(
+            sigils::Node::new()
+                .with_width_percents(30.0)
+                .with_height_percents(10.0)
+                .with_padding(6.0, 6.0, 6.0, 6.0)
+                .textured("c6147dfa-2ea3-43bb-9bda-ccc4350bbe37".parse().unwrap())
+                .with_slice9(16.0, 16.0, 16.0, 16.0)
+                .with_slice9_uv(0.4921875, 0.4921875, 0.4921875, 0.4921875),
+        );
+
+        ui.add_text_node(
+            sigils::Node::new()
+                .with_parent(button)
+                .with_color([0.5, 0.1, 0.6, 1.0])
+                .text("BUTTON".into()), // .with_fitting(TextFitting::Stretch),
+        );
+
+        ui.set_extent(sigils::Vector2 {
+            x: game.viewport.size().width as f32,
+            y: game.viewport.size().height as f32,
+        });
+
+        let renderer = SimpleRenderer::with_multiple(vec![
+            Box::new(SpriteDraw::new(0.0..0.99, &mut game.graphics)?) as Box<dyn DrawNode>,
+            Box::new(SigilsDraw::new(&mut game.graphics)?) as Box<dyn DrawNode>,
+        ]);
+        game.renderer = Some(Box::new(renderer));
+
         // Setup camera.
         let camera = game.viewport.camera();
 
@@ -184,7 +236,7 @@ fn main() {
             .add_fixed_system(Physics2::new(), TimeSpan::MILLISECOND * 20);
 
         game.scheduler.add_ticking_system(tanks::TankReplicaSystem);
-        game.scheduler.add_ticking_system(TileMapReplicaSystem);
+        game.scheduler.add_ticking_system(TileMapSystem);
         game.scheduler.add_system(tanks::TankClientSystem);
         game.scheduler.add_system(tanks::BulletSystem);
 
@@ -200,8 +252,8 @@ fn main() {
 
         // Connect to local server. It must be running.
         client
-            .connect((Ipv4Addr::new(62, 84, 122, 89), 12345), &game.scope)
-            // .connect((Ipv4Addr::LOCALHOST, 12345), &game.scope)
+            // .connect((Ipv4Addr::new(62, 84, 122, 89), 12345), &game.scope)
+            .connect((Ipv4Addr::LOCALHOST, 12345), &game.scope)
             .await?;
 
         tracing::info!("Connected");

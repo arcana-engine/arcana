@@ -66,13 +66,21 @@ impl Rect {
     }
 }
 
-/// Sprite component.
+/// Sprite configuration.
+///
+/// |-------------|
+/// | world       |
+/// |  |--------| |
+/// |  |src     | |
+/// |  |        | |
+/// |  |--------| |
+/// |-------------|
 #[derive(Clone, Copy, Debug, Default)]
 pub struct Sprite {
-    /// Rect to render this sprite into.
+    /// Target rect to render this sprite into.
     pub world: Rect,
 
-    /// Relative original rect of the sprite.
+    /// Specifies fraction of `world` rect that will be occupied be texture.
     pub src: Rect,
 
     /// Cropped rect of the sprite's texture portion.
@@ -81,7 +89,7 @@ pub struct Sprite {
     /// Layer at which sprite should be rendered
     /// The higher level sprites are rendered over
     /// lower layer sprites.
-    pub layer: u32,
+    pub layer: u16,
 }
 
 mod serde_impls {

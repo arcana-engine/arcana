@@ -8,13 +8,12 @@ description = "Asset importer for arcana game engine"
 [lib]
 crate-type = ["cdylib"]
 
-[target.'cfg(target_os = "wasi")'.dependencies]
+[dependencies]
 arcana-time = { version = "0.1", path = "../time", features = ["serde"] }
 arcana-mesh-file = { version = "0.1", path = "../mesh-file" }
 skelly = { version = "0.5", features = ["serde-1"], git = "https://github.com/zakarumych/skelly.git" }
 
-goods-treasury-import = { version = "0.2" }
-goods-treasury-import-ffi = { version = "0.1" }
+treasury-import = { path = "../../treasury/import" }
 image = "0.23"
 serde = { version = "1.0", features = ["derive"] }
 serde_json = { version = "1.0" }

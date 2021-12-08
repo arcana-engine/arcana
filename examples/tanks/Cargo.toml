@@ -14,7 +14,6 @@ server = ["arcana/server"]
 [dependencies]
 alkahest = { version = "0.1", features = ["nightly"] }
 arcana = { path = "../..", features = ["physics2d"], default-features = false }
-goods = { version = "0.11.1" }
 color-eyre = "0.5"
 eyre = "0.6"
 futures = "0.3"

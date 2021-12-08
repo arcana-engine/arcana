@@ -8,7 +8,7 @@ use super::{DrawNode, RendererContext};
 
 #[pass]
 #[subpass(color = color, depth = depth)]
-struct ForwardRenderPass {
+struct SimpleRenderPass {
     #[attachment(store(const Layout::Present), clear(const ClearColor(0.2, 0.1, 0.1, 1.0)))]
     color: Image,
 
@@ -16,31 +16,35 @@ struct ForwardRenderPass {
     depth: Format,
 }
 
-pub struct ForwardRenderer<N> {
-    node: N,
-    render_pass: ForwardRenderPassInstance,
+pub struct SimpleRenderer<N> {
+    nodes: Vec<N>,
+    render_pass: SimpleRenderPassInstance,
     fences: [Option<Fence>; 3],
     fence_index: usize,
 }
 
-impl<N> ForwardRenderer<N> {
+impl<N> SimpleRenderer<N> {
     pub fn new(node: N) -> Self {
-        ForwardRenderer {
-            node,
-            render_pass: ForwardRenderPass::instance(),
+        SimpleRenderer::with_multiple(vec![node])
+    }
+
+    pub fn with_multiple(nodes: Vec<N>) -> Self {
+        SimpleRenderer {
+            nodes,
+            render_pass: SimpleRenderPass::instance(),
             fences: [None, None, None],
             fence_index: 0,
         }
     }
 }
 
-impl<N> Renderer for ForwardRenderer<N>
+impl<N> Renderer for SimpleRenderer<N>
 where
     N: DrawNode,
 {
     fn render(
         &mut self,
-        mut cx: RendererContext<'_>,
+        mut cx: RendererContext<'_, '_>,
         viewports: &mut [&mut Viewport],
     ) -> eyre::Result<()> {
         for viewport in viewports {
@@ -54,11 +58,15 @@ where
     }
 }
 
-impl<N> ForwardRenderer<N>
+impl<N> SimpleRenderer<N>
 where
     N: DrawNode,
 {
-    fn render(&mut self, mut cx: RendererContext<'_>, viewport: &mut Viewport) -> eyre::Result<()> {
+    fn render(
+        &mut self,
+        mut cx: RendererContext<'_, '_>,
+        viewport: &mut Viewport,
+    ) -> eyre::Result<()> {
         if let Some(fence) = &mut self.fences[self.fence_index] {
             cx.graphics.wait_fences(&mut [fence], true);
             cx.graphics.reset_fences(&mut [fence]);
@@ -68,27 +76,37 @@ where
 
         let mut swapchain_image = viewport.acquire_image(true)?;
 
-        let mut encoder = cx.graphics.create_encoder(&*cx.scope)?;
+        let viewport_extent = swapchain_image.image().info().extent.into_2d();
+
         let mut render_pass_encoder = cx.graphics.create_encoder(&*cx.scope)?;
 
-        let render_pass = render_pass_encoder.with_render_pass(
+        let mut render_pass = render_pass_encoder.with_render_pass(
             &mut self.render_pass,
-            &ForwardRenderPass {
+            &SimpleRenderPass {
                 color: swapchain_image.image().clone(),
                 depth: Format::D16Unorm,
             },
             cx.graphics,
         )?;
 
-        self.node.draw(
-            cx.reborrow(),
-            self.fence_index,
-            &mut encoder,
-            render_pass,
-            camera,
-        )?;
+        let mut cbufs = Vec::new_in(cx.scope);
 
-        let cbufs = [encoder.finish(), render_pass_encoder.finish()];
+        for node in &mut self.nodes {
+            let mut encoder = cx.graphics.create_encoder(&*cx.scope)?;
+            node.draw(
+                cx.reborrow(),
+                self.fence_index,
+                &mut encoder,
+                &mut render_pass,
+                camera,
+                viewport_extent,
+            )?;
+            cbufs.push(encoder.finish());
+        }
+
+        drop(render_pass);
+
+        cbufs.push(render_pass_encoder.finish());
 
         let fence = match &mut self.fences[self.fence_index] {
             Some(fence) => fence,
@@ -99,7 +117,7 @@ where
 
         cx.graphics.submit(
             &mut [(PipelineStageFlags::BOTTOM_OF_PIPE, wait)],
-            std::array::IntoIter::new(cbufs),
+            cbufs,
             &mut [signal],
             Some(fence),
             &*cx.scope,

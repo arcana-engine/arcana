@@ -8,7 +8,7 @@ publish = false
 
 [dependencies]
 tanks = { path = "..", features = ["client", "visible"] }
-arcana = { path = "../../..", features = ["physics2d", "client", "visible"], default-features = false }
+arcana = { path = "../../..", features = ["physics2d", "client", "visible", "sigils"], default-features = false }
 color-eyre = "0.5"
 eyre = "0.6"
 futures = "0.3"

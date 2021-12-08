@@ -2,7 +2,8 @@
 
 #[cfg(feature = "3d")]
 use crate::{
-    control::{CommandQueue, InputCommander, InputEvent},
+    command::CommandQueue,
+    control::{EventTranslator, InputEvent},
     event::{ElementState, KeyboardInput, VirtualKeyCode},
     system::{System, SystemContext},
 };
@@ -196,7 +197,7 @@ impl FreeCamera3Controller {
 }
 
 #[cfg(feature = "3d")]
-impl InputCommander for FreeCamera3Controller {
+impl EventTranslator for FreeCamera3Controller {
     type Command = FreeCamera3Command;
 
     fn translate(&mut self, event: InputEvent) -> Option<FreeCamera3Command> {

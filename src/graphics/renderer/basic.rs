@@ -70,12 +70,12 @@ struct BasicRenderable {
 }
 
 impl DrawNode for BasicDraw {
-    fn draw<'a>(
-        &'a mut self,
-        cx: RendererContext<'a>,
+    fn draw<'a, 'b: 'a>(
+        &'b mut self,
+        cx: RendererContext<'a, 'b>,
         fence_index: usize,
         encoder: &mut Encoder<'a>,
-        mut render_pass: RenderPassEncoder<'_, 'a>,
+        render_pass: &mut RenderPassEncoder<'_, 'b>,
         camera: Entity,
     ) -> eyre::Result<()> {
         let view = cx
@@ -118,13 +118,16 @@ impl DrawNode for BasicDraw {
         render_pass.bind_dynamic_graphics_pipeline(&mut self.pipeline, cx.graphics)?;
 
         let mut writes = Vec::new_in(&*cx.scope);
-        for (_, (mesh, mat, global, renderable, scale)) in cx.world.query_mut::<(
+
+        let query = cx.world.query_mut::<(
             &Mesh,
             &Material,
             &Global3,
             &mut BasicRenderable,
             Option<&Scale>,
-        )>() {
+        )>();
+
+        for (_, (mesh, mat, global, renderable, scale)) in query {
             let [r, g, b] = mat.albedo_factor;
             uniforms.albedo_factor = [r.into_inner(), b.into_inner(), g.into_inner()].into();
 
@@ -146,14 +149,15 @@ impl DrawNode for BasicDraw {
                         uniforms,
                     },
                     fence_index,
-                    cx.graphics,
+                    &*cx.graphics,
                     &mut writes,
                     &mut *encoder,
                 )?;
 
                 render_pass.bind_graphics_descriptors(&self.pipeline_layout, updated);
 
-                let drawn = mesh.draw(0..1, &[Position3::layout()], &mut render_pass);
+                let mesh = cx.scope.to_scope(mesh.clone());
+                let drawn = mesh.draw(0..1, &[Position3::layout()], render_pass);
 
                 if drawn {
                     tracing::info!("Mesh drawn");

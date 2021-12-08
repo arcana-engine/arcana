@@ -1,5 +1,8 @@
+use goods::Loader;
 use hecs::Entity;
-use sierra::{Encoder, RenderPassEncoder};
+use sierra::{Encoder, Extent2d, RenderPassEncoder};
+
+use crate::Spawner;
 
 #[cfg(feature = "3d")]
 pub mod basic;
@@ -7,7 +10,10 @@ pub mod basic;
 #[cfg(feature = "2d")]
 pub mod sprite;
 
-pub mod forward;
+#[cfg(feature = "sigils")]
+pub mod sigils;
+
+pub mod simple;
 
 use {
     super::Graphics,
@@ -16,22 +22,42 @@ use {
     scoped_arena::Scope,
 };
 
-pub struct RendererContext<'a> {
+pub struct RendererContext<'a, 'b> {
+    /// World on which systems are run.
     pub world: &'a mut World,
+
+    /// Resources map.
+    /// All singleton values are stored here and accessible by type.
     pub res: &'a mut Res,
-    pub graphics: &'a mut Graphics,
-    pub scope: &'a Scope<'a>,
+
+    /// Spawns tasks that will be executed asynchronously.
+    pub spawner: &'a mut Spawner,
+
+    /// Asset loader.
+    /// Assets are loaded asynchronously,
+    /// result can be awaited in task. See `spawner` field.
+    pub loader: &'a Loader,
+
+    /// Arena allocator for allocations in hot-path.
+    pub scope: &'b Scope<'b>,
+
+    /// Clock index.
     pub clock: ClockIndex,
+
+    /// Graphics context.
+    pub graphics: &'a mut Graphics,
 }
 
-impl RendererContext<'_> {
-    pub fn reborrow(&mut self) -> RendererContext<'_> {
+impl<'a> RendererContext<'_, 'a> {
+    pub fn reborrow(&mut self) -> RendererContext<'_, 'a> {
         RendererContext {
             world: &mut *self.world,
             res: &mut *self.res,
-            graphics: &mut *self.graphics,
+            spawner: &mut *self.spawner,
+            loader: self.loader,
             scope: self.scope,
             clock: self.clock,
+            graphics: &mut *self.graphics,
         }
     }
 }
@@ -41,7 +67,7 @@ pub trait Renderer: 'static {
     /// Render into specified viewports.
     fn render(
         &mut self,
-        cx: RendererContext<'_>,
+        cx: RendererContext<'_, '_>,
         viewports: &mut [&mut Viewport],
     ) -> eyre::Result<()>;
 }
@@ -65,10 +91,40 @@ pub trait RenderNode: for<'a> RenderNodeInputs<'a> + 'static {
     /// Render using inputs and producing outputs.
     fn render<'a>(
         &'a mut self,
-        cx: RendererContext<'a>,
+        cx: RendererContext<'a, 'a>,
         fence_index: usize,
         inputs: <Self as RenderNodeInputs<'a>>::Inputs,
     ) -> eyre::Result<Self::Outputs>;
+}
+
+pub trait DrawNode: 'static {
+    /// Draw.
+    fn draw<'a, 'b: 'a>(
+        &'b mut self,
+        cx: RendererContext<'a, 'b>,
+        fence_index: usize,
+        encoder: &mut Encoder<'a>,
+        render_pass: &mut RenderPassEncoder<'_, 'b>,
+        camera: Entity,
+        viewport: Extent2d,
+    ) -> eyre::Result<()>;
+}
+
+impl<N> DrawNode for Box<N>
+where
+    N: DrawNode + ?Sized,
+{
+    fn draw<'a, 'b: 'a>(
+        &'b mut self,
+        cx: RendererContext<'a, 'b>,
+        fence_index: usize,
+        encoder: &mut Encoder<'a>,
+        render_pass: &mut RenderPassEncoder<'_, 'b>,
+        camera: Entity,
+        viewport: Extent2d,
+    ) -> eyre::Result<()> {
+        (&mut **self).draw(cx, fence_index, encoder, render_pass, camera, viewport)
+    }
 }
 
 /// Inputs for render node that simply draws objects.
@@ -76,18 +132,7 @@ pub struct DrawNodeInputs<'a> {
     pub encoder: &'a mut Encoder<'a>,
     pub render_pass: RenderPassEncoder<'a, 'a>,
     pub camera: Entity,
-}
-
-pub trait DrawNode: 'static {
-    /// Draw.
-    fn draw<'a>(
-        &'a mut self,
-        cx: RendererContext<'a>,
-        fence_index: usize,
-        encoder: &mut Encoder<'a>,
-        render_pass: RenderPassEncoder<'_, 'a>,
-        camera: Entity,
-    ) -> eyre::Result<()>;
+    pub viewport: Extent2d,
 }
 
 impl<'a, N> RenderNodeInputs<'a> for N
@@ -105,16 +150,17 @@ where
 
     fn render<'a>(
         &'a mut self,
-        cx: RendererContext<'a>,
+        cx: RendererContext<'a, 'a>,
         fence_index: usize,
-        inputs: DrawNodeInputs<'a>,
+        mut inputs: DrawNodeInputs<'a>,
     ) -> eyre::Result<()> {
         self.draw(
             cx,
             fence_index,
             inputs.encoder,
-            inputs.render_pass,
+            &mut inputs.render_pass,
             inputs.camera,
+            inputs.viewport,
         )
     }
 }

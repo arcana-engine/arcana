@@ -109,6 +109,20 @@
       "source_format": "arcana.tile-map",
       "native_format": "arcana.tile-map",
       "tags": []
+    },
+    {
+      "uuid": "7f0f3e88-f2b6-4969-b6e6-4f4cd3b6db54",
+      "source": "4077TH.TTF",
+      "source_format": "ttf",
+      "native_format": "ttf",
+      "tags": []
+    },
+    {
+      "uuid": "c6147dfa-2ea3-43bb-9bda-ccc4350bbe37",
+      "source": "button.png",
+      "source_format": "image",
+      "native_format": "rgba.png",
+      "tags": []
     }
   ]
 }

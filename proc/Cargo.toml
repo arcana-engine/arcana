@@ -5,8 +5,8 @@ edition = "2018"
 authors = ["Zakarum <zakarumych@ya.ru>"]
 license = "MIT OR Apache-2.0"
 documentation = "https://docs.rs/arcana-proc"
-homepage = "https://github.com/zakarumych/arcana"
-repository = "https://github.com/zakarumych/arcana"
+homepage = "https://github.com/arcana-engine/arcana"
+repository = "https://github.com/arcana-engine/arcana"
 
 [lib]
 proc-macro = true

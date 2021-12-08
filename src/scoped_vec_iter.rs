@@ -12,7 +12,7 @@ use scoped_arena::Scope;
 /// let iter = ScopedVecIter::new(v);
 /// ```
 pub struct ScopedVecIter<'a, T> {
-    phantom: PhantomData<(T, &'a mut T)>,
+    phantom: PhantomData<(fn(T) -> &'a mut T)>,
     ptr: *const T,
     end: *const T,
 }

@@ -82,6 +82,27 @@ impl Res {
     }
 
     /// Returns mutable reference to value in the map.
+    /// Returns `None` if value of requested type was not added into map before.
+    pub fn get_two_mut<T: 'static, U: 'static>(&mut self) -> Option<(&mut T, &mut U)> {
+        assert_ne!(TypeId::of::<T>(), TypeId::of::<U>());
+
+        let t: *mut T = self
+            .map
+            .get_mut(&TypeId::of::<T>())
+            .map(|b| b.downcast_mut().unwrap())?;
+
+        let u: *mut U = self
+            .map
+            .get_mut(&TypeId::of::<U>())
+            .map(|b| b.downcast_mut().unwrap())?;
+
+        Some(unsafe {
+            // Safety: Values are taken from different keys. HashMap is borrowed mutably.
+            (&mut *t, &mut *u)
+        })
+    }
+
+    /// Returns mutable reference to value in the map.
     /// Executes provided closure and adds one into map if vale of requested
     /// type was not added into map before.
     pub fn with<T: Send + Sync + 'static>(&mut self, f: impl FnOnce() -> T) -> &mut T {

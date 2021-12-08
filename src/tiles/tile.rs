@@ -1,12 +1,15 @@
 use goods::AssetField;
 use hashbrown::HashMap;
 use ordered_float::OrderedFloat;
+
+#[cfg(feature = "physics2d")]
 use parry2d::shape::SharedShape;
 
 #[cfg(feature = "visible")]
 use crate::graphics::Texture;
 use crate::Res;
 
+#[cfg(feature = "physics2d")]
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash, serde::Deserialize)]
 #[cfg_attr(feature = "server", derive(serde::Serialize))]
 #[serde(rename_all = "snake_case")]
@@ -14,6 +17,7 @@ pub enum ColliderKind {
     Wall,
 }
 
+#[cfg(feature = "physics2d")]
 impl ColliderKind {
     pub fn shared_shape(&self, size: f32, res: &mut Res) -> SharedShape {
         struct TileShapes(HashMap<(ColliderKind, OrderedFloat<f32>), SharedShape>);
@@ -34,6 +38,7 @@ impl ColliderKind {
 #[cfg_attr(feature = "visible", derive(AssetField))]
 #[cfg_attr(not(feature = "visible"), derive(serde::Deserialize))]
 pub struct Tile {
+    #[cfg(feature = "physics2d")]
     #[serde(default)]
     pub collider: Option<ColliderKind>,
 

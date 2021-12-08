@@ -1,20 +1,15 @@
-use std::{
-    borrow::{BorrowMut, Cow},
-    convert::TryFrom as _,
-    future::{ready, Ready},
-    mem::size_of_val,
-    ops::Range,
-    sync::Arc,
-};
+use std::{borrow::Cow, convert::TryFrom as _, mem::size_of_val, ops::Range, sync::Arc};
 
 #[cfg(feature = "genmesh")]
 use std::mem::size_of;
 
 #[cfg(feature = "mesh-asset")]
-use arcana_mesh_file::{MeshFile, MeshFileHeader};
+use std::{
+    borrow::BorrowMut,
+    future::{ready, Ready},
+};
 
 use bytemuck::cast_slice;
-use goods::{Asset, AssetBuild, Loader};
 use scoped_arena::Scope;
 use sierra::{
     AccelerationStructure, AccelerationStructureBuildFlags, AccelerationStructureBuildGeometryInfo,
@@ -24,13 +19,18 @@ use sierra::{
     VertexInputRate,
 };
 
+#[cfg(feature = "mesh-asset")]
+use arcana_mesh_file::{MeshFile, MeshFileHeader};
+#[cfg(feature = "mesh-asset")]
+use goods::{Asset, AssetBuild, Loader};
+
 use super::{
-    vertex::{
-        Joints, Normal3, Position3, Semantics, Tangent3, VertexLayout, VertexLocation, VertexType,
-        Weights, UV, V2, V3, V4,
-    },
+    vertex::{Position3, Semantics, VertexLayout, VertexLocation, VertexType},
     Graphics,
 };
+
+#[cfg(feature = "mesh-asset")]
+use super::vertex::{Joints, Normal3, Tangent3, Weights, UV, V2, V3, V4};
 
 #[cfg(feature = "genmesh")]
 use super::vertex::VertexAttribute;
@@ -921,7 +921,7 @@ impl Asset for Mesh {
     }
 }
 
-#[cfg(feature = "arcana_mesh_file")]
+#[cfg(feature = "mesh-asset")]
 impl<B> AssetBuild<B> for Mesh
 where
     B: BorrowMut<Graphics>,

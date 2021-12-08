@@ -1,11 +1,12 @@
-use std::{convert::TryFrom, mem::size_of};
+use std::{convert::TryFrom, mem::size_of, ops::Range};
 
 use hecs::Entity;
-use palette::LinSrgb;
+use palette::LinSrgba;
 use sierra::{
-    descriptors, graphics_pipeline_desc, mat3, pipeline, shader_repr, Buffer, DepthTest,
-    DynamicGraphicsPipeline, Encoder, FragmentShader, ImageView, Layout, PipelineInput,
-    RenderPassEncoder, Sampler, ShaderModuleInfo, VertexInputRate, VertexShader,
+    descriptors, graphics_pipeline_desc, mat3, pipeline, shader_repr, AccessFlags, Buffer,
+    DepthTest, DynamicGraphicsPipeline, Encoder, Extent2d, FragmentShader, ImageView, Layout,
+    PipelineInput, PipelineStageFlags, RenderPassEncoder, Sampler, ShaderModuleInfo,
+    VertexInputRate, VertexShader,
 };
 
 use super::{mat3_na_to_sierra, DrawNode, RendererContext};
@@ -18,6 +19,7 @@ use crate::{
         VertexType,
     },
     scene::Global2,
+    tiles::{TileMap, TileMapSpawned},
 };
 
 pub struct SpriteDraw {
@@ -27,6 +29,7 @@ pub struct SpriteDraw {
     set: SpriteDescriptorsInstance,
     textures: SparseDescriptors<ImageView>,
     sprites: Buffer,
+    layer_range: Range<f32>,
 }
 
 #[shader_repr]
@@ -65,7 +68,27 @@ struct SpritePipeline {
 }
 
 impl SpriteDraw {
-    pub fn new(graphics: &mut Graphics) -> eyre::Result<Self> {
+    pub fn new(layer_range: Range<f32>, graphics: &mut Graphics) -> eyre::Result<Self> {
+        assert!(
+            layer_range.start >= 0.0 && layer_range.end > layer_range.start,
+            "Layers range {}..{} is invalid",
+            layer_range.start,
+            layer_range.end,
+        );
+
+        let layer_start_bits = layer_range.start.to_bits();
+        let layer_end_bits = layer_range.end.to_bits();
+
+        const MAX_LAYERS_COUNT: u32 = u16::MAX as u32;
+
+        assert!(
+            layer_end_bits > MAX_LAYERS_COUNT
+                && layer_start_bits < layer_end_bits - MAX_LAYERS_COUNT,
+            "Layers range {}..{} is too small",
+            layer_range.start,
+            layer_range.end,
+        );
+
         let vert_module = graphics.create_shader_module(ShaderModuleInfo::spirv(
             std::include_bytes!("sprite.vert.spv")
                 .to_vec()
@@ -134,18 +157,20 @@ impl SpriteDraw {
             set,
             textures: SparseDescriptors::new(),
             sprites,
+            layer_range,
         })
     }
 }
 
 impl DrawNode for SpriteDraw {
-    fn draw<'a>(
-        &'a mut self,
-        cx: RendererContext<'a>,
+    fn draw<'a, 'b: 'a>(
+        &'b mut self,
+        cx: RendererContext<'a, 'b>,
         fence_index: usize,
         encoder: &mut Encoder<'a>,
-        mut render_pass: RenderPassEncoder<'_, 'a>,
+        render_pass: &mut RenderPassEncoder<'_, 'b>,
         camera: Entity,
+        _viewport: Extent2d,
     ) -> eyre::Result<()> {
         let view = cx
             .world
@@ -164,8 +189,8 @@ impl DrawNode for SpriteDraw {
 
         render_pass.bind_dynamic_graphics_pipeline(&mut self.pipeline, cx.graphics)?;
 
-        let mut sprites = Vec::new_in(&*cx.scope);
-        let mut writes = Vec::new_in(&*cx.scope);
+        let mut sprites = Vec::with_capacity_in(1024, &*cx.scope);
+        let mut writes = Vec::with_capacity_in(128, &*cx.scope);
         for (_, (sprite, mat, global)) in cx.world.query_mut::<(&Sprite, &Material, &Global2)>() {
             let albedo = match &mat.albedo_coverage {
                 Some(texture) => {
@@ -175,22 +200,72 @@ impl DrawNode for SpriteDraw {
                     }
                     index
                 }
-                None => !0,
+                None => u32::MAX,
             };
+
+            let layer_start_bits = self.layer_range.start.to_bits();
+            let layer_bits = layer_start_bits + ((sprite.layer as u32) << 6);
+            let layer = f32::from_bits(layer_bits);
+            debug_assert!(layer < self.layer_range.end);
 
             let instance = SpriteInstance {
                 pos: sprite.src.from_relative_to(&sprite.world),
                 uv: sprite.tex,
-                layer: sprite.layer,
+                layer,
                 albedo,
                 albedo_factor: {
-                    let [r, g, b] = mat.albedo_factor;
-                    palette::LinSrgb::from((r.into(), g.into(), b.into()))
+                    let [r, g, b, a] = mat.albedo_factor;
+                    LinSrgba::new(r.into(), g.into(), b.into(), a.into())
                 },
                 transform: Transformation2(global.iso.to_homogeneous().into()),
             };
 
             sprites.push(instance);
+        }
+
+        for (_, (map, spawned, global)) in cx
+            .world
+            .query_mut::<(&TileMap, &TileMapSpawned, &Global2)>()
+        {
+            let hc = map.cell_size * 0.5;
+
+            for (j, row) in map.cells.chunks(map.width).enumerate() {
+                for (i, &cell) in row.iter().enumerate() {
+                    let tile = match spawned.set.tiles.get(cell) {
+                        None => {
+                            return Err(eyre::eyre!("Missing tile '{}' in the tileset", cell));
+                        }
+                        Some(tile) => tile,
+                    };
+
+                    let albedo = match &tile.texture {
+                        Some(texture) => {
+                            let (index, new) = self.textures.index(texture.image.clone());
+                            if new {
+                                self.descriptors.textures[index as usize] = texture.image.clone();
+                            }
+                            index
+                        }
+                        None => u32::MAX,
+                    };
+
+                    let instance = SpriteInstance {
+                        pos: Rect {
+                            left: i as f32 * map.cell_size - hc,
+                            right: i as f32 * map.cell_size + hc,
+                            top: j as f32 * map.cell_size - hc,
+                            bottom: j as f32 * map.cell_size + hc,
+                        },
+                        uv: Rect::ONE_QUAD,
+                        layer: self.layer_range.end,
+                        albedo,
+                        albedo_factor: LinSrgba::new(1.0, 1.0, 1.0, 1.0),
+                        transform: Transformation2(global.iso.to_homogeneous().into()),
+                    };
+
+                    sprites.push(instance);
+                }
+            }
         }
 
         tracing::debug!("Rendering {} sprites", sprites.len());
@@ -220,6 +295,13 @@ impl DrawNode for SpriteDraw {
         cx.graphics
             .upload_buffer_with(&self.sprites, 0, sprites.leak(), encoder)?;
 
+        encoder.memory_barrier(
+            PipelineStageFlags::TRANSFER,
+            AccessFlags::TRANSFER_WRITE,
+            PipelineStageFlags::VERTEX_INPUT,
+            AccessFlags::VERTEX_ATTRIBUTE_READ,
+        );
+
         let buffers = render_pass.scope().to_scope([(&self.sprites, 0)]);
         render_pass.bind_vertex_buffers(0, buffers);
         render_pass.draw(0..6, 0..sprite_count);
@@ -233,9 +315,9 @@ impl DrawNode for SpriteDraw {
 struct SpriteInstance {
     pos: Rect,
     uv: Rect,
-    layer: u32,
+    layer: f32,
     albedo: u32,
-    albedo_factor: palette::LinSrgb<f32>,
+    albedo_factor: LinSrgba<f32>,
     transform: Transformation2,
 }
 
@@ -248,9 +330,9 @@ impl VertexType for SpriteInstance {
         &[
             vertex_location!(offset, Rect),
             vertex_location!(offset, Rect),
-            vertex_location!(offset, u32 as "Layer"),
+            vertex_location!(offset, f32 as "Layer"),
             vertex_location!(offset, u32 as "Albedo"),
-            vertex_location!(offset, LinSrgb<f32>),
+            vertex_location!(offset, LinSrgba<f32>),
             vertex_location!(offset, [f32; 3] as "Transform2.0"),
             vertex_location!(offset, [f32; 3] as "Transform2.1"),
             vertex_location!(offset, [f32; 3] as "Transform2.2"),

@@ -10,11 +10,16 @@ use {
     winit::window::{Window, WindowId},
 };
 
+use winit::dpi::PhysicalSize;
+
 #[cfg(feature = "2d")]
 use crate::camera::Camera2;
 
 #[cfg(feature = "3d")]
 use crate::camera::Camera3;
+
+#[cfg(feature = "sigils")]
+use crate::SigilsUI;
 
 /// Viewport into the world.
 pub struct Viewport {
@@ -25,6 +30,7 @@ pub struct Viewport {
     swapchain: Swapchain,
     needs_redraw: bool,
     focused: bool,
+    size: PhysicalSize<u32>,
 }
 
 impl Viewport {
@@ -38,6 +44,8 @@ impl Viewport {
             PresentMode::Fifo,
         )?;
 
+        let size = window.inner_size();
+
         Ok(Viewport {
             camera,
             window: window.id(),
@@ -45,6 +53,7 @@ impl Viewport {
             swapchain,
             needs_redraw: true,
             focused: true,
+            size,
         })
     }
 
@@ -66,6 +75,10 @@ impl Viewport {
         self.focused
     }
 
+    pub fn size(&self) -> PhysicalSize<u32> {
+        self.size
+    }
+
     pub fn acquire_image(&mut self, optimal: bool) -> Result<SwapchainImage, SurfaceError> {
         let image = self.swapchain.acquire_image(optimal)?;
         self.needs_redraw = false;
@@ -74,18 +87,21 @@ impl Viewport {
 }
 
 impl Funnel<Event> for Viewport {
-    fn filter(&mut self, _res: &mut Res, world: &mut World, event: Event) -> Option<Event> {
+    fn filter(&mut self, res: &mut Res, world: &mut World, event: Event) -> Option<Event> {
         let _ = &world;
+        let _ = &res;
         match event {
             Event::RedrawRequested(id) if id == self.window => {
                 self.needs_redraw = true;
                 None
             }
-            #[cfg(any(feature = "2d", feature = "3d"))]
+
             Event::WindowEvent {
                 event: WindowEvent::Resized(size),
                 window_id,
             } if window_id == self.window => {
+                self.size = size;
+
                 #[cfg(any(feature = "2d", feature = "3d"))]
                 let aspect = size.width as f32 / size.height as f32;
 
@@ -97,6 +113,14 @@ impl Funnel<Event> for Viewport {
                 #[cfg(feature = "3d")]
                 if let Ok(mut camera) = world.get_mut::<Camera3>(self.camera) {
                     camera.set_aspect(aspect);
+                }
+
+                #[cfg(feature = "sigils")]
+                if let Some(ui) = res.get_mut::<SigilsUI>() {
+                    ui.set_extent(sigils::Vector2 {
+                        x: size.width as f32,
+                        y: size.height as f32,
+                    });
                 }
 
                 Some(event)

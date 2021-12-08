@@ -7,7 +7,6 @@ use std::{
 };
 
 use arcana::{
-    assets::tiles::{TileMap, TileMapDescriptor, TileMapReplicaSystem},
     evoke::{
         server::{RemotePlayer, ServerOwned, ServerSystem},
         PlayerId,
@@ -18,13 +17,13 @@ use arcana::{
     na,
     palette::{FromColor, Lch, Srgb},
     physics2::Physics2,
+    tiles::{TileMap, TileMapDescriptor, TileMapSystem},
     CommandQueue, Global2, TimeSpan,
 };
 use eyre::Context;
 use tokio::net::TcpListener;
 
 use tanks::*;
-use uuid::Uuid;
 
 fn random_color() -> [f32; 3] {
     const FI: f32 = 1.618033988;
@@ -128,27 +127,23 @@ fn main() {
 
                 let offset = na::Vector2::new(i as f32, j as f32).component_mul(&map.size());
 
-                let entity = map.spawn(
-                    &na::Isometry2::new(offset.into(), 0.0),
-                    &mut game.world,
-                    &mut game.res,
-                )?;
-
-                game.world
-                    .insert_one(entity, ServerOwned)
-                    .expect("Entity just spawned");
+                game.world.spawn((
+                    Global2::new(na::Isometry2::new(offset.into(), 0.0)),
+                    map.clone(),
+                    ServerOwned,
+                ));
             }
         }
 
         game.scheduler.add_ticking_system(Physics2::new());
-        game.scheduler.add_ticking_system(TileMapReplicaSystem);
+        game.scheduler.add_ticking_system(TileMapSystem);
         game.scheduler.add_ticking_system(tanks::TankReplicaSystem);
         game.scheduler.add_ticking_system(tanks::TankSystem);
         game.scheduler.add_ticking_system(tanks::BulletSystem);
 
         // Bind listener for incoming connections.
-        let listener = TcpListener::bind((Ipv4Addr::UNSPECIFIED, 12345)).await?;
-        // let listener = TcpListener::bind((Ipv4Addr::LOCALHOST, 12345)).await?;
+        // let listener = TcpListener::bind((Ipv4Addr::UNSPECIFIED, 12345)).await?;
+        let listener = TcpListener::bind((Ipv4Addr::LOCALHOST, 12345)).await?;
 
         let local_addr = listener.local_addr()?;
 

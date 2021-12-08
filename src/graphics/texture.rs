@@ -1,6 +1,6 @@
 pub use {
     super::Graphics,
-    crate::assets::ImageAsset,
+    crate::assets::{AssetId, ImageAsset},
     goods::{
         Asset, AssetBuild, AssetField, AssetFieldBuild, AssetHandle, AssetResult, Container, Error,
         Loader,
@@ -14,7 +14,6 @@ pub use {
         pin::Pin,
         task::{Context, Poll},
     },
-    uuid::Uuid,
 };
 
 #[derive(Clone, Debug, PartialEq, Eq, Hash)]
@@ -42,7 +41,7 @@ pub enum TextureAssetError {
 }
 
 pub struct TextureInfo {
-    image: Uuid,
+    image: AssetId,
     sampler: SamplerInfo,
 }
 
@@ -56,7 +55,7 @@ impl<'de> serde::Deserialize<'de> for TextureInfo {
 
         #[derive(serde::Deserialize)]
         struct ImageSamplerInfo {
-            image: Uuid,
+            image: AssetId,
             sampler: SamplerInfo,
         }
 
@@ -118,7 +117,7 @@ impl<'de> serde::Deserialize<'de> for TextureInfo {
                 E: serde::de::Error,
             {
                 Ok(TextureInfo {
-                    image: Uuid::from_u128(v),
+                    image: AssetId::from_u128(v),
                     sampler: SamplerInfo::default(),
                 })
             }
@@ -173,7 +172,7 @@ where
 {
     fn build(mut decoded: TextureDecoded, builder: &mut B) -> Result<Self, TextureAssetError> {
         let graphics: &mut Graphics = builder.borrow_mut();
-        let image = decoded.image.get(graphics)?.0.clone();
+        let image = decoded.image.build(graphics)?.0.clone();
         let sampler = graphics.create_sampler(decoded.sampler)?;
         Ok(Texture { image, sampler })
     }

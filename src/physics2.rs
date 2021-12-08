@@ -45,6 +45,28 @@ impl ContactQueue2 {
     }
 }
 
+pub struct IntersectionQueue2 {
+    intersecting_started: Vec<ColliderHandle>,
+    intersecting_stopped: Vec<ColliderHandle>,
+}
+
+impl IntersectionQueue2 {
+    pub const fn new() -> Self {
+        IntersectionQueue2 {
+            intersecting_started: Vec::new(),
+            intersecting_stopped: Vec::new(),
+        }
+    }
+
+    pub fn drain_intersecting_started(&mut self) -> std::vec::Drain<'_, ColliderHandle> {
+        self.intersecting_started.drain(..)
+    }
+
+    pub fn drain_intersecting_stopped(&mut self) -> std::vec::Drain<'_, ColliderHandle> {
+        self.intersecting_stopped.drain(..)
+    }
+}
+
 pub struct Physics2 {
     pipeline: PhysicsPipeline,
     integration_parameters: IntegrationParameters,
@@ -106,13 +128,13 @@ impl System for Physics2 {
     fn run(&mut self, cx: SystemContext<'_>) -> eyre::Result<()> {
         let data = cx.res.with(PhysicsData2::new);
 
-        let mut remove_bodies = Vec::with_capacity_in(data.bodies.len(), &*cx.scope);
-        let world = &*cx.world;
+        let mut remove_bodies = Vec::with_capacity_in(64, &*cx.scope);
+        let world = &mut *cx.world;
         data.bodies.iter().for_each(|(handle, body)| {
-            if body.user_data > 0 {
-                let e = Entity::from_bits((body.user_data - 1) as u64);
-                if !world.contains(e) {
-                    remove_bodies.push(handle);
+            if let Some(e) = Entity::from_bits(body.user_data as u64) {
+                match world.query_one_mut::<&RigidBodyHandle>(e) {
+                    Ok(body) if *body == handle => {}
+                    _ => remove_bodies.push(handle),
                 }
             }
         });
@@ -128,12 +150,15 @@ impl System for Physics2 {
         for (entity, body) in cx.world.query_mut::<&RigidBodyHandle>() {
             let body = data.bodies.get_mut(*body).unwrap();
 
-            if body.user_data == 0 {
-                body.user_data = (entity.to_bits() as u128) + 1;
+            match Entity::from_bits(body.user_data as u64) {
+                Some(e) if e == entity => {}
+                _ => {
+                    body.user_data = entity.to_bits().get() as u128;
 
-                for (index, &collider) in body.colliders().iter().enumerate() {
-                    data.colliders.get_mut(collider).unwrap().user_data =
-                        ((index as u128) << 64) | entity.to_bits() as u128;
+                    for (index, &collider) in body.colliders().iter().enumerate() {
+                        data.colliders.get_mut(collider).unwrap().user_data =
+                            ((index as u128) << 64) | body.user_data;
+                    }
                 }
             }
         }
@@ -148,16 +173,20 @@ impl System for Physics2 {
 
         struct SenderEventHandler {
             tx: Sender<ContactEvent>,
+            intersection_tx: Sender<IntersectionEvent>,
         }
 
         impl EventHandler for SenderEventHandler {
-            fn handle_intersection_event(&self, _event: IntersectionEvent) {}
+            fn handle_intersection_event(&self, event: IntersectionEvent) {
+                self.intersection_tx.send(event).unwrap();
+            }
             fn handle_contact_event(&self, event: ContactEvent, _pair: &ContactPair) {
                 self.tx.send(event).unwrap();
             }
         }
 
         let (tx, rx) = unbounded();
+        let (intersection_tx, intersection_rx) = unbounded();
 
         self.pipeline.step(
             &data.gravity,
@@ -170,7 +199,10 @@ impl System for Physics2 {
             &mut data.joints,
             &mut self.ccd_solver,
             &(),
-            &SenderEventHandler { tx },
+            &SenderEventHandler {
+                tx,
+                intersection_tx,
+            },
         );
 
         for (_, (global, body)) in cx.world.query::<(&mut Global2, &RigidBodyHandle)>().iter() {
@@ -182,14 +214,14 @@ impl System for Physics2 {
             match event {
                 ContactEvent::Started(lhs, rhs) => {
                     let bits = data.colliders.get(lhs).unwrap().user_data as u64;
-                    let entity = Entity::from_bits(bits);
+                    let entity = Entity::from_bits(bits).unwrap();
 
                     if let Ok(mut queue) = cx.world.get_mut::<ContactQueue2>(entity) {
                         queue.contacts_started.push(rhs);
                     }
 
                     let bits = data.colliders.get(rhs).unwrap().user_data as u64;
-                    let entity = Entity::from_bits(bits);
+                    let entity = Entity::from_bits(bits).unwrap();
 
                     if let Ok(mut queue) = cx.world.get_mut::<ContactQueue2>(entity) {
                         queue.contacts_started.push(lhs);
@@ -197,14 +229,14 @@ impl System for Physics2 {
                 }
                 ContactEvent::Stopped(lhs, rhs) => {
                     let bits = data.colliders.get(lhs).unwrap().user_data as u64;
-                    let entity = Entity::from_bits(bits);
+                    let entity = Entity::from_bits(bits).unwrap();
 
                     if let Ok(mut queue) = cx.world.get_mut::<ContactQueue2>(entity) {
                         queue.contacts_stopped.push(rhs);
                     }
 
                     let bits = data.colliders.get(rhs).unwrap().user_data as u64;
-                    let entity = Entity::from_bits(bits);
+                    let entity = Entity::from_bits(bits).unwrap();
 
                     if let Ok(mut queue) = cx.world.get_mut::<ContactQueue2>(entity) {
                         queue.contacts_stopped.push(lhs);
@@ -213,15 +245,41 @@ impl System for Physics2 {
             }
         }
 
+        while let Ok(event) = intersection_rx.recv() {
+            let lhs = event.collider1;
+            let rhs = event.collider2;
+
+            if event.intersecting {
+                let bits = data.colliders.get(lhs).unwrap().user_data as u64;
+                let entity = Entity::from_bits(bits).unwrap();
+
+                if let Ok(mut queue) = cx.world.get_mut::<IntersectionQueue2>(entity) {
+                    queue.intersecting_started.push(rhs);
+                }
+
+                let bits = data.colliders.get(rhs).unwrap().user_data as u64;
+                let entity = Entity::from_bits(bits).unwrap();
+
+                if let Ok(mut queue) = cx.world.get_mut::<IntersectionQueue2>(entity) {
+                    queue.intersecting_started.push(lhs);
+                }
+            } else {
+                let bits = data.colliders.get(lhs).unwrap().user_data as u64;
+                let entity = Entity::from_bits(bits).unwrap();
+
+                if let Ok(mut queue) = cx.world.get_mut::<IntersectionQueue2>(entity) {
+                    queue.intersecting_stopped.push(rhs);
+                }
+
+                let bits = data.colliders.get(rhs).unwrap().user_data as u64;
+                let entity = Entity::from_bits(bits).unwrap();
+
+                if let Ok(mut queue) = cx.world.get_mut::<IntersectionQueue2>(entity) {
+                    queue.intersecting_stopped.push(lhs);
+                }
+            }
+        }
+
         Ok(())
     }
-}
-
-#[derive(Clone, Copy, Debug, PartialEq)]
-#[cfg_attr(feature = "client", derive(serde::Deserialize))]
-#[cfg_attr(feature = "server", derive(serde::Serialize))]
-pub struct BodyReplicable {
-    iso: na::Isometry2<f32>,
-    linvel: na::Vector2<f32>,
-    angvel: f32,
 }

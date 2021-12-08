@@ -13,74 +13,67 @@
 
 pub mod anim;
 pub mod assets;
-// mod bitset;
-mod clocks;
-mod debug;
-mod game;
-pub mod lifespan;
-// pub mod net;
-pub mod prefab;
-
-#[cfg(feature = "physics2d")]
-pub mod physics2;
-
-#[cfg(feature = "physics3d")]
-pub mod physics3;
-
-mod control;
-mod resources;
-
-#[cfg(any(feature = "2d", feature = "3d"))]
-mod scene;
-
-pub mod fps;
-mod scoped_vec_iter;
-mod system;
-mod task;
-
-#[cfg(feature = "visible")]
 pub mod camera;
-#[cfg(feature = "visible")]
-pub mod event;
-#[cfg(feature = "visible")]
-mod funnel;
-#[cfg(feature = "visible")]
-pub mod graphics;
-#[cfg(feature = "visible")]
-mod viewport;
+pub mod clocks;
+pub mod command;
+pub mod debug;
+pub mod fps;
+pub mod game;
+pub mod lifespan;
+pub mod resources;
+pub mod system;
+pub mod task;
 
-// Reexport crates widely used in public API.
-pub use {bincode, evoke, hecs, na, palette, scoped_arena, uuid};
+cfg_if::cfg_if! {
+    if #[cfg(feature = "visible")] {
+        pub mod event;
+        pub mod graphics;
+        pub use sierra;
+        pub mod control;
+        pub mod viewport;
+        pub mod funnel;
+    }
+}
 
-#[cfg(feature = "visible")]
-pub use sierra;
+cfg_if::cfg_if! {
+    if #[cfg(feature = "2d")] {
+        pub mod tiles;
+    }
+}
 
+cfg_if::cfg_if! {
+    if #[cfg(feature = "physics2d")] {
+        pub mod physics2;
+        pub use {rapier2d, parry2d};
+    }
+}
+
+cfg_if::cfg_if! {
+    if #[cfg(feature = "physics3d")] {
+        pub mod physics3;
+        pub use {rapier3d, parry3d};
+    }
+}
+
+cfg_if::cfg_if! {
+    if #[cfg(feature = "sigils")] {
+        pub use sigils;
+    }
+}
+
+cfg_if::cfg_if! {
+    if #[cfg(any(feature = "2d", feature = "3d"))] {
+        pub mod scene;
+    }
+}
+
+// Reexport crates used in public API.
+pub use {bincode, evoke, hecs, na, palette, scoped_arena};
+
+// Reexport proc-macros
 pub use arcana_proc::timespan;
 
-pub use self::{
-    clocks::{ClockIndex, Clocks, TimeSpan, TimeSpanParseErr},
-    control::CommandQueue,
-    debug::{DebugInfo, EntityDebugInfo, EntityDisplay, EntityRefDebugInfo, EntityRefDisplay},
-    game::*,
-    resources::Res,
-    scoped_vec_iter::ScopedVecIter,
-    system::{Scheduler, System, SystemContext},
-    task::{with_async_task_context, Spawner, TaskContext},
-};
-
-#[cfg(any(feature = "2d", feature = "3d"))]
-pub use self::scene::*;
-
-#[cfg(feature = "visible")]
-pub use self::{
-    control::{
-        AssumeControlError, Control, ControlResult, Controlled, EntityController, InputCommander,
-        InputController, InputEvent,
-    },
-    funnel::Funnel,
-    graphics::renderer::{self, Renderer},
-    viewport::Viewport,
-};
+pub mod prelude;
 
 /// Installs default eyre handler.
 pub fn install_eyre_handler() {

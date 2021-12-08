@@ -1,3 +1,5 @@
+use sierra::Image;
+
 use {
     crate::graphics::Graphics,
     goods::{Asset, AssetBuild, Loader},
@@ -22,89 +24,35 @@ impl ImageAsset {
     }
 }
 
+impl ImageAsset {
+    pub fn get_ref(&self) -> &ImageView {
+        &self.0
+    }
+
+    pub fn get_mut(&mut self) -> &mut ImageView {
+        &mut self.0
+    }
+}
+
 impl From<ImageAsset> for ImageView {
     fn from(asset: ImageAsset) -> Self {
         asset.0
     }
 }
 
-pub struct PngImage {
-    decoded: Box<[u8]>,
-    width: u32,
-    height: u32,
-    bit_depth: png::BitDepth,
-    color_type: png::ColorType,
-    srgb: bool,
-}
-
-#[derive(Debug, thiserror::Error)]
-pub enum ImageDecodeError {
-    #[error(transparent)]
-    Png(#[from] png::DecodingError),
-
-    #[error("Unsupported color type {0:?}")]
-    UnsupportedColorType(png::ColorType),
-
-    #[error("Unsupported bit depth {0:?}")]
-    UnsupportedBitDepth(png::BitDepth),
-
-    #[error("Unsupported bit depth {0:?}")]
-    UnsupportedSrgbBitDepth(png::BitDepth),
+pub struct QoiImage {
+    pub qoi: rapid_qoi::Qoi,
+    pub pixels: Vec<u8>,
 }
 
 impl Asset for ImageAsset {
-    type DecodeError = ImageDecodeError;
+    type DecodeError = rapid_qoi::DecodeError;
     type BuildError = CreateImageError;
-    type Decoded = PngImage;
-    type Fut = Ready<Result<PngImage, ImageDecodeError>>;
+    type Decoded = QoiImage;
+    type Fut = Ready<Result<QoiImage, rapid_qoi::DecodeError>>;
 
     fn decode(bytes: Box<[u8]>, _loader: &Loader) -> Self::Fut {
-        let mut decoder = png::Decoder::new(&*bytes);
-        decoder.set_transformations(png::Transformations::EXPAND);
-        let mut reader = match decoder.read_info() {
-            Err(err) => return ready(Err(err.into())),
-            Ok(reader) => reader,
-        };
-
-        let info = reader.info();
-        let srgb = info.srgb.is_some();
-
-        match info.bit_depth {
-            png::BitDepth::Eight => {}
-            png::BitDepth::Sixteen => {
-                if srgb {
-                    return ready(Err(ImageDecodeError::UnsupportedSrgbBitDepth(
-                        info.bit_depth,
-                    )));
-                }
-            }
-            _ => return ready(Err(ImageDecodeError::UnsupportedBitDepth(info.bit_depth))),
-        }
-        match info.color_type {
-            png::ColorType::Grayscale
-            | png::ColorType::GrayscaleAlpha
-            | png::ColorType::Rgb
-            | png::ColorType::Rgba => {}
-            _ => return ready(Err(ImageDecodeError::UnsupportedBitDepth(info.bit_depth))),
-        }
-
-        let mut buf = vec![0; reader.output_buffer_size()];
-        let info = match reader.next_frame(&mut buf) {
-            Err(err) => return ready(Err(err.into())),
-            Ok(info) => info,
-        };
-        buf.truncate(info.buffer_size());
-
-        let image = PngImage {
-            decoded: buf.into_boxed_slice(),
-            width: info.width,
-            height: info.height,
-            bit_depth: info.bit_depth,
-            color_type: info.color_type,
-            srgb,
-        };
-
-        ready(Ok(image))
+        ready(rapid_qoi::Qoi::decode_alloc(&bytes).map(|(qoi, pixels)| QoiImage { qoi, pixels }))
     }
 }
 
@@ -113,41 +61,26 @@ where
     B: BorrowMut<Graphics>,
 {
     fn build(image: PngImage, builder: &mut B) -> Result<Self, CreateImageError> {
-        let image = image_view_from_png_image(&image, builder.borrow_mut())?;
+        let image = sampled_image_from_qoi_image(&image.qoi, &image.pixels, builder.borrow_mut())?;
 
         Ok(ImageAsset(image))
     }
 }
 
-pub fn image_view_from_png_image(
-    image: &PngImage,
+pub fn texture_view_from_qoi_image(
+    qoi: &Qoi,
+    pixels: &[u8],
     graphics: &mut Graphics,
 ) -> Result<ImageView, CreateImageError> {
     use sierra::Format;
 
-    let format = match (image.srgb, image.color_type, image.bit_depth) {
-        (true, png::ColorType::Grayscale, png::BitDepth::Eight) => Format::R8Srgb,
-        (true, png::ColorType::GrayscaleAlpha, png::BitDepth::Eight) => Format::RG8Srgb,
-        (true, png::ColorType::Rgb, png::BitDepth::Eight) => Format::RGB8Srgb,
-        (true, png::ColorType::Rgba, png::BitDepth::Eight) => Format::RGBA8Srgb,
-        (false, png::ColorType::Grayscale, png::BitDepth::Eight) => Format::R8Unorm,
-        (false, png::ColorType::Grayscale, png::BitDepth::Sixteen) => Format::R16Unorm,
-        (false, png::ColorType::GrayscaleAlpha, png::BitDepth::Eight) => Format::RG8Unorm,
-        (false, png::ColorType::GrayscaleAlpha, png::BitDepth::Sixteen) => Format::RG16Unorm,
-        (false, png::ColorType::Rgb, png::BitDepth::Eight) => Format::RGB8Unorm,
-        (false, png::ColorType::Rgb, png::BitDepth::Sixteen) => Format::RGB16Unorm,
-        (false, png::ColorType::Rgba, png::BitDepth::Eight) => Format::RGBA8Unorm,
-        (false, png::ColorType::Rgba, png::BitDepth::Sixteen) => Format::RGBA16Unorm,
-        _ => panic!("Unsupported format"),
-    };
-
     let image = graphics.create_image_static(
         ImageInfo {
             extent: ImageExtent::D2 {
-                width: image.width,
-                height: image.height,
+                width: qoi.width,
+                height: qoi.height,
             },
-            format,
+            format: Format::RGBA8Srgb,
             levels: 1,
             layers: 1,
             samples: Samples1,
@@ -156,7 +89,7 @@ pub fn image_view_from_png_image(
         Layout::ShaderReadOnlyOptimal,
         0,
         0,
-        &*image.decoded,
+        pixels,
     )?;
 
     let view = graphics.create_image_view(ImageViewInfo::new(image))?;
