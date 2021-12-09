@@ -8,6 +8,7 @@ struct VertexOutput {
 
 [[block]]
 struct Uniforms {
+    albedo_factor: vec4<f32>;
     camera_view: mat4x4<f32>;
     camera_proj: mat4x4<f32>;
     transform: mat4x4<f32>;

@@ -167,7 +167,7 @@ impl System for Physics3 {
             let collider = data.colliders.get_mut(*collider).unwrap();
 
             if collider.user_data == 0 {
-                collider.user_data = entity.to_bits().into();
+                collider.user_data = entity.to_bits().get().into();
             }
         }
 

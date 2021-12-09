@@ -28,6 +28,7 @@ pub struct SpriteFrame {
 }
 
 #[derive(Clone, Debug, Asset)]
+#[asset(name = "arcana.spritesheet")]
 #[serde(rename_all = "kebab-case")]
 pub struct SpriteSheet {
     pub frames: Arc<[SpriteFrame]>,
@@ -40,7 +41,7 @@ pub struct SpriteSheet {
 
     pub tex_size: SpriteSize,
 
-    #[container]
+    #[asset(container)]
     pub texture: Texture,
 }
 

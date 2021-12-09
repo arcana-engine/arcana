@@ -2,7 +2,7 @@
 
 use sierra::{pass, ClearColor, ClearDepth, Fence, Format, Image, Layout, PipelineStageFlags};
 
-use crate::{Renderer, Viewport};
+use crate::{graphics::Renderer, viewport::Viewport};
 
 use super::{DrawNode, RendererContext};
 

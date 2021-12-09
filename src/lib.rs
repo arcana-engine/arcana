@@ -20,9 +20,12 @@ pub mod debug;
 pub mod fps;
 pub mod game;
 pub mod lifespan;
+pub mod prefab;
+pub mod rect;
 pub mod resources;
 pub mod system;
 pub mod task;
+pub mod ui;
 
 cfg_if::cfg_if! {
     if #[cfg(feature = "visible")] {

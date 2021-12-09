@@ -19,7 +19,7 @@ use crate::camera::Camera2;
 use crate::camera::Camera3;
 
 #[cfg(feature = "sigils")]
-use crate::SigilsUI;
+use sigils::Ui;
 
 /// Viewport into the world.
 pub struct Viewport {
@@ -116,7 +116,7 @@ impl Funnel<Event> for Viewport {
                 }
 
                 #[cfg(feature = "sigils")]
-                if let Some(ui) = res.get_mut::<SigilsUI>() {
+                if let Some(ui) = res.get_mut::<Ui>() {
                     ui.set_extent(sigils::Vector2 {
                         x: size.width as f32,
                         y: size.height as f32,

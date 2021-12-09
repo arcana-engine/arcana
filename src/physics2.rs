@@ -153,7 +153,7 @@ impl System for Physics2 {
             match Entity::from_bits(body.user_data as u64) {
                 Some(e) if e == entity => {}
                 _ => {
-                    body.user_data = entity.to_bits().get() as u128;
+                    body.user_data = entity.to_bits().get().into();
 
                     for (index, &collider) in body.colliders().iter().enumerate() {
                         data.colliders.get_mut(collider).unwrap().user_data =

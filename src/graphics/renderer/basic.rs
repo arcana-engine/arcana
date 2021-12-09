@@ -1,8 +1,8 @@
 use hecs::Entity;
 use sierra::{
-    descriptors, graphics_pipeline_desc, mat4, pipeline, shader_repr, vec3, DepthTest,
-    DescriptorsInput, DynamicGraphicsPipeline, Encoder, Format, FragmentShader, ImageView,
-    PipelineInput, RenderPassEncoder, Sampler, ShaderModuleInfo, VertexInputAttribute,
+    descriptors, graphics_pipeline_desc, mat4, pipeline, shader_repr, vec4, DepthTest,
+    DescriptorsInput, DynamicGraphicsPipeline, Encoder, Extent2d, Format, FragmentShader,
+    ImageView, PipelineInput, RenderPassEncoder, Sampler, ShaderModuleInfo, VertexInputAttribute,
     VertexInputBinding, VertexInputRate, VertexShader,
 };
 
@@ -25,11 +25,11 @@ pub struct BasicDraw {
 #[shader_repr]
 #[derive(Clone, Copy)]
 struct Uniforms {
+    albedo_factor: vec4,
     camera_view: mat4,
     camera_proj: mat4,
     transform: mat4,
     joints: [mat4; 128],
-    albedo_factor: vec3,
 }
 
 impl Default for Uniforms {
@@ -39,7 +39,7 @@ impl Default for Uniforms {
             camera_proj: mat4::default(),
             transform: mat4::default(),
             joints: [mat4::default(); 128],
-            albedo_factor: vec3::default(),
+            albedo_factor: vec4::default(),
         }
     }
 }
@@ -77,6 +77,7 @@ impl DrawNode for BasicDraw {
         encoder: &mut Encoder<'a>,
         render_pass: &mut RenderPassEncoder<'_, 'b>,
         camera: Entity,
+        viewport: Extent2d,
     ) -> eyre::Result<()> {
         let view = cx
             .world
@@ -128,8 +129,14 @@ impl DrawNode for BasicDraw {
         )>();
 
         for (_, (mesh, mat, global, renderable, scale)) in query {
-            let [r, g, b] = mat.albedo_factor;
-            uniforms.albedo_factor = [r.into_inner(), b.into_inner(), g.into_inner()].into();
+            let [r, g, b, a] = mat.albedo_factor;
+            uniforms.albedo_factor = [
+                r.into_inner(),
+                b.into_inner(),
+                g.into_inner(),
+                a.into_inner(),
+            ]
+            .into();
 
             if let Some(albedo) = mat.albedo_coverage.clone() {
                 match scale {

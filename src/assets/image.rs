@@ -1,5 +1,3 @@
-use sierra::Image;
-
 use {
     crate::graphics::Graphics,
     goods::{Asset, AssetBuild, Loader},
@@ -51,6 +49,10 @@ impl Asset for ImageAsset {
     type Decoded = QoiImage;
     type Fut = Ready<Result<QoiImage, rapid_qoi::DecodeError>>;
 
+    fn name() -> &'static str {
+        "arcana.image"
+    }
+
     fn decode(bytes: Box<[u8]>, _loader: &Loader) -> Self::Fut {
         ready(rapid_qoi::Qoi::decode_alloc(&bytes).map(|(qoi, pixels)| QoiImage { qoi, pixels }))
     }
@@ -60,15 +62,15 @@ impl<B> AssetBuild<B> for ImageAsset
 where
     B: BorrowMut<Graphics>,
 {
-    fn build(image: PngImage, builder: &mut B) -> Result<Self, CreateImageError> {
-        let image = sampled_image_from_qoi_image(&image.qoi, &image.pixels, builder.borrow_mut())?;
+    fn build(image: QoiImage, builder: &mut B) -> Result<Self, CreateImageError> {
+        let image = texture_view_from_qoi_image(&image.qoi, &image.pixels, builder.borrow_mut())?;
 
         Ok(ImageAsset(image))
     }
 }
 
 pub fn texture_view_from_qoi_image(
-    qoi: &Qoi,
+    qoi: &rapid_qoi::Qoi,
     pixels: &[u8],
     graphics: &mut Graphics,
 ) -> Result<ImageView, CreateImageError> {

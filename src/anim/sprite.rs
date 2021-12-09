@@ -6,7 +6,8 @@ use {
     },
     crate::{
         assets::{SpriteFrame, SpriteSheet, SpriteSize},
-        graphics::{Rect, Sprite},
+        graphics::Sprite,
+        rect::Rect,
         system::{System, SystemContext},
     },
     std::{marker::PhantomData, sync::Arc},

@@ -7,9 +7,7 @@ macro_rules! vertex_location {
         #[allow(unused_assignments)]
         VertexLocation {
             format: <$elem as $crate::graphics::FormatElement>::FORMAT,
-            semantics: $crate::graphics::Semantics::Custom(::std::borrow::Cow::Borrowed(
-                $semantics,
-            )),
+            semantics: $crate::graphics::Semantics::new($semantics),
             offset: {
                 let o = $offset;
                 $offset += ::core::mem::size_of::<$elem>() as u32;
@@ -47,7 +45,7 @@ macro_rules! define_vertex_attribute {
         unsafe impl bytemuck::Pod for $va {}
 
         impl $crate::graphics::VertexAttribute for $va {
-            const FORMAT: $crate::graphics::Format = <$ft as $crate::graphics::FormatElement>::FORMAT;
+            const FORMAT: $crate::sierra::Format = <$ft as $crate::graphics::FormatElement>::FORMAT;
             const SEMANTICS: $crate::graphics::Semantics = $semantics;
         }
     )*};

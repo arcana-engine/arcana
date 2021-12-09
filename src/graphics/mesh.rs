@@ -892,6 +892,10 @@ impl Asset for Mesh {
     type BuildError = OutOfMemory;
     type Fut = Ready<Result<MeshFile, Self::DecodeError>>;
 
+    fn name() -> &'static str {
+        "arcana.mesh"
+    }
+
     fn decode(bytes: Box<[u8]>, _loader: &Loader) -> Self::Fut {
         match &*bytes {
             [a, b, c, d, ..] => {

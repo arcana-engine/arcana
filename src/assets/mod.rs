@@ -25,7 +25,7 @@ pub use goods::{
     External, Loader,
 };
 
-use crate::{with_async_task_context, Spawner, TaskContext};
+use crate::task::{with_async_task_context, Spawner, TaskContext};
 
 #[cfg(feature = "visible")]
 pub use self::{
@@ -97,7 +97,7 @@ where
 
     #[inline(always)]
     fn decode(id: AssetId, loader: &Loader) -> Self::Fut {
-        ExternAssetWithIdFut(loader.load(&id), id)
+        ExternAssetWithIdFut(loader.load(id), id)
     }
 }
 
@@ -217,7 +217,7 @@ where
         ExternAssetWithIdVisibleFut {
             id,
             #[cfg(feature = "visible")]
-            asset: loader.load(&id),
+            asset: loader.load(id),
             #[cfg(not(feature = "visible"))]
             marker: PhantomData,
         }
@@ -331,7 +331,7 @@ where
         match self.loaded.entry(id) {
             Entry::Occupied(_) => return,
             Entry::Vacant(entry) => {
-                let handle = loader.load::<A>(&id);
+                let handle = loader.load(id);
                 entry.insert(None);
                 self.to_load.push((id, Some(handle), None));
             }

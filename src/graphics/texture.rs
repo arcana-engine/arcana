@@ -112,12 +112,12 @@ impl<'de> serde::Deserialize<'de> for TextureInfo {
                 })
             }
 
-            fn visit_u128<E>(self, v: u128) -> Result<Self::Value, E>
+            fn visit_u64<E>(self, v: u64) -> Result<Self::Value, E>
             where
                 E: serde::de::Error,
             {
                 Ok(TextureInfo {
-                    image: AssetId::from_u128(v),
+                    image: AssetId::new(v).ok_or_else(|| E::custom("AssetId cannot be zero"))?,
                     sampler: SamplerInfo::default(),
                 })
             }
@@ -160,7 +160,7 @@ impl AssetField<Container> for Texture {
 
     fn decode(info: TextureInfo, loader: &Loader) -> TextureFuture {
         TextureFuture {
-            image: loader.load(&info.image),
+            image: loader.load(info.image),
             sampler: info.sampler,
         }
     }

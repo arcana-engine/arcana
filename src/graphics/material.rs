@@ -2,15 +2,15 @@ use {super::texture::Texture, goods::AssetField, ordered_float::OrderedFloat};
 
 #[derive(Clone, Debug, PartialEq, Eq, Hash, AssetField)]
 pub struct Material {
-    #[container]
+    #[asset(container)]
     pub albedo_coverage: Option<Texture>,
-    #[container]
+    #[asset(container)]
     pub metalness_roughness: Option<Texture>,
-    #[container]
+    #[asset(container)]
     pub emissive: Option<Texture>,
-    #[container]
+    #[asset(container)]
     pub transmission: Option<Texture>,
-    #[container]
+    #[asset(container)]
     pub normal: Option<Texture>,
     pub albedo_factor: [OrderedFloat<f32>; 4],
     pub coverage_factor: OrderedFloat<f32>,

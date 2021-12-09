@@ -14,6 +14,12 @@ impl<T> CommandQueue<T> {
         }
     }
 
+    pub fn with_capacity(capacity: usize) -> Self {
+        CommandQueue {
+            commands: VecDeque::with_capacity(capacity),
+        }
+    }
+
     pub fn drain(&mut self) -> impl Iterator<Item = T> + '_ {
         self.commands.drain(..)
     }

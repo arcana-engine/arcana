@@ -1,9 +1,13 @@
-use std::{borrow::Cow, fmt::Debug, mem::size_of};
+use std::{
+    borrow::Cow,
+    fmt::{self, Debug, Display},
+    mem::size_of,
+};
 
 use bytemuck::{Pod, Zeroable};
 use sierra::{Format, VertexInputAttribute, VertexInputBinding, VertexInputRate};
 
-#[derive(Clone, Debug, Hash, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
+#[derive(Clone, PartialEq, Eq, Hash, serde::Serialize, serde::Deserialize)]
 pub enum Semantics {
     Position2,
     Position3,
@@ -21,11 +25,51 @@ pub enum Semantics {
 }
 
 impl Semantics {
-    pub fn vector(&self) -> bool {
+    /// Returns new `Semantics` instance.
+    pub const fn new(s: &'static str) -> Semantics {
+        Semantics::Custom(Cow::Borrowed(s))
+    }
+
+    /// Returns name of the Semantics.
+    pub fn name(&self) -> &str {
+        match self {
+            Semantics::Position2 => "Position2",
+            Semantics::Position3 => "Position3",
+            Semantics::Normal3 => "Normal3",
+            Semantics::Tangent3 => "Tangent3",
+            Semantics::UV => "UV",
+            Semantics::Color => "Color",
+            Semantics::Joints => "Joints",
+            Semantics::Weights => "Weights",
+            Semantics::Transform0 => "Transform0",
+            Semantics::Transform1 => "Transform1",
+            Semantics::Transform2 => "Transform2",
+            Semantics::Transform3 => "Transform3",
+            Semantics::Custom(name) => name,
+        }
+    }
+
+    pub const fn vector(&self) -> bool {
         matches!(
             self,
             Semantics::Position3 | Semantics::Normal3 | Semantics::Tangent3
         )
+    }
+
+    pub const fn skin(&self) -> bool {
+        matches!(self, Semantics::Joints | Semantics::Weights)
+    }
+}
+
+impl Debug for Semantics {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        Display::fmt(self, f)
+    }
+}
+
+impl Display for Semantics {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        f.write_str(self.name())
     }
 }
 

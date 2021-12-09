@@ -7,7 +7,7 @@ use parry2d::shape::SharedShape;
 
 #[cfg(feature = "visible")]
 use crate::graphics::Texture;
-use crate::Res;
+use crate::resources::Res;
 
 #[cfg(feature = "physics2d")]
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash, serde::Deserialize)]
@@ -43,6 +43,6 @@ pub struct Tile {
     pub collider: Option<ColliderKind>,
 
     #[cfg(feature = "visible")]
-    #[container]
+    #[asset(container)]
     pub texture: Option<Texture>,
 }

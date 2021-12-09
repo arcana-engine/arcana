@@ -1,6 +1,6 @@
 use std::sync::Arc;
 
-use goods::{Asset, Uuid};
+use goods::{Asset, AssetId};
 use hecs::{Entity, World};
 
 #[cfg(feature = "physics2d")]
@@ -12,13 +12,17 @@ use rapier2d::prelude::{ColliderBuilder, RigidBodyBuilder};
 #[cfg(feature = "physics2d")]
 use crate::physics2::PhysicsData2;
 
-use crate::{assets::AssetLoadSystemCache, System};
+use crate::{
+    assets::AssetLoadSystemCache,
+    system::{System, SystemContext},
+};
 
 use super::set::TileSet;
 
 #[derive(Clone, PartialEq, serde::Serialize, serde::Deserialize, Asset)]
+#[asset(name = "arcana.tile-map")]
 pub struct TileMap {
-    pub set: Uuid,
+    pub set: AssetId,
     pub cell_size: f32,
     pub width: usize,
     pub cells: Arc<[usize]>,
@@ -36,7 +40,7 @@ impl TileMap {
 }
 
 pub(crate) struct TileMapSpawned {
-    pub set_uuid: Uuid,
+    pub set_uuid: AssetId,
     pub set: TileSet,
 }
 
@@ -49,7 +53,7 @@ impl System for TileMapSystem {
         "TileMapSystem"
     }
 
-    fn run(&mut self, cx: crate::SystemContext<'_>) -> eyre::Result<()> {
+    fn run(&mut self, cx: SystemContext<'_>) -> eyre::Result<()> {
         let cache = cx.res.with(TileMapSystemCache::new);
 
         let mut spawn = Vec::new_in(&*cx.scope);

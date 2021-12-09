@@ -1,15 +1,15 @@
-use {
-    crate::{
-        event::{
-            AxisId, ButtonId, DeviceEvent, DeviceId, ElementState, Event, KeyboardInput,
-            MouseButton, MouseScrollDelta, WindowEvent,
-        },
-        funnel::Funnel,
-        resources::Res,
-        // session::{ClientSession, NetId},
+use std::collections::hash_map::{Entry, HashMap};
+
+use hecs::{Entity, World};
+
+use crate::{
+    command::CommandQueue,
+    event::{
+        AxisId, ButtonId, DeviceEvent, DeviceId, ElementState, Event, KeyboardInput, MouseButton,
+        MouseScrollDelta, WindowEvent,
     },
-    hecs::{Entity, World},
-    std::collections::hash_map::{Entry, HashMap},
+    funnel::Funnel,
+    resources::Res,
 };
 
 #[derive(Clone, Copy, Debug)]
@@ -227,7 +227,6 @@ where
 {
     pub fn assume_control(
         commander: T,
-        queue_cap: usize,
         entity: Entity,
         world: &mut World,
     ) -> Result<Self, AssumeControlError> {
@@ -235,15 +234,7 @@ where
             true => Err(AssumeControlError::AlreadyControlled { entity }),
             false => {
                 world
-                    .insert(
-                        entity,
-                        (
-                            CONTROLLED,
-                            CommandQueue::<T::Command> {
-                                commands: VecDeque::with_capacity(queue_cap),
-                            },
-                        ),
-                    )
+                    .insert(entity, (CONTROLLED, CommandQueue::<T::Command>::new()))
                     .map_err(|hecs::NoSuchEntity| AssumeControlError::NoSuchEntity { entity })?;
                 Ok(EntityController { commander, entity })
             }
@@ -261,10 +252,7 @@ where
             Ok(queue) => match self.commander.translate(event) {
                 None => ControlResult::Ignored,
                 Some(command) => {
-                    if queue.commands.capacity() == queue.commands.len() {
-                        queue.commands.pop_front();
-                    }
-                    queue.commands.push_back(command);
+                    queue.add(command);
                     ControlResult::Consumed
                 }
             },

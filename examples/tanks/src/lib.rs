@@ -2,20 +2,7 @@
 
 use alkahest::Schema;
 
-use arcana::{
-    assets::{AssetLoadSystemCache, WithUuid},
-    hecs::{Entity, World},
-    lifespan::LifeSpan,
-    na,
-    physics2::{
-        dynamics::{RigidBodyBuilder, RigidBodyHandle},
-        geometry::{Collider, ColliderBuilder},
-        pipeline::ActiveEvents,
-        ContactQueue2, PhysicsData2,
-    },
-    scoped_arena::Scope,
-    CommandQueue, Global2, Res, System, SystemContext, TimeSpan,
-};
+use arcana::prelude::*;
 
 #[cfg(any(feature = "client", feature = "server"))]
 use arcana::evoke;
@@ -23,16 +10,6 @@ use arcana::evoke;
 use arcana::assets::Asset;
 
 use ordered_float::OrderedFloat;
-
-#[cfg(feature = "visible")]
-use arcana::{
-    anim::{
-        graph::{AnimTransitionRule, CurrentAnimInfo},
-        sprite::{SpriteGraphAnimation, SpriteGraphAnimationSystem},
-    },
-    assets::SpriteSheet,
-    graphics::{Material, Rect, Sprite},
-};
 
 pub struct Bullet;
 

@@ -711,7 +711,7 @@ impl serde::Serialize for TimeSpan {
     {
         // Serialize in pretty format for human readable serializer
         if serializer.is_human_readable() {
-            serializer.serialize_str(&format!("{}", *self))
+            serializer.serialize_str(&self.to_string())
         } else {
             serializer.serialize_u64(self.nanos)
         }

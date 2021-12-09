@@ -1,8 +1,5 @@
-use goods::Loader;
 use hecs::Entity;
 use sierra::{Encoder, Extent2d, RenderPassEncoder};
-
-use crate::Spawner;
 
 #[cfg(feature = "3d")]
 pub mod basic;
@@ -30,14 +27,6 @@ pub struct RendererContext<'a, 'b> {
     /// All singleton values are stored here and accessible by type.
     pub res: &'a mut Res,
 
-    /// Spawns tasks that will be executed asynchronously.
-    pub spawner: &'a mut Spawner,
-
-    /// Asset loader.
-    /// Assets are loaded asynchronously,
-    /// result can be awaited in task. See `spawner` field.
-    pub loader: &'a Loader,
-
     /// Arena allocator for allocations in hot-path.
     pub scope: &'b Scope<'b>,
 
@@ -53,8 +42,6 @@ impl<'a> RendererContext<'_, 'a> {
         RendererContext {
             world: &mut *self.world,
             res: &mut *self.res,
-            spawner: &mut *self.spawner,
-            loader: self.loader,
             scope: self.scope,
             clock: self.clock,
             graphics: &mut *self.graphics,

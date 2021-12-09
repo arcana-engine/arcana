@@ -5,18 +5,19 @@ use skelly::Skelly;
 use crate::graphics::{Material, Mesh};
 
 #[derive(Clone, Debug, goods::Asset)]
+#[asset(name = "arcana.3d-object")]
 pub struct Object {
-    #[container]
+    #[asset(container)]
     pub primitives: Arc<[Primitive]>,
     pub colliders: Arc<[Collider]>,
     pub skin: Option<Skin>,
-    #[container]
+    #[asset(container)]
     pub materials: Arc<[Material]>,
 }
 
 #[derive(Clone, Debug, goods::AssetField)]
 pub struct Primitive {
-    #[external]
+    #[asset(external)]
     pub mesh: Mesh,
     pub material: Option<usize>,
 }

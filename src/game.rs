@@ -428,8 +428,6 @@ where
                     RendererContext {
                         world: &mut world,
                         res: &mut res,
-                        spawner: &mut spawner,
-                        loader: &loader,
                         scope: &scope,
                         clock,
                         graphics: &mut graphics,
