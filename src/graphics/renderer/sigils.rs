@@ -14,7 +14,7 @@ use sierra::{
 
 use super::{DrawNode, RendererContext};
 use crate::{
-    assets::font::FontFaces,
+    assets::FontFaces,
     graphics::{
         vertex_layouts_for_pipeline, Graphics, ImageAsset, Position2, SparseDescriptors,
         VertexLocation, VertexType, UV,

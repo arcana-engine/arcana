@@ -5,6 +5,7 @@ use hecs::{Entity, World};
 
 #[cfg(feature = "physics2d")]
 use parry2d::shape::SharedShape;
+#[cfg(feature = "physics2d")]
 use rapier2d::prelude::RigidBodyHandle;
 #[cfg(feature = "physics2d")]
 use rapier2d::prelude::{ColliderBuilder, RigidBodyBuilder};
@@ -13,7 +14,7 @@ use rapier2d::prelude::{ColliderBuilder, RigidBodyBuilder};
 use crate::physics2::PhysicsData2;
 
 use crate::{
-    assets::AssetLoadSystemCache,
+    assets::AssetLoadCache,
     system::{System, SystemContext},
 };
 
@@ -46,7 +47,7 @@ pub(crate) struct TileMapSpawned {
 
 pub struct TileMapSystem;
 
-type TileMapSystemCache = AssetLoadSystemCache<TileSet>;
+type TileMapSystemCache = AssetLoadCache<TileSet>;
 
 impl System for TileMapSystem {
     fn name(&self) -> &str {
@@ -68,7 +69,9 @@ impl System for TileMapSystem {
         destruct.extend(query.into_iter().map(|(e, ())| e));
 
         for e in destruct {
-            let _ = cx.world.remove_one::<TileMap>(e);
+            let _ = cx.world.remove_one::<TileMapSpawned>(e);
+
+            #[cfg(feature = "physics2d")]
             let _ = cx.world.remove_one::<RigidBodyHandle>(e);
         }
 
@@ -81,25 +84,18 @@ impl System for TileMapSystem {
                 Some(spawned) if spawned.set_uuid == map.set => {
                     continue;
                 }
-                _ => {}
-            }
-
-            match &spawned {
-                Some(spawned) if spawned.set_uuid == map.set => {}
-                _ => {
-                    cache.ensure_load(map.set, cx.loader);
-                }
+                _ => cache.load(map.set, cx.loader),
             }
 
             match spawned {
                 None => {
-                    if let Some(set) = cache.get_ready(&map.set) {
+                    if let Some(set) = cache.get_ready(map.set) {
                         spawn.push((entity, set.clone(), map.clone()));
                     }
                 }
                 Some(spawned) => {
                     if spawned.set_uuid != map.set {
-                        if let Some(set) = cache.get_ready(&map.set) {
+                        if let Some(set) = cache.get_ready(map.set) {
                             spawn.push((entity, set.clone(), map.clone()));
                         }
                     } else {

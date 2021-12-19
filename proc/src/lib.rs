@@ -1,12 +1,19 @@
+use proc_macro::TokenStream;
+
 extern crate proc_macro;
-use {arcana_time::TimeSpan, proc_macro::TokenStream};
+
+mod time;
+mod unfold;
 
 #[proc_macro]
 pub fn timespan(item: TokenStream) -> TokenStream {
-    match item.to_string().parse::<TimeSpan>() {
-        Ok(span) => format!("arcana::TimeSpan::from_nanos({})", span.as_nanos()),
-        Err(err) => format!("compile_error!(\"{}\")", err),
+    time::timespan(item)
+}
+
+#[proc_macro_derive(Unfold, attributes(unfold))]
+pub fn unfold(item: TokenStream) -> TokenStream {
+    match unfold::derive_unfold(item) {
+        Ok(tokens) => tokens,
+        Err(err) => err.into_compile_error().into(),
     }
-    .parse()
-    .unwrap()
 }

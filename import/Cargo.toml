@@ -2,7 +2,7 @@
 name = "arcana-import"
 version = "0.1.0"
 authors = ["Zakarum <zakarumych@ya.ru>"]
-edition = "2018"
+edition = "2021"
 description = "Asset importer for arcana game engine"
 
 [lib]

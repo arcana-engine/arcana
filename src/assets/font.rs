@@ -14,7 +14,7 @@ pub struct FontAsset {
 
 #[derive(Clone, Copy, Debug, thiserror::Error)]
 #[error("Failed to parse font. {description}")]
-struct FontParseError {
+pub struct FontParseError {
     description: &'static str,
 }
 
@@ -65,7 +65,7 @@ pub struct FontFacesCache {
 }
 
 impl FontFacesCache {
-    pub const fn new() -> Self {
+    pub fn new() -> Self {
         FontFacesCache {
             ids: HashMap::new(),
             fonts: Vec::new(),
