@@ -77,7 +77,7 @@ impl DrawNode for BasicDraw {
         encoder: &mut Encoder<'a>,
         render_pass: &mut RenderPassEncoder<'_, 'b>,
         camera: Entity,
-        viewport: Extent2d,
+        _viewport: Extent2d,
     ) -> eyre::Result<()> {
         let view = cx
             .world

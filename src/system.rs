@@ -11,7 +11,10 @@ use {
 };
 
 #[cfg(feature = "visible")]
-use crate::{control::Control, graphics::Graphics};
+use crate::control::Control;
+
+#[cfg(feature = "graphics")]
+use crate::graphics::Graphics;
 
 /// Default value for fixed systems tick_span
 pub const DEFAULT_TICK_SPAN: TimeSpan = TimeSpan::from_micros(20_000);
@@ -47,7 +50,7 @@ pub struct SystemContext<'a> {
     pub control: &'a mut Control,
 
     /// Graphics context.
-    #[cfg(feature = "visible")]
+    #[cfg(feature = "graphics")]
     pub graphics: &'a mut Graphics,
 }
 
@@ -63,7 +66,7 @@ impl<'a> SystemContext<'a> {
             clock: self.clock,
             #[cfg(feature = "visible")]
             control: self.control,
-            #[cfg(feature = "visible")]
+            #[cfg(feature = "graphics")]
             graphics: self.graphics,
         }
     }
@@ -80,7 +83,7 @@ impl<'a> SystemContext<'a> {
             #[cfg(feature = "visible")]
             control: self.control,
 
-            #[cfg(feature = "visible")]
+            #[cfg(feature = "graphics")]
             graphics: self.graphics,
         }
     }

@@ -3,9 +3,13 @@
 #[cfg(feature = "3d")]
 use crate::{
     command::CommandQueue,
+    system::{System, SystemContext},
+};
+
+#[cfg(all(feature = "3d", feature = "visible"))]
+use crate::{
     control::{EventTranslator, InputEvent},
     event::{ElementState, KeyboardInput, VirtualKeyCode},
-    system::{System, SystemContext},
 };
 
 #[cfg(feature = "3d")]
@@ -166,7 +170,7 @@ pub enum FreeCamera3Command {
     Move(na::Vector3<f32>),
 }
 
-#[cfg(feature = "3d")]
+#[cfg(all(feature = "visible", feature = "3d"))]
 pub struct FreeCamera3Controller {
     pitch: f32,
     yaw: f32,
@@ -179,7 +183,7 @@ pub struct FreeCamera3Controller {
     down_pressed: bool,
 }
 
-#[cfg(feature = "3d")]
+#[cfg(all(feature = "visible", feature = "3d"))]
 impl FreeCamera3Controller {
     pub fn new() -> Self {
         FreeCamera3Controller {
@@ -196,7 +200,7 @@ impl FreeCamera3Controller {
     }
 }
 
-#[cfg(feature = "3d")]
+#[cfg(all(feature = "visible", feature = "3d"))]
 impl EventTranslator for FreeCamera3Controller {
     type Command = FreeCamera3Command;
 

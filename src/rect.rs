@@ -1,8 +1,11 @@
 use std::fmt::{self, Debug, Display};
 
 use bytemuck::{Pod, Zeroable};
+
+#[cfg(feature = "graphics")]
 use sierra::Format;
 
+#[cfg(feature = "graphics")]
 use crate::graphics::{Semantics, VertexAttribute};
 
 #[derive(Clone, Copy, PartialEq, Zeroable, Pod)]
@@ -31,6 +34,7 @@ impl Debug for Rect {
     }
 }
 
+#[cfg(feature = "graphics")]
 impl VertexAttribute for Rect {
     const FORMAT: Format = Format::RGBA32Sfloat;
     const SEMANTICS: Semantics = Semantics::new("Rect");

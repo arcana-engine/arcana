@@ -119,6 +119,7 @@ impl Control {
         }
     }
 }
+
 impl Funnel<Event> for Control {
     fn filter(&mut self, res: &mut Res, world: &mut World, event: Event) -> Option<Event> {
         let (input_event, device_id) = match event {

@@ -1,6 +1,12 @@
+use std::future::{ready, Ready};
+
+use sierra::{
+    CreateImageError, ImageExtent, ImageInfo, ImageUsage, ImageViewInfo, Layout, Samples::Samples1,
+};
+
 pub use {
     super::Graphics,
-    crate::assets::{AssetId, ImageAsset},
+    crate::assets::AssetId,
     goods::{
         Asset, AssetBuild, AssetField, AssetFieldBuild, AssetHandle, AssetResult, Container, Error,
         Loader,
@@ -16,6 +22,40 @@ pub use {
     },
 };
 
+pub struct QoiImage {
+    pub qoi: rapid_qoi::Qoi,
+    pub pixels: Vec<u8>,
+}
+
+pub fn texture_view_from_qoi_image(
+    qoi: &rapid_qoi::Qoi,
+    pixels: &[u8],
+    graphics: &mut Graphics,
+) -> Result<ImageView, CreateImageError> {
+    use sierra::Format;
+
+    let image = graphics.create_image_static(
+        ImageInfo {
+            extent: ImageExtent::D2 {
+                width: qoi.width,
+                height: qoi.height,
+            },
+            format: Format::RGBA8Srgb,
+            levels: 1,
+            layers: 1,
+            samples: Samples1,
+            usage: ImageUsage::SAMPLED,
+        },
+        Layout::ShaderReadOnlyOptimal,
+        0,
+        0,
+        pixels,
+    )?;
+
+    let view = graphics.create_image_view(ImageViewInfo::new(image))?;
+    Ok(view)
+}
+
 #[derive(Clone, Debug, PartialEq, Eq, Hash)]
 pub struct Texture {
     /// Image view of the loaded texture.
@@ -26,7 +66,7 @@ pub struct Texture {
 }
 
 pub struct TextureDecoded {
-    image: AssetResult<ImageAsset>,
+    texture: AssetResult<Texture>,
     sampler: SamplerInfo,
 }
 
@@ -128,7 +168,7 @@ impl<'de> serde::Deserialize<'de> for TextureInfo {
 }
 
 pub struct TextureFuture {
-    image: AssetHandle<ImageAsset>,
+    image: AssetHandle<Texture>,
     sampler: SamplerInfo,
 }
 
@@ -143,7 +183,7 @@ impl Future for TextureFuture {
 
         match image.poll(cx) {
             Poll::Ready(image) => Poll::Ready(Ok(TextureDecoded {
-                image,
+                texture: image,
                 sampler: self.sampler,
             })),
             Poll::Pending => Poll::Pending,
@@ -172,8 +212,38 @@ where
 {
     fn build(mut decoded: TextureDecoded, builder: &mut B) -> Result<Self, TextureAssetError> {
         let graphics: &mut Graphics = builder.borrow_mut();
-        let image = decoded.image.build(graphics)?.0.clone();
+        let image = decoded.texture.build(graphics)?.image.clone();
         let sampler = graphics.create_sampler(decoded.sampler)?;
         Ok(Texture { image, sampler })
+    }
+}
+
+impl Asset for Texture {
+    type DecodeError = rapid_qoi::DecodeError;
+    type BuildError = CreateImageError;
+    type Decoded = QoiImage;
+    type Fut = Ready<Result<QoiImage, rapid_qoi::DecodeError>>;
+
+    fn name() -> &'static str {
+        "arcana.image"
+    }
+
+    fn decode(bytes: Box<[u8]>, _loader: &Loader) -> Self::Fut {
+        ready(rapid_qoi::Qoi::decode_alloc(&bytes).map(|(qoi, pixels)| QoiImage { qoi, pixels }))
+    }
+}
+
+impl<B> AssetBuild<B> for Texture
+where
+    B: BorrowMut<Graphics>,
+{
+    fn build(image: QoiImage, builder: &mut B) -> Result<Self, CreateImageError> {
+        let graphics = builder.borrow_mut();
+        let image = texture_view_from_qoi_image(&image.qoi, &image.pixels, graphics)?;
+
+        Ok(Texture {
+            image,
+            sampler: graphics.create_sampler(Default::default())?,
+        })
     }
 }
