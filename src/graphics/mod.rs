@@ -1,4 +1,7 @@
+//! Built-in arcana graphics.
 //!
+//! This module depends on `sierra` crate.
+//! Graphics backend agnostic code should live outside this module.
 
 #[macro_export]
 /// Macro to simplify building of VertexLayout in const context.
@@ -88,7 +91,6 @@ mod mesh;
 pub mod node;
 pub mod renderer;
 mod scale;
-mod sprite;
 mod texture;
 mod vertex;
 
@@ -112,9 +114,7 @@ use sierra::{
     SwapchainImage,
 };
 
-pub use self::{
-    format::*, material::*, mesh::*, renderer::*, scale::*, sprite::*, texture::*, vertex::*,
-};
+pub use self::{format::*, material::*, mesh::*, renderer::*, scale::*, texture::*, vertex::*};
 
 /// Graphics context.
 /// Combines device and single queue.

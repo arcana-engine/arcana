@@ -18,19 +18,23 @@ use {
 use crate::scene::SceneSystem;
 
 #[cfg(feature = "visible")]
-use {
-    crate::{
-        control::Control,
-        event::{Event, Loop, WindowEvent},
-        funnel::Funnel,
-        graphics::{Graphics, Renderer, RendererContext},
-        hecs::DynamicBundle,
-        viewport::Viewport,
-    },
-    winit::window::{Window, WindowBuilder},
+use crate::{
+    control::Control,
+    event::{Event, Loop, WindowEvent},
+    funnel::Funnel,
+    hecs::DynamicBundle,
 };
 
-#[cfg(all(any(feature = "2d", feature = "3d"), feature = "visible"))]
+#[cfg(feature = "visible")]
+use winit::window::{Window, WindowBuilder};
+
+#[cfg(feature = "graphics")]
+use crate::{
+    graphics::{Graphics, Renderer, RendererContext},
+    viewport::Viewport,
+};
+
+#[cfg(all(any(feature = "2d", feature = "3d"), feature = "graphics"))]
 use crate::graphics::renderer::simple::SimpleRenderer;
 
 #[cfg(feature = "client")]
@@ -39,10 +43,10 @@ use evoke::client::ClientSystem;
 #[cfg(feature = "server")]
 use evoke::server::ServerSystem;
 
-#[cfg(all(feature = "2d", feature = "visible"))]
+#[cfg(all(feature = "2d", feature = "graphics"))]
 use crate::{camera::Camera2, graphics::renderer::sprite::SpriteDraw, scene::Global2};
 
-#[cfg(all(feature = "3d", feature = "visible"))]
+#[cfg(all(feature = "3d", feature = "graphics"))]
 use crate::{camera::Camera3, graphics::renderer::basic::BasicDraw, scene::Global3};
 
 #[cfg(feature = "visible")]
@@ -115,13 +119,13 @@ pub struct Game {
     #[cfg(feature = "visible")]
     pub control: Control,
 
-    #[cfg(feature = "visible")]
+    #[cfg(feature = "graphics")]
     pub graphics: Graphics,
 
-    #[cfg(feature = "visible")]
+    #[cfg(feature = "graphics")]
     pub renderer: Option<Box<dyn Renderer>>,
 
-    #[cfg(feature = "visible")]
+    #[cfg(feature = "graphics")]
     pub viewport: Viewport,
 
     #[cfg(feature = "client")]
@@ -141,13 +145,13 @@ impl Game {
             scope: &mut self.scope,
             #[cfg(feature = "visible")]
             control: &mut self.control,
-            #[cfg(feature = "visible")]
+            #[cfg(feature = "graphics")]
             graphics: &mut self.graphics,
         }
     }
 }
 
-#[cfg(all(feature = "2d", feature = "visible"))]
+#[cfg(all(feature = "2d", feature = "graphics"))]
 pub fn game2<F, Fut>(f: F)
 where
     F: FnOnce(Game) -> Fut + 'static,
@@ -159,7 +163,7 @@ where
     })
 }
 
-#[cfg(all(feature = "3d", feature = "visible"))]
+#[cfg(all(feature = "3d", feature = "graphics"))]
 pub fn game3<F, Fut>(f: F)
 where
     F: FnOnce(Game) -> Fut + 'static,
@@ -171,7 +175,7 @@ where
     })
 }
 
-#[cfg(feature = "visible")]
+#[cfg(feature = "graphics")]
 pub fn game<F, Fut, R, C>(f: F, r: R)
 where
     F: FnOnce(Game) -> Fut + 'static,
@@ -187,14 +191,7 @@ where
         let cfg = load_default_config();
 
         // Initialize asset loader.
-        let mut loader_builder = Loader::builder();
-        if let Some(path) = cfg.treasury {
-            let treasury = goods::source::treasury::TreasurySource::open_local(&path)
-                .await
-                .wrap_err_with(|| "Failed to initialize treasury loader")?;
-            loader_builder.add(treasury);
-        }
-        let loader = loader_builder.build();
+        let loader = configure_loader(&cfg).await?;
 
         // Create new world with camera.
         let mut world = World::new();
@@ -470,15 +467,6 @@ where
     let teardown_timeout = cfg.teardown_timeout;
     let main_step = cfg.main_step;
 
-    // Initialize asset loader.
-    let mut loader_builder = Loader::builder();
-    if let Some(path) = cfg.treasury {
-        let treasury = goods::source::treasury::TreasurySource::open(path)
-            .expect("Failed to initialize treasury loader");
-        loader_builder.add(treasury);
-    }
-    let loader = loader_builder.build();
-
     // Create new world with camera.
     let world = World::new();
 
@@ -487,6 +475,9 @@ where
 
     runtime
         .block_on(async move {
+            // Initialize asset loader.
+            let loader = configure_loader(&cfg).await?;
+
             // Configure game with closure.
             let game = f(Game {
                 res,
@@ -618,13 +609,13 @@ where
         .unwrap()
 }
 
-#[cfg(feature = "visible")]
+#[cfg(feature = "graphics")]
 struct GameFunnel<'a> {
     viewport: &'a mut Viewport,
     control: &'a mut Control,
 }
 
-#[cfg(feature = "visible")]
+#[cfg(feature = "graphics")]
 impl Funnel<Event> for GameFunnel<'_> {
     fn filter(&mut self, res: &mut Res, world: &mut World, event: Event) -> Option<Event> {
         match Funnel::filter(&mut MainWindowFunnel, res, world, event) {
@@ -642,6 +633,7 @@ impl Funnel<Event> for GameFunnel<'_> {
 
 #[derive(Default, serde::Deserialize)]
 struct Config {
+    #[cfg(feature = "treasury")]
     #[serde(default)]
     treasury: Option<Box<Path>>,
 
@@ -693,4 +685,20 @@ fn load_default_config() -> Config {
             Config::default()
         }
     }
+}
+
+#[allow(unused_variables)]
+async fn configure_loader(cfg: &Config) -> eyre::Result<Loader> {
+    #[allow(unused_mut)]
+    let mut loader_builder = Loader::builder();
+
+    #[cfg(feature = "treasury")]
+    if let Some(path) = &cfg.treasury {
+        let treasury = goods::source::treasury::TreasurySource::open_local(&path)
+            .await
+            .wrap_err_with(|| "Failed to initialize treasury loader")?;
+        loader_builder.add(treasury);
+    }
+
+    Ok(loader_builder.build())
 }

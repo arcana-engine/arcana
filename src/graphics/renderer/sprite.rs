@@ -13,11 +13,12 @@ use super::{mat3_na_to_sierra, DrawNode, RendererContext};
 use crate::{
     camera::Camera2,
     graphics::{
-        material::Material, sprite::Sprite, vertex_layouts_for_pipeline, Graphics,
-        SparseDescriptors, Transformation2, VertexLocation, VertexType,
+        material::Material, vertex_layouts_for_pipeline, Graphics, SparseDescriptors,
+        Transformation2, VertexLocation, VertexType,
     },
     rect::Rect,
     scene::Global2,
+    sprite::Sprite,
     tiles::{TileMap, TileMapSpawned},
 };
 

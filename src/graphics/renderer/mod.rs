@@ -7,9 +7,6 @@ pub mod basic;
 #[cfg(feature = "2d")]
 pub mod sprite;
 
-#[cfg(feature = "sigils")]
-pub mod sigils;
-
 pub mod simple;
 
 use {

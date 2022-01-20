@@ -2,15 +2,13 @@
 
 mod cache;
 
-#[cfg(feature = "visible")]
-mod image;
-#[cfg(all(feature = "visible", feature = "3d"))]
-mod object;
-#[cfg(feature = "visible")]
-mod sprite_sheet;
+// #[cfg(all(feature = "visible", feature = "3d"))]
+// mod object;
+// #[cfg(feature = "visible")]
+// mod sprite_sheet;
 
-#[cfg(feature = "visible")]
-mod font;
+// #[cfg(feature = "visible")]
+// mod font;
 
 use std::{
     borrow::Borrow,
@@ -29,18 +27,15 @@ pub use goods::{
 
 pub use self::cache::{AssetLoadCache, AssetLoadCacheClearSystem};
 
-#[cfg(feature = "visible")]
-pub use self::{
-    font::{
-        FontAsset, FontFaces, FontFacesBuildError, FontFacesCache, FontFacesDecodeError,
-        FontFacesDecoded,
-    },
-    image::ImageAsset,
-    sprite_sheet::{SpriteAnimation, SpriteFrame, SpriteRect, SpriteSheet, SpriteSize},
-};
-
-#[cfg(not(feature = "visible"))]
-use std::marker::PhantomData;
+// #[cfg(feature = "visible")]
+// pub use self::{
+//     font::{
+//         FontAsset, FontFaces, FontFacesBuildError, FontFacesCache, FontFacesDecodeError,
+//         FontFacesDecoded,
+//     },
+//     image::ImageAsset,
+//     sprite_sheet::{SpriteAnimation, SpriteFrame, SpriteRect, SpriteSheet, SpriteSize},
+// };
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq, PartialOrd, Ord, Hash)]
 pub struct WithId<A> {

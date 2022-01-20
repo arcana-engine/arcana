@@ -1,15 +1,40 @@
 #![feature(allocator_api)]
 
-use alkahest::Schema;
+use arcana::{
+    assets::WithId,
+    hecs::{Entity, World},
+    lifespan::LifeSpan,
+    na,
+    physics2::{ContactQueue2, PhysicsData2},
+    prelude::*,
+    rapier2d::prelude::{
+        ActiveEvents, Collider, ColliderBuilder, RigidBodyBuilder, RigidBodyHandle,
+    },
+    scoped_arena::Scope,
+    sprite::graph::{AnimTransitionRule, CurrentAnimInfo},
+};
 
-use arcana::prelude::*;
+cfg_if::cfg_if! {
+    if #[cfg(feature = "graphics")] {
+        use arcana::{
+            graphics::{Material, Texture},
+            rect::Rect,
+            assets::AssetLoadCache,
+            sprite::{
+                anim::{SpriteGraphAnimation, SpriteGraphAnimationSystem},
+                sprite_sheet::{SpriteSheet, SpriteSheetMeta},
+                Sprite,
+            },
+        };
+        use ordered_float::OrderedFloat;
+    }
+}
 
 #[cfg(any(feature = "client", feature = "server"))]
 use arcana::evoke;
 
 use arcana::assets::Asset;
-
-use ordered_float::OrderedFloat;
+use goods::AssetId;
 
 pub struct Bullet;
 
@@ -33,7 +58,7 @@ pub enum TankAnimTransitionRule {
     AnimationComplete,
 }
 
-#[cfg(feature = "visible")]
+#[cfg(feature = "graphics")]
 impl AnimTransitionRule<TankState> for TankAnimTransitionRule {
     fn matches(&self, state: &TankState, info: &CurrentAnimInfo) -> bool {
         match self {
@@ -45,8 +70,8 @@ impl AnimTransitionRule<TankState> for TankAnimTransitionRule {
     }
 }
 
-#[cfg(feature = "visible")]
-fn tank_graph_animation(sheet: &SpriteSheet) -> SpriteGraphAnimation<TankAnimTransitionRule> {
+#[cfg(feature = "graphics")]
+fn tank_graph_animation(sheet: &SpriteSheetMeta) -> SpriteGraphAnimation<TankAnimTransitionRule> {
     SpriteGraphAnimation::new(
         0,
         sheet,
@@ -60,39 +85,41 @@ fn tank_graph_animation(sheet: &SpriteSheet) -> SpriteGraphAnimation<TankAnimTra
     )
 }
 
-#[cfg(feature = "visible")]
-fn tank_sprite_sheet_uuid(tank: &Tank) -> Uuid {
-    WithUuid::uuid(&tank.sprite_sheet)
+#[cfg(feature = "graphics")]
+fn tank_sprite_sheet_id(tank: &Tank) -> AssetId {
+    WithId::id(&tank.sprite_sheet)
 }
 
-#[cfg(not(feature = "visible"))]
-fn tank_sprite_sheet_uuid(tank: &Tank) -> Uuid {
+#[cfg(not(feature = "graphics"))]
+fn tank_sprite_sheet_id(tank: &Tank) -> AssetId {
     tank.sprite_sheet
 }
 
 #[derive(Clone, Debug, Asset)]
+#[asset(name = "tank")]
 pub struct Tank {
     size: na::Vector2<f32>,
     color: [f32; 3],
 
-    #[cfg(feature = "visible")]
-    #[external]
-    sprite_sheet: WithUuid<SpriteSheet>,
+    #[cfg(feature = "graphics")]
+    #[asset(external)]
+    sprite_sheet: WithId<SpriteSheet<Texture>>,
 
-    #[cfg(not(feature = "visible"))]
-    sprite_sheet: Uuid,
+    #[cfg(not(feature = "graphics"))]
+    sprite_sheet: AssetId,
 }
 
 impl Tank {
     pub fn new(
         size: na::Vector2<f32>,
         color: [f32; 3],
-        #[cfg(feature = "visible")] sprite_sheet: WithUuid<SpriteSheet>,
-        #[cfg(not(feature = "visible"))] sprite_sheet: Uuid,
+        #[cfg(feature = "graphics")] sprite_sheet: WithId<SpriteSheet<Texture>>,
+        #[cfg(not(feature = "graphics"))] sprite_sheet: AssetId,
     ) -> Self {
         Tank {
             size,
             color,
+
             sprite_sheet: sprite_sheet.into(),
         }
     }
@@ -102,7 +129,7 @@ impl Tank {
         let physics = res.with(PhysicsData2::new);
         let hs = self.size * 0.5;
 
-        #[cfg(feature = "visible")]
+        #[cfg(feature = "graphics")]
         let sprite_sheet = &self.sprite_sheet;
 
         let body = physics.bodies.insert(
@@ -133,7 +160,7 @@ impl Tank {
                 alive: true,
                 fire: false,
             },
-            #[cfg(feature = "visible")]
+            #[cfg(feature = "graphics")]
             Sprite {
                 world: Rect {
                     left: -hs.x,
@@ -145,9 +172,9 @@ impl Tank {
                 tex: Rect::ONE_QUAD,
                 layer: 1,
             },
-            #[cfg(feature = "visible")]
+            #[cfg(feature = "graphics")]
             tank_graph_animation(&sprite_sheet),
-            #[cfg(feature = "visible")]
+            #[cfg(feature = "graphics")]
             Material {
                 albedo_coverage: Some(sprite_sheet.texture.clone()),
                 albedo_factor: [
@@ -167,7 +194,7 @@ impl Tank {
     }
 }
 
-#[derive(Clone, Copy, Debug, Schema, PartialEq, serde::Serialize, serde::Deserialize)]
+#[derive(Clone, Copy, Debug, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct TankState {
     drive: i8,
     rotate: i8,
@@ -247,7 +274,7 @@ impl System for TankClientSystem {
                     Global2::new(na::Translation2::new(pos.x, pos.y).into()),
                     Bullet,
                     body,
-                    #[cfg(feature = "visible")]
+                    #[cfg(feature = "graphics")]
                     Sprite {
                         world: Rect {
                             left: -0.05,
@@ -259,7 +286,7 @@ impl System for TankClientSystem {
                         tex: Rect::ONE_QUAD,
                         layer: 0,
                     },
-                    #[cfg(feature = "visible")]
+                    #[cfg(feature = "graphics")]
                     Material {
                         albedo_factor: [
                             OrderedFloat(1.0),
@@ -307,10 +334,11 @@ impl System for TankSystem {
         {
             for collider in contacts.drain_contacts_started() {
                 let bits = physics.colliders.get(collider).unwrap().user_data as u64;
-                let bullet = cx.world.get_mut::<Bullet>(Entity::from_bits(bits)).is_ok();
-
-                if bullet {
-                    tank.alive = false;
+                if let Some(entity) = Entity::from_bits(bits) {
+                    let bullet = cx.world.get_mut::<Bullet>(entity).is_ok();
+                    if bullet {
+                        tank.alive = false;
+                    }
                 }
             }
 
@@ -350,7 +378,7 @@ impl System for TankSystem {
                     Global2::new(na::Translation2::new(pos.x, pos.y).into()),
                     Bullet,
                     body,
-                    #[cfg(feature = "visible")]
+                    #[cfg(feature = "graphics")]
                     Sprite {
                         world: Rect {
                             left: -0.05,
@@ -362,7 +390,7 @@ impl System for TankSystem {
                         tex: Rect::ONE_QUAD,
                         layer: 0,
                     },
-                    #[cfg(feature = "visible")]
+                    #[cfg(feature = "graphics")]
                     Material {
                         albedo_factor: [OrderedFloat(1.0), OrderedFloat(0.8), OrderedFloat(0.2)],
                         ..Default::default()
@@ -395,7 +423,7 @@ impl System for BulletSystem {
         }
 
         for e in despawn {
-            #[cfg(feature = "visible")]
+            #[cfg(feature = "graphics")]
             if let Ok(iso) = cx.world.get::<Global2>(e).map(|g| g.iso) {
                 cx.world.spawn((
                     Global2::new(iso),
@@ -429,20 +457,37 @@ impl System for BulletSystem {
     }
 }
 
-#[cfg(feature = "visible")]
+#[cfg(feature = "graphics")]
 pub type TankAnimationSystem = SpriteGraphAnimationSystem<TankState, TankAnimTransitionRule>;
 
-#[cfg(any(feature = "client", feature = "server"))]
 #[derive(serde::Serialize, serde::Deserialize)]
 pub struct TankReplica {
     pub size: na::Vector2<f32>,
     pub color: [f32; 3],
-    pub sprite_sheet: Uuid,
+    pub sprite_sheet: AssetId,
     pub state: TankState,
 }
 
-#[cfg(feature = "visible")]
-type TankReplicaSystemCache = AssetLoadSystemCache<SpriteSheet>;
+impl TankReplica {
+    fn from_tank_state(tank: &Tank, state: &TankState) -> Self {
+        TankReplica {
+            size: tank.size,
+            color: tank.color,
+            sprite_sheet: tank_sprite_sheet_id(tank),
+            state: *state,
+        }
+    }
+
+    fn equivalent(&self, tank: &Tank, state: &TankState) -> bool {
+        self.size == tank.size
+            && self.color == tank.color
+            && self.sprite_sheet == tank_sprite_sheet_id(tank)
+            && self.state == *state
+    }
+}
+
+#[cfg(feature = "graphics")]
+type TankReplicaCache = AssetLoadCache<SpriteSheet<Texture>>;
 
 pub struct TankReplicaSystem;
 
@@ -452,16 +497,16 @@ impl System for TankReplicaSystem {
     }
 
     fn run(&mut self, cx: SystemContext<'_>) -> eyre::Result<()> {
-        #[cfg(feature = "visible")]
-        let cache = cx.res.with(TankReplicaSystemCache::new);
+        #[cfg(feature = "graphics")]
+        let cache = cx.res.with(TankReplicaCache::new);
 
         let mut spawn = Vec::new_in(&*cx.scope);
         let mut remove_replica = Vec::new_in(&*cx.scope);
 
-        #[cfg(feature = "visible")]
+        #[cfg(feature = "graphics")]
         type MaterialFetch = Option<&'static mut Material>;
 
-        #[cfg(not(feature = "visible"))]
+        #[cfg(not(feature = "graphics"))]
         type MaterialFetch = ();
 
         let query = cx.world.query_mut::<(
@@ -474,10 +519,10 @@ impl System for TankReplicaSystem {
 
         for (entity, (global, replica, tank, state, mat)) in query {
             match tank {
-                Some(tank) if tank_sprite_sheet_uuid(&tank) == replica.sprite_sheet => {
+                Some(tank) if tank_sprite_sheet_id(&tank) == replica.sprite_sheet => {
                     *state.unwrap() = replica.state;
 
-                    #[cfg(feature = "visible")]
+                    #[cfg(feature = "graphics")]
                     let () = mat.unwrap().albedo_factor = [
                         OrderedFloat(replica.color[0]),
                         OrderedFloat(replica.color[1]),
@@ -491,24 +536,24 @@ impl System for TankReplicaSystem {
                 _ => {}
             }
 
-            #[cfg(feature = "visible")]
+            #[cfg(feature = "graphics")]
             match &tank {
-                Some(tank) if tank_sprite_sheet_uuid(&tank) == replica.sprite_sheet => {}
+                Some(tank) if tank_sprite_sheet_id(&tank) == replica.sprite_sheet => {}
                 _ => {
-                    cache.ensure_load(replica.sprite_sheet, cx.loader);
+                    cache.load(replica.sprite_sheet, cx.loader);
                 }
             }
 
-            #[cfg(feature = "visible")]
+            #[cfg(feature = "graphics")]
             match tank {
                 None => {
-                    if let Some(sheet) = cache.get_ready(&replica.sprite_sheet) {
+                    if let Some(sheet) = cache.get_ready(replica.sprite_sheet) {
                         spawn.push((entity, global.iso, sheet.clone()));
                     }
                 }
                 Some(tank) => {
-                    if tank_sprite_sheet_uuid(&tank) != replica.sprite_sheet {
-                        if let Some(sheet) = cache.get_ready(&replica.sprite_sheet) {
+                    if tank_sprite_sheet_id(&tank) != replica.sprite_sheet {
+                        if let Some(sheet) = cache.get_ready(replica.sprite_sheet) {
                             spawn.push((entity, global.iso, sheet.clone()));
                         }
                     } else {
@@ -517,20 +562,20 @@ impl System for TankReplicaSystem {
                 }
             }
 
-            #[cfg(not(feature = "visible"))]
+            #[cfg(not(feature = "graphics"))]
             spawn.push((entity, global.iso, ()));
         }
 
-        #[cfg(feature = "visible")]
+        #[cfg(feature = "graphics")]
         cache.ensure_task(cx.spawner, |cx| cx.graphics);
 
         for (entity, iso, sheet) in spawn {
             let replica = cx.world.remove_one::<TankReplica>(entity).unwrap();
 
             let tank = Tank {
-                #[cfg(feature = "visible")]
-                sprite_sheet: WithUuid::new(sheet, replica.sprite_sheet),
-                #[cfg(not(feature = "visible"))]
+                #[cfg(feature = "graphics")]
+                sprite_sheet: WithId::new(sheet, replica.sprite_sheet),
+                #[cfg(not(feature = "graphics"))]
                 sprite_sheet: replica.sprite_sheet,
                 color: replica.color,
                 size: replica.size,
@@ -540,7 +585,7 @@ impl System for TankReplicaSystem {
             let physics = cx.res.with(PhysicsData2::new);
             let hs = tank.size * 0.5;
 
-            #[cfg(feature = "visible")]
+            #[cfg(feature = "graphics")]
             let sprite_sheet = &tank.sprite_sheet;
 
             let body = physics.bodies.insert(
@@ -566,7 +611,7 @@ impl System for TankReplicaSystem {
                         body,
                         ContactQueue2::new(),
                         state,
-                        #[cfg(feature = "visible")]
+                        #[cfg(feature = "graphics")]
                         Sprite {
                             world: Rect {
                                 left: -hs.x,
@@ -578,9 +623,9 @@ impl System for TankReplicaSystem {
                             tex: Rect::ONE_QUAD,
                             layer: 1,
                         },
-                        #[cfg(feature = "visible")]
+                        #[cfg(feature = "graphics")]
                         tank_graph_animation(&sprite_sheet),
-                        #[cfg(feature = "visible")]
+                        #[cfg(feature = "graphics")]
                         Material {
                             albedo_coverage: Some(sprite_sheet.texture.clone()),
                             albedo_factor: [
@@ -601,9 +646,9 @@ impl System for TankReplicaSystem {
             let _ = cx.world.remove_one::<TankReplica>(entity);
         }
 
-        #[cfg(feature = "visible")]
+        #[cfg(feature = "graphics")]
         {
-            let cache = cx.res.get_mut::<TankReplicaSystemCache>().unwrap();
+            let cache = cx.res.get_mut::<TankReplicaCache>().unwrap();
             cache.clear_ready();
         }
 
@@ -630,7 +675,7 @@ impl evoke::client::Descriptor for TankDescriptor {
     fn remove(entity: Entity, world: &mut World) {
         let _ = world.remove_one::<TankReplica>(entity);
 
-        #[cfg(feature = "visible")]
+        #[cfg(feature = "graphics")]
         type Bundle = (
             Tank,
             TankState,
@@ -641,7 +686,7 @@ impl evoke::client::Descriptor for TankDescriptor {
             SpriteGraphAnimation<TankAnimTransitionRule>,
         );
 
-        #[cfg(not(feature = "visible"))]
+        #[cfg(not(feature = "graphics"))]
         type Bundle = (Tank, TankState, RigidBodyHandle, ContactQueue2);
 
         if let Err(arcana::hecs::ComponentError::MissingComponent(component)) =
@@ -654,13 +699,13 @@ impl evoke::client::Descriptor for TankDescriptor {
             let _ = world.remove_one::<ContactQueue2>(entity);
             let _ = world.remove_one::<RigidBodyHandle>(entity);
 
-            #[cfg(feature = "visible")]
+            #[cfg(feature = "graphics")]
             let _ = world.remove_one::<Material>(entity);
 
-            #[cfg(feature = "visible")]
+            #[cfg(feature = "graphics")]
             let _ = world.remove_one::<Sprite>(entity);
 
-            #[cfg(feature = "visible")]
+            #[cfg(feature = "graphics")]
             let _ = world.remove_one::<SpriteGraphAnimation<TankAnimTransitionRule>>(entity);
         }
     }

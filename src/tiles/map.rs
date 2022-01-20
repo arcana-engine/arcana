@@ -1,6 +1,8 @@
 use std::sync::Arc;
 
 use goods::{Asset, AssetId};
+
+#[cfg(feature = "client")]
 use hecs::{Entity, World};
 
 #[cfg(feature = "physics2d")]
@@ -105,7 +107,7 @@ impl System for TileMapSystem {
             }
         }
 
-        #[cfg(feature = "visible")]
+        #[cfg(feature = "graphics")]
         cache.ensure_task(cx.spawner, |cx| cx.graphics);
         #[cfg(not(feature = "visible"))]
         cache.ensure_task(cx.spawner, |cx| cx.world);

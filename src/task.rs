@@ -13,7 +13,10 @@ use hecs::World;
 use scoped_arena::Scope;
 
 #[cfg(feature = "visible")]
-use crate::{control::Control, graphics::Graphics};
+use crate::control::Control;
+
+#[cfg(feature = "graphics")]
+use crate::graphics::Graphics;
 
 /// Context in which [`Task`]s runs.
 pub struct TaskContext<'a> {
@@ -37,7 +40,7 @@ pub struct TaskContext<'a> {
     pub control: &'a mut Control,
 
     /// Graphics context.
-    #[cfg(feature = "visible")]
+    #[cfg(feature = "graphics")]
     pub graphics: &'a mut Graphics,
 }
 
@@ -51,7 +54,7 @@ impl<'a> From<SystemContext<'a>> for TaskContext<'a> {
             scope: &*cx.scope,
             #[cfg(feature = "visible")]
             control: cx.control,
-            #[cfg(feature = "visible")]
+            #[cfg(feature = "graphics")]
             graphics: cx.graphics,
         }
     }
@@ -74,7 +77,7 @@ impl<'a> TaskContext<'a> {
             scope: self.scope,
             #[cfg(feature = "visible")]
             control: self.control,
-            #[cfg(feature = "visible")]
+            #[cfg(feature = "graphics")]
             graphics: self.graphics,
         }
     }
@@ -251,7 +254,8 @@ struct RawTaskContext {
     pub scope: NonNull<u8>,
     #[cfg(feature = "visible")]
     pub control: NonNull<Control>,
-    #[cfg(feature = "visible")]
+
+    #[cfg(feature = "graphics")]
     pub graphics: NonNull<Graphics>,
 }
 
@@ -265,7 +269,7 @@ impl RawTaskContext {
             scope: NonNull::from(cx.scope).cast(),
             #[cfg(feature = "visible")]
             control: NonNull::from(cx.control),
-            #[cfg(feature = "visible")]
+            #[cfg(feature = "graphics")]
             graphics: NonNull::from(cx.graphics),
         }
     }
@@ -279,7 +283,7 @@ impl RawTaskContext {
             scope: &*self.scope.cast().as_ptr(),
             #[cfg(feature = "visible")]
             control: &mut *self.control.as_ptr(),
-            #[cfg(feature = "visible")]
+            #[cfg(feature = "graphics")]
             graphics: &mut *self.graphics.as_ptr(),
         }
     }

@@ -7,18 +7,21 @@ use std::{
 };
 
 use arcana::{
+    assets::AssetId,
+    command::CommandQueue,
     evoke::{
         server::{RemotePlayer, ServerOwned, ServerSystem},
         PlayerId,
     },
-    headless,
+    game::headless,
     hecs::{Entity, World},
     lifespan::LifeSpan,
     na,
     palette::{FromColor, Lch, Srgb},
     physics2::Physics2,
+    scene::Global2,
     tiles::{TileMap, TileMapDescriptor, TileMapSystem},
-    CommandQueue, Global2, TimeSpan,
+    TimeSpan,
 };
 use eyre::Context;
 use tokio::net::TcpListener;
@@ -58,7 +61,7 @@ impl RemotePlayer for RemoteTankPlayer {
             TankReplica {
                 size: na::Vector2::new(1.0, 1.0),
                 color: random_color(),
-                sprite_sheet: "e12e16cd-9faf-4d61-b8cd-667ddecc823b".parse().unwrap(),
+                sprite_sheet: AssetId(todo!()),
                 state: TankState::new(),
             },
             CommandQueue::<TankCommand>::new(),
@@ -101,21 +104,21 @@ fn main() {
     headless(|mut game| async move {
         let maps = [
             game.loader
-                .load::<TileMap>(&Uuid::from_str("d5b2c243-bfff-4eb3-b10f-615faf210574").unwrap())
+                .load::<TileMap, _>("tanks.map")
                 .await
-                .get(&mut ())
+                .get()
                 .wrap_err("Failed to load tile map")?
                 .clone(),
             game.loader
-                .load::<TileMap>(&Uuid::from_str("5c6154dc-a98b-431d-8cf7-3627f9e5e6e0").unwrap())
+                .load::<TileMap, _>("tanks.map")
                 .await
-                .get(&mut ())
+                .get()
                 .wrap_err("Failed to load tile map")?
                 .clone(),
             game.loader
-                .load::<TileMap>(&Uuid::from_str("5c1fe447-bc12-496a-b713-9cf3a811b4d1").unwrap())
+                .load::<TileMap, _>("tanks.map")
                 .await
-                .get(&mut ())
+                .get()
                 .wrap_err("Failed to load tile map")?
                 .clone(),
         ];

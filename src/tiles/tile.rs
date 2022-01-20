@@ -1,13 +1,18 @@
-use goods::AssetField;
-use hashbrown::HashMap;
-use ordered_float::OrderedFloat;
+cfg_if::cfg_if! {
+    if #[cfg(feature = "graphics")] {
+        use goods::AssetField;
+        use crate::graphics::Texture;
+    }
+}
 
-#[cfg(feature = "physics2d")]
-use parry2d::shape::SharedShape;
-
-#[cfg(feature = "visible")]
-use crate::graphics::Texture;
-use crate::resources::Res;
+cfg_if::cfg_if! {
+    if #[cfg(feature = "physics2d")] {
+        use hashbrown::HashMap;
+        use ordered_float::OrderedFloat;
+        use parry2d::shape::SharedShape;
+        use crate::resources::Res;
+    }
+}
 
 #[cfg(feature = "physics2d")]
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash, serde::Deserialize)]
@@ -35,14 +40,14 @@ impl ColliderKind {
 }
 
 #[derive(Clone, Debug)]
-#[cfg_attr(feature = "visible", derive(AssetField))]
-#[cfg_attr(not(feature = "visible"), derive(serde::Deserialize))]
+#[cfg_attr(feature = "graphics", derive(AssetField))]
+#[cfg_attr(not(feature = "graphics"), derive(serde::Deserialize))]
 pub struct Tile {
     #[cfg(feature = "physics2d")]
     #[serde(default)]
     pub collider: Option<ColliderKind>,
 
-    #[cfg(feature = "visible")]
+    #[cfg(feature = "graphics")]
     #[asset(container)]
     pub texture: Option<Texture>,
 }

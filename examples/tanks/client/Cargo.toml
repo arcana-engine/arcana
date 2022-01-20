@@ -7,8 +7,8 @@ license = "MIT OR Apache-2.0"
 publish = false
 
 [dependencies]
-tanks = { path = "..", features = ["client", "visible"] }
-arcana = { path = "../../..", features = ["physics2d", "client", "visible", "sigils"], default-features = false }
+tanks = { path = "..", features = ["client", "graphics"] }
+arcana = { path = "../../..", features = ["physics2d", "client", "graphics"], default-features = false }
 color-eyre = "0.5"
 eyre = "0.6"
 futures = "0.3"

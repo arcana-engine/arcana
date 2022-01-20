@@ -1,14 +1,12 @@
-use {
-    crate::{
-        event::{Event, WindowEvent},
-        funnel::Funnel,
-        graphics::Graphics,
-        resources::Res,
-    },
-    hecs::{Entity, World},
-    sierra::{Format, ImageUsage, PresentMode, Surface, SurfaceError, Swapchain, SwapchainImage},
-    winit::window::{Window, WindowId},
+use crate::{
+    event::{Event, WindowEvent},
+    funnel::Funnel,
+    graphics::Graphics,
+    resources::Res,
 };
+use hecs::{Entity, World};
+use sierra::{Format, ImageUsage, PresentMode, Surface, SurfaceError, Swapchain, SwapchainImage};
+use winit::window::{Window, WindowId};
 
 use winit::dpi::PhysicalSize;
 

@@ -14,10 +14,9 @@ use sierra::{
 
 use super::{DrawNode, RendererContext};
 use crate::{
-    assets::FontFaces,
     graphics::{
-        vertex_layouts_for_pipeline, Graphics, ImageAsset, Position2, SparseDescriptors,
-        VertexLocation, VertexType, UV,
+        vertex_layouts_for_pipeline, Graphics, Position2, SparseDescriptors, VertexLocation,
+        VertexType, UV,
     },
     task::with_async_task_context,
 };
@@ -65,7 +64,7 @@ pub struct SigilsDraw {
 
 struct SigilsDrawAssets {
     images: HashMap<AssetId, ImageView>,
-    fonts: HashMap<AssetId, FontFaces>,
+    // fonts: HashMap<AssetId, FontFaces>,
 }
 
 impl SigilsDraw {
@@ -161,7 +160,7 @@ impl DrawNode for SigilsDraw {
             Some(pair) => pair,
         };
 
-        let mut missing_images = Vec::new();
+        // let mut missing_images = Vec::new();
         let mut missing_fonts = Vec::new();
 
         let mut writes = Vec::new_in(&*cx.scope);

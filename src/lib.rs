@@ -13,7 +13,6 @@
 
 extern crate self as arcana;
 
-pub mod anim;
 pub mod assets;
 pub mod camera;
 pub mod clocks;
@@ -25,19 +24,28 @@ pub mod lifespan;
 pub mod prelude;
 pub mod rect;
 pub mod resources;
+pub mod sprite;
 pub mod system;
 pub mod task;
-pub mod ui;
+
 // pub mod unfold;
+
+// Reexport crates used in public API.
+pub use {bincode, eyre, hecs, na, palette, scoped_arena};
 
 cfg_if::cfg_if! {
     if #[cfg(feature = "visible")] {
         pub mod event;
-        pub mod graphics;
-        pub use sierra;
         pub mod control;
-        pub mod viewport;
         pub mod funnel;
+    }
+}
+
+cfg_if::cfg_if! {
+    if #[cfg(feature = "graphics")] {
+        pub mod graphics;
+        pub mod viewport;
+        pub use sierra;
     }
 }
 
@@ -73,8 +81,11 @@ cfg_if::cfg_if! {
     }
 }
 
-// Reexport crates used in public API.
-pub use {bincode, evoke, eyre, hecs, na, palette, scoped_arena};
+cfg_if::cfg_if! {
+    if #[cfg(feature = "evoke")] {
+        pub use evoke;
+    }
+}
 
 pub use arcana_proc::timespan;
 pub use arcana_time::{TimeSpan, TimeSpanParseErr, TimeStamp};
