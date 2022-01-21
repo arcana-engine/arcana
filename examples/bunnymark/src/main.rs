@@ -1,5 +1,12 @@
 use arcana::{
-    assets, game2, graphics, hecs, na, AsyncTaskContext, Global2, SystemContext, TaskContext,
+    game::game2,
+    graphics::{self, Texture},
+    hecs, na,
+    rect::Rect,
+    scene::Global2,
+    sprite::Sprite,
+    system::SystemContext,
+    task::{with_async_task_context, TaskContext},
     TimeSpan,
 };
 
@@ -8,25 +15,18 @@ struct Bunny;
 
 impl Bunny {
     fn spawn(self, cx: TaskContext<'_>) -> hecs::Entity {
-        let cat = cx
-            .loader
-            .load::<assets::ImageAsset>(&"3368385b-dbfa-4d13-847f-df977e8c8dd4".parse().unwrap());
-
-        let sampler = cx
-            .graphics
-            .create_sampler(graphics::SamplerInfo::default())
-            .unwrap();
+        let cat = cx.loader.load::<Texture, _>("bunny.png");
 
         let entity = cx.world.spawn((
             self,
-            graphics::Sprite {
-                world: graphics::Rect {
+            Sprite {
+                world: Rect {
                     left: -0.015,
                     right: 0.015,
                     top: -0.02,
                     bottom: 0.02,
                 },
-                ..graphics::Sprite::default()
+                ..Sprite::default()
             },
             Global2::new(
                 na::Translation2::new(
@@ -40,20 +40,16 @@ impl Bunny {
         cx.spawner.spawn(async move {
             let mut cat = cat.await;
 
-            let mut cx = AsyncTaskContext::new();
-            let cx = cx.get();
+            with_async_task_context(|cx| {
+                let cat = cat.build(cx.graphics).unwrap().clone();
 
-            let cat = cat.get(cx.graphics).unwrap().clone().into_inner();
+                let material = graphics::Material {
+                    albedo_coverage: Some(cat),
+                    ..Default::default()
+                };
 
-            let material = graphics::Material {
-                albedo_coverage: Some(graphics::Texture {
-                    image: cat,
-                    sampler,
-                }),
-                ..Default::default()
-            };
-
-            let _ = cx.world.insert_one(entity, material);
+                let _ = cx.world.insert_one(entity, material);
+            });
             Ok(())
         });
 
@@ -94,7 +90,7 @@ fn main() {
         );
 
         game.scheduler.add_fixed_system(
-            |mut cx: SystemContext<'_>| {
+            |cx: SystemContext<'_>| {
                 if let Some(bunny) = cx.res.get::<BunnyCount>() {
                     println!("{} bunnies", bunny.count);
                 }

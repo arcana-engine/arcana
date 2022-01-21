@@ -7,8 +7,8 @@ license = "MIT OR Apache-2.0"
 publish = false
 
 [dependencies]
-arcana = { path = "../..", features = ["2d"] }
-color-eyre = "0.5"
+arcana = { path = "../..", features = ["2d", "treasury"] }
+color-eyre = "0.6"
 eyre = "0.6"
 futures = "0.3"
 rand = "0.8"

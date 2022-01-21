@@ -2,7 +2,6 @@
 
 use std::{
     net::Ipv4Addr,
-    str::FromStr,
     sync::atomic::{AtomicU32, Ordering},
 };
 
@@ -61,7 +60,7 @@ impl RemotePlayer for RemoteTankPlayer {
             TankReplica {
                 size: na::Vector2::new(1.0, 1.0),
                 color: random_color(),
-                sprite_sheet: AssetId(todo!()),
+                sprite_sheet: AssetId::new(0x7cf61208d682361a).unwrap(),
                 state: TankState::new(),
             },
             CommandQueue::<TankCommand>::new(),
@@ -104,23 +103,23 @@ fn main() {
     headless(|mut game| async move {
         let maps = [
             game.loader
-                .load::<TileMap, _>("tanks.map")
+                .load::<TileMap, _>("tanks-map1.json")
                 .await
                 .get()
                 .wrap_err("Failed to load tile map")?
                 .clone(),
-            game.loader
-                .load::<TileMap, _>("tanks.map")
-                .await
-                .get()
-                .wrap_err("Failed to load tile map")?
-                .clone(),
-            game.loader
-                .load::<TileMap, _>("tanks.map")
-                .await
-                .get()
-                .wrap_err("Failed to load tile map")?
-                .clone(),
+            // game.loader
+            //     .load::<TileMap, _>("tanks-map2.json")
+            //     .await
+            //     .get()
+            //     .wrap_err("Failed to load tile map")?
+            //     .clone(),
+            // game.loader
+            //     .load::<TileMap, _>("tanks-map3.json")
+            //     .await
+            //     .get()
+            //     .wrap_err("Failed to load tile map")?
+            //     .clone(),
         ];
 
         for i in -5..=5 {
@@ -145,8 +144,8 @@ fn main() {
         game.scheduler.add_ticking_system(tanks::BulletSystem);
 
         // Bind listener for incoming connections.
-        // let listener = TcpListener::bind((Ipv4Addr::UNSPECIFIED, 12345)).await?;
-        let listener = TcpListener::bind((Ipv4Addr::LOCALHOST, 12345)).await?;
+        // let listener = TcpListener::bind((Ipv4Addr::UNSPECIFIED, 12453)).await?;
+        let listener = TcpListener::bind((Ipv4Addr::LOCALHOST, 12453)).await?;
 
         let local_addr = listener.local_addr()?;
 

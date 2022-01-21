@@ -1,7 +1,6 @@
 #![feature(allocator_api)]
 
 use arcana::{
-    assets::WithId,
     hecs::{Entity, World},
     lifespan::LifeSpan,
     na,
@@ -10,20 +9,22 @@ use arcana::{
     rapier2d::prelude::{
         ActiveEvents, Collider, ColliderBuilder, RigidBodyBuilder, RigidBodyHandle,
     },
-    scoped_arena::Scope,
-    sprite::graph::{AnimTransitionRule, CurrentAnimInfo},
 };
+
+#[cfg(feature = "server")]
+use arcana::scoped_arena::Scope;
 
 cfg_if::cfg_if! {
     if #[cfg(feature = "graphics")] {
         use arcana::{
+            assets::WithId,
             graphics::{Material, Texture},
             rect::Rect,
             assets::AssetLoadCache,
             sprite::{
                 anim::{SpriteGraphAnimation, SpriteGraphAnimationSystem},
                 sprite_sheet::{SpriteSheet, SpriteSheetMeta},
-                Sprite,
+                Sprite,graph::{AnimTransitionRule, CurrentAnimInfo}
             },
         };
         use ordered_float::OrderedFloat;
@@ -148,8 +149,6 @@ impl Tank {
             &mut physics.bodies,
         );
 
-        let color = self.color;
-
         let entity = world.spawn((
             Global2::new(*iso),
             body,
@@ -178,9 +177,9 @@ impl Tank {
             Material {
                 albedo_coverage: Some(sprite_sheet.texture.clone()),
                 albedo_factor: [
-                    OrderedFloat(color[0]),
-                    OrderedFloat(color[1]),
-                    OrderedFloat(color[2]),
+                    OrderedFloat(self.color[0]),
+                    OrderedFloat(self.color[1]),
+                    OrderedFloat(self.color[2]),
                     OrderedFloat(1.0),
                 ],
                 ..Default::default()
@@ -468,6 +467,7 @@ pub struct TankReplica {
     pub state: TankState,
 }
 
+#[cfg(feature = "server")]
 impl TankReplica {
     fn from_tank_state(tank: &Tank, state: &TankState) -> Self {
         TankReplica {
@@ -518,6 +518,9 @@ impl System for TankReplicaSystem {
         )>();
 
         for (entity, (global, replica, tank, state, mat)) in query {
+            #[cfg(not(feature = "graphics"))]
+            let () = mat;
+
             match tank {
                 Some(tank) if tank_sprite_sheet_id(&tank) == replica.sprite_sheet => {
                     *state.unwrap() = replica.state;
@@ -563,13 +566,18 @@ impl System for TankReplicaSystem {
             }
 
             #[cfg(not(feature = "graphics"))]
-            spawn.push((entity, global.iso, ()));
+            spawn.push((entity, global.iso));
         }
 
         #[cfg(feature = "graphics")]
         cache.ensure_task(cx.spawner, |cx| cx.graphics);
 
-        for (entity, iso, sheet) in spawn {
+        for tuple in spawn {
+            #[cfg(feature = "graphics")]
+            let (entity, iso, sheet) = tuple;
+            #[cfg(not(feature = "graphics"))]
+            let (entity, iso) = tuple;
+
             let replica = cx.world.remove_one::<TankReplica>(entity).unwrap();
 
             let tank = Tank {
