@@ -8,7 +8,7 @@ publish = false
 
 [dependencies]
 arcana = { path = "../..", features = ["physics2d"] }
-color-eyre = "0.5"
+color-eyre = "0.6"
 eyre = "0.6"
 futures = "0.3"
 rand = "0.8"

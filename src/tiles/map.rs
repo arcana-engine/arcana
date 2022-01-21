@@ -23,7 +23,7 @@ use crate::{
 use super::set::TileSet;
 
 #[derive(Clone, PartialEq, serde::Serialize, serde::Deserialize, Asset)]
-#[asset(name = "arcana.tile-map")]
+#[asset(name = "arcana.tilemap")]
 pub struct TileMap {
     pub set: AssetId,
     pub cell_size: f32,
@@ -43,7 +43,7 @@ impl TileMap {
 }
 
 pub(crate) struct TileMapSpawned {
-    pub set_uuid: AssetId,
+    pub set_id: AssetId,
     pub set: TileSet,
 }
 
@@ -83,7 +83,7 @@ impl System for TileMapSystem {
 
         for (entity, (map, spawned)) in query {
             match &spawned {
-                Some(spawned) if spawned.set_uuid == map.set => {
+                Some(spawned) if spawned.set_id == map.set => {
                     continue;
                 }
                 _ => cache.load(map.set, cx.loader),
@@ -96,7 +96,7 @@ impl System for TileMapSystem {
                     }
                 }
                 Some(spawned) => {
-                    if spawned.set_uuid != map.set {
+                    if spawned.set_id != map.set {
                         if let Some(set) = cache.get_ready(map.set) {
                             spawn.push((entity, set.clone(), map.clone()));
                         }
@@ -158,7 +158,7 @@ impl System for TileMapSystem {
                 entity,
                 (TileMapSpawned {
                     set,
-                    set_uuid: map.set,
+                    set_id: map.set,
                 },),
             );
         }

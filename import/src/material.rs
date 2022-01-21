@@ -1,12 +1,10 @@
-use uuid::Uuid;
-
-use crate::sampler::Sampler;
+use crate::{sampler::Sampler, AssetId};
 
 #[derive(serde::Serialize)]
 #[serde(untagged)]
 pub enum Texture {
-    ImageSampler { image: Uuid, sampler: Sampler },
-    Image(Uuid),
+    ImageSampler { image: AssetId, sampler: Sampler },
+    Image(AssetId),
 }
 
 #[derive(serde::Serialize)]

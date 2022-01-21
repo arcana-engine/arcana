@@ -1,10 +1,9 @@
-use {
-    crate::sprite_sheet::{SpriteAnimation, SpriteFrame, SpriteRect, SpriteSheet, SpriteSize},
-    arcana_time::TimeSpan,
-    eyre::WrapErr,
-    goods_treasury_import::{Importer, Registry},
-    std::path::Path,
-};
+use std::path::Path;
+
+use arcana_time::TimeSpan;
+use treasury_import::{Dependencies, Dependency, ImportError, Importer, Sources};
+
+use crate::sprite_sheet::{SpriteAnimation, SpriteFrame, SpriteRect, SpriteSheet, SpriteSize};
 
 pub struct SpriteSheetImporter;
 
@@ -54,34 +53,46 @@ struct AsepriteSpriteSheet {
 }
 
 impl Importer for SpriteSheetImporter {
-    fn name(&self) -> &str {
-        "arcana.aseprite.spritesheet"
-    }
-
-    fn source(&self) -> &str {
-        "aseprite.spritesheet"
-    }
-
-    fn native(&self) -> &str {
-        "arcana.spritesheet"
-    }
-
     fn import(
         &self,
         source_path: &Path,
         native_path: &Path,
-        registry: &mut dyn Registry,
-    ) -> eyre::Result<()> {
-        let source = std::fs::read(source_path)
-            .wrap_err_with(|| format!("Failed to open file: '{}'", source_path.display()))?;
+        _sources: &impl Sources,
+        dependencies: &impl Dependencies,
+    ) -> Result<(), ImportError> {
+        let source = std::fs::read(source_path).map_err(|err| ImportError::Other {
+            reason: format!(
+                "Failed to open file: '{}'. {:#}",
+                source_path.display(),
+                err
+            ),
+        })?;
 
         let sprite_sheet: AsepriteSpriteSheet =
-            serde_json::from_slice(&source).wrap_err_with(|| {
-                format!(
-                    "Failed to parse file: '{}' as AsepriteSpriteSheet",
+            serde_json::from_slice(&source).map_err(|err| ImportError::Other {
+                reason: format!(
+                    "Failed to parse file: '{}' as AsepriteSpriteSheet. {:#}",
                     source_path.display(),
-                )
+                    err,
+                ),
             })?;
+
+        let texture = match dependencies.get(&sprite_sheet.meta.image, "qoi") {
+            Err(err) => {
+                return Err(ImportError::Other {
+                    reason: format!("Failed to fetch image of the spritesheet. {:#}", err),
+                })
+            }
+            Ok(None) => {
+                return Err(ImportError::RequireDependencies {
+                    dependencies: vec![Dependency {
+                        source: sprite_sheet.meta.image.clone(),
+                        target: "qoi".to_owned(),
+                    }],
+                })
+            }
+            Ok(Some(id)) => id,
+        };
 
         let frames = sprite_sheet
             .frames
@@ -89,14 +100,15 @@ impl Importer for SpriteSheetImporter {
             .enumerate()
             .map(|(index, frame)| {
                 if frame.frame.w != frame.sprite_source_size.w {
-                    return Err(eyre::eyre!("Frame '{}' width does not match source", index));
+                    return Err(ImportError::Other {
+                        reason: format!("Frame '{}' width does not match source", index),
+                    });
                 }
 
                 if frame.frame.h != frame.sprite_source_size.h {
-                    return Err(eyre::eyre!(
-                        "Frame '{}' height does not match source",
-                        index
-                    ));
+                    return Err(ImportError::Other {
+                        reason: format!("Frame '{}' height does not match source", index),
+                    });
                 }
 
                 Ok(SpriteFrame {
@@ -120,13 +132,6 @@ impl Importer for SpriteSheetImporter {
             })
             .collect();
 
-        let texture = registry.store(
-            &source_path.with_file_name(&sprite_sheet.meta.image),
-            "image",
-            "rgba.png",
-            &["texture"],
-        )?;
-
         let sprite_sheet = SpriteSheet {
             tex_size: sprite_sheet.meta.size,
             frames,
@@ -135,14 +140,20 @@ impl Importer for SpriteSheetImporter {
             frame_distances: Vec::new(),
         };
 
-        let mut output = std::fs::File::create(native_path)
-            .wrap_err_with(|| format!("Failed to open file: '{}'", native_path.display()))?;
-
-        serde_json::to_writer(&mut output, &sprite_sheet).wrap_err_with(|| {
-            format!(
-                "Failed to write SpriteSheet into file: '{}'",
+        let mut output = std::fs::File::create(native_path).map_err(|err| ImportError::Other {
+            reason: format!(
+                "Failed to open file: '{}'. {:#}",
                 native_path.display(),
-            )
+                err
+            ),
+        })?;
+
+        serde_json::to_writer(&mut output, &sprite_sheet).map_err(|err| ImportError::Other {
+            reason: format!(
+                "Failed to write SpriteSheet into file: '{}'. {:#}",
+                native_path.display(),
+                err,
+            ),
         })?;
 
         Ok(())

@@ -225,7 +225,7 @@ impl Asset for Texture {
     type Fut = Ready<Result<QoiImage, rapid_qoi::DecodeError>>;
 
     fn name() -> &'static str {
-        "arcana.image"
+        "qoi"
     }
 
     fn decode(bytes: Box<[u8]>, _loader: &Loader) -> Self::Fut {
