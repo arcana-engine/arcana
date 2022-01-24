@@ -60,7 +60,7 @@ impl RemotePlayer for RemoteTankPlayer {
             TankReplica {
                 size: na::Vector2::new(1.0, 1.0),
                 color: random_color(),
-                sprite_sheet: AssetId::new(0x7cf61208d682361a).unwrap(),
+                sprite_sheet: AssetId::new(0x61cd051a6c24030d).unwrap(),
                 state: TankState::new(),
             },
             CommandQueue::<TankCommand>::new(),

@@ -1,17 +1,19 @@
-use {
-    crate::{
-        clocks::{Clocks, TimeSpan},
-        fps::FpsMeter,
-        lifespan::LifeSpanSystem,
-        resources::Res,
-        system::{Scheduler, SystemContext},
-        task::{Executor, Spawner, TaskContext},
-    },
-    eyre::WrapErr,
-    goods::Loader,
-    hecs::World,
-    scoped_arena::Scope,
-    std::{future::Future, path::Path, time::Duration},
+use crate::{
+    clocks::{Clocks, TimeSpan},
+    fps::FpsMeter,
+    lifespan::LifeSpanSystem,
+    resources::Res,
+    system::{Scheduler, SystemContext},
+    task::{Executor, Spawner, TaskContext},
+};
+use eyre::WrapErr;
+use goods::Loader;
+use hecs::World;
+use scoped_arena::Scope;
+use std::{
+    future::Future,
+    path::{Path, PathBuf},
+    time::Duration,
 };
 
 #[cfg(any(feature = "2d", feature = "3d"))]
@@ -687,18 +689,65 @@ fn load_default_config() -> Config {
     }
 }
 
-#[allow(unused_variables)]
+#[allow(unused_mut)]
 async fn configure_loader(cfg: &Config) -> eyre::Result<Loader> {
     #[allow(unused_mut)]
     let mut loader_builder = Loader::builder();
 
     #[cfg(feature = "treasury")]
     if let Some(path) = &cfg.treasury {
-        let treasury = goods::source::treasury::TreasurySource::open_local(&path)
-            .await
-            .wrap_err_with(|| "Failed to initialize treasury loader")?;
-        loader_builder.add(treasury);
+        match lookup_relpath(path) {
+            None => {
+                tracing::error!("Failed to lookup for treasury manifest path");
+            }
+            Some(path) => {
+                tracing::info!("Found treasury manifest file at {}", path.display());
+                match goods::source::treasury::TreasurySource::open_local(&path).await {
+                    Err(err) => tracing::error!("Failed to initialize treasury loader. {:#}", err),
+                    Ok(treasury) => {
+                        loader_builder.add(treasury);
+                    }
+                }
+            }
+        }
     }
 
     Ok(loader_builder.build())
+}
+
+fn lookup_in_current_dir(relpath: &Path) -> Option<PathBuf> {
+    let cd = std::env::current_dir().ok()?;
+
+    for dir in cd.ancestors() {
+        let candidate = dir.join(relpath);
+        if candidate.exists() {
+            return Some(candidate);
+        }
+    }
+    None
+}
+
+fn lookup_in_binary_dir(relpath: &Path) -> Option<PathBuf> {
+    let ce = std::env::current_exe().ok()?;
+
+    let mut ancestors = ce.ancestors();
+    ancestors.next();
+
+    for dir in ancestors {
+        let candidate = dir.join(relpath);
+        if candidate.exists() {
+            return Some(candidate);
+        }
+    }
+    None
+}
+
+fn lookup_relpath(relpath: &Path) -> Option<PathBuf> {
+    if let Some(path) = lookup_in_current_dir(relpath) {
+        return Some(path);
+    }
+    if let Some(path) = lookup_in_binary_dir(relpath) {
+        return Some(path);
+    }
+    None
 }

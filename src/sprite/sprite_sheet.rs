@@ -44,11 +44,13 @@ pub struct SpriteSheetMeta {
     #[serde(default = "default_animations")]
     pub animations: Arc<[SpriteAnimation]>,
 
+    #[serde(rename = "tex-size")]
     pub tex_size: SpriteSize,
 }
 
 #[derive(Clone, Debug, serde::Deserialize)]
 pub struct SpriteSheet<T> {
+    #[serde(flatten)]
     pub meta: SpriteSheetMeta,
     pub texture: T,
 }
