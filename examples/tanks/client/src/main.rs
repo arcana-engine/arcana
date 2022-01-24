@@ -255,7 +255,7 @@ fn main() {
         // Connect to local server. It must be running.
         client
             // .connect((Ipv4Addr::new(62, 84, 122, 89), 12345), &game.scope)
-            .connect((Ipv4Addr::LOCALHOST, 12345), &game.scope)
+            .connect((Ipv4Addr::LOCALHOST, 12453), &game.scope)
             .await?;
 
         tracing::info!("Connected");
