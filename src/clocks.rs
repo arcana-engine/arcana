@@ -3,7 +3,7 @@
 //! `TimeSpan` type is suitable for measuring difference between instances.
 
 pub use arcana_time::{TimeSpan, TimeSpanParseErr, TimeStamp};
-use std::time::Instant;
+use std::time::{Duration, Instant};
 
 /// Clocks for tracking current time, update delta time, global start time etc.
 /// Clocks are implemented using monotonously growing timer - `Instant`.
@@ -103,5 +103,9 @@ impl Clocks {
         self.now = now;
 
         ClockIndex { delta, now }
+    }
+
+    pub fn time_stamp_to_instant(&self, timestamp: TimeStamp) -> Instant {
+        self.start + Duration::from(timestamp.elapsed())
     }
 }

@@ -5,7 +5,7 @@ pub use crate::{
     resources::Res,
     system::{Scheduler, System, SystemContext},
     task::{with_async_task_context, Spawner, TaskContext},
-    // unfold::Unfold,
+    unfold::Unfold,
 };
 
 #[cfg(feature = "visible")]

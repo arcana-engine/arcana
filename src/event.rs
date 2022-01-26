@@ -13,6 +13,7 @@ use {
     winit::window::WindowId,
 };
 
+use arcana_time::TimeSpan;
 pub use winit::event::{
     AxisId, ButtonId, DeviceEvent, DeviceId, ElementState, KeyboardInput, ModifiersState,
     MouseButton, MouseScrollDelta, Touch, TouchPhase, VirtualKeyCode, WindowEvent,
@@ -250,8 +251,8 @@ impl Loop {
     }
 
     /// Waits for and returns next event.
-    pub async fn next_event(&self, timeout: Duration) -> Event {
-        let deadline = Instant::now() + timeout;
+    pub async fn next_event(&self, span: TimeSpan) -> Event {
+        let deadline = Instant::now() + Duration::from(span);
         futures::future::poll_fn(|_ctx| match self.shared.take_next_event(deadline) {
             Some(event) => return Poll::Ready(event),
             None => Poll::Pending,

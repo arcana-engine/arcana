@@ -7,8 +7,7 @@ use std::{
     time::{Duration, Instant},
 };
 
-use crate::{resources::Res, system::SystemContext};
-use goods::Loader;
+use crate::{assets::Assets, resources::Res, system::SystemContext};
 use hecs::World;
 use scoped_arena::Scope;
 
@@ -30,7 +29,7 @@ pub struct TaskContext<'a> {
     pub spawner: &'a mut Spawner,
 
     /// Asset loader
-    pub loader: &'a Loader,
+    pub assets: &'a mut Assets,
 
     /// Arena allocator for allocations in hot-path.
     pub scope: &'a Scope<'a>,
@@ -50,7 +49,7 @@ impl<'a> From<SystemContext<'a>> for TaskContext<'a> {
             world: cx.world,
             res: cx.res,
             spawner: cx.spawner,
-            loader: cx.loader,
+            assets: cx.assets,
             scope: &*cx.scope,
             #[cfg(feature = "visible")]
             control: cx.control,
@@ -73,7 +72,7 @@ impl<'a> TaskContext<'a> {
             res: self.res,
             world: self.world,
             spawner: self.spawner,
-            loader: self.loader,
+            assets: self.assets,
             scope: self.scope,
             #[cfg(feature = "visible")]
             control: self.control,
@@ -250,7 +249,7 @@ struct RawTaskContext {
     pub world: NonNull<World>,
     pub res: NonNull<Res>,
     pub spawner: NonNull<Spawner>,
-    pub loader: NonNull<Loader>,
+    pub assets: NonNull<Assets>,
     pub scope: NonNull<u8>,
     #[cfg(feature = "visible")]
     pub control: NonNull<Control>,
@@ -265,7 +264,7 @@ impl RawTaskContext {
             world: NonNull::from(cx.world),
             res: NonNull::from(cx.res),
             spawner: NonNull::from(cx.spawner),
-            loader: NonNull::from(cx.loader),
+            assets: NonNull::from(cx.assets),
             scope: NonNull::from(cx.scope).cast(),
             #[cfg(feature = "visible")]
             control: NonNull::from(cx.control),
@@ -279,7 +278,7 @@ impl RawTaskContext {
             world: &mut *self.world.as_ptr(),
             res: &mut *self.res.as_ptr(),
             spawner: &mut *self.spawner.as_ptr(),
-            loader: &*self.loader.as_ptr(),
+            assets: &mut *self.assets.as_ptr(),
             scope: &*self.scope.cast().as_ptr(),
             #[cfg(feature = "visible")]
             control: &mut *self.control.as_ptr(),

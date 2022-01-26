@@ -110,7 +110,7 @@ pub fn derive_unfold(item: TokenStream) -> syn::Result<TokenStream> {
 
     let system_ident = quote::format_ident!("{ident}UnfoldSystem");
     let system_name = syn::LitStr::new(&format!("{ident} unfold system"), ident.span());
-    let system_struct = quote::quote_spanned!(ident.span() => pub struct #system_ident;);
+    let system_struct = quote::quote_spanned!(ident.span() => #[derive(Clone, Copy, Debug, Default)] pub struct #system_ident;);
     let unfold_spawned_ident = quote::format_ident!("{ident}UnfoldSpawned");
 
     let stream = match &parsed.attrs.func {
@@ -161,24 +161,25 @@ pub fn derive_unfold(item: TokenStream) -> syn::Result<TokenStream> {
 
                 if field.ident.is_some() {
                     unfold_spawned_fields
-                        .push(quote::quote_spanned!(field.span() => #spawned_field_ident: Option<AssetId>));
+                        .push(quote::quote_spanned!(field.span() => #spawned_field_ident: ::core::option::Option<::arcana::assets::AssetId>));
                     unfold_spawned_fields_init
-                        .push(quote::quote_spanned!(field.span() => #spawned_field_ident: None));
+                        .push(quote::quote_spanned!(field.span() => #spawned_field_ident: ::core::option::Option::None));
                 } else {
                     unfold_spawned_fields
-                        .push(quote::quote_spanned!(field.span() => Option<AssetId>));
-                    unfold_spawned_fields_init.push(quote::quote_spanned!(field.span() => None));
+                        .push(quote::quote_spanned!(field.span() => ::core::option::Option<::arcana::assets::AssetId>));
+                    unfold_spawned_fields_init
+                        .push(quote::quote_spanned!(field.span() => ::core::option::Option::None));
                 }
 
                 updates.push(quote::quote_spanned!(field.span() => {
                     let id = *Borrow::<AssetId>::borrow(&value.#value_field_ident);
                     match spawned.#spawned_field_ident {
                         Some(old_id) if old_id == id => {}
-                        _ => match cx.res.with(AssetLoadCache::<#asset_ty>::new).get_or_load(id, cx.loader) {
+                        _ => match cx.assets.build::<#asset_ty, _>(id, cx.graphics) {
                             None => {},
                             Some(asset) => {
                                 spawned.#spawned_field_ident = Some(id);
-                                entity_builder.add(<#asset_ty as ::core::clone::Clone>::clone(asset));
+                                entity_builder.add(<#asset_ty as Clone>::clone(asset));
                             }
                         },
                     }
@@ -203,7 +204,11 @@ pub fn derive_unfold(item: TokenStream) -> syn::Result<TokenStream> {
                         #system_name
                     }
 
-                    fn run(&mut self, cx: ::arcana::system::SystemContext<'_>) -> ::arcana::eyre::Result<()> {
+                    fn run(&mut self, cx: ::arcana::system::SystemContext<'_>) {
+                        use core::{borrow::Borrow, clone::Clone, option::Option::{self, None, Some}};
+                        use std::vec::Vec;
+                        use arcana::{assets::{AssetId, TypedAssetIdExt}, hecs::{Entity, EntityBuilder}};
+
                         let cleanup_query = cx.world.query_mut::<()>().with::<#unfold_spawned_ident>().without::<#ident>();
 
                         let mut cleanup = Vec::new_in(&*cx.scope);
@@ -230,7 +235,7 @@ pub fn derive_unfold(item: TokenStream) -> syn::Result<TokenStream> {
                                 Some(spawned) => spawned,
                             };
 
-                            let mut entity_builder = ::arcana::hecs::EntityBuilder::new();
+                            let mut entity_builder = EntityBuilder::new();
 
                             #(#updates;)*
 
@@ -246,8 +251,6 @@ pub fn derive_unfold(item: TokenStream) -> syn::Result<TokenStream> {
                         for (e, mut entity_builder) in inserts {
                             cx.world.insert(e, entity_builder.build()).unwrap();
                         }
-
-                        ::arcana::eyre::Result::Ok(())
                     }
                 }
             }
@@ -300,7 +303,7 @@ pub fn derive_unfold(item: TokenStream) -> syn::Result<TokenStream> {
                     Some(asset) => {
                         let asset_ty = match &asset.ty {
                             None => {
-                                quote::quote_spanned!(ty.span() => <#ty as TypedAssetIdExt>::Asset)
+                                quote::quote_spanned!(ty.span() => <#ty as ::arcana::assets::TypedAssetIdExt>::Asset)
                             }
                             Some(ty) => {
                                 quote::quote_spanned!(ty.span() => #ty)
@@ -308,19 +311,20 @@ pub fn derive_unfold(item: TokenStream) -> syn::Result<TokenStream> {
                         };
 
                         if field.ident.is_some() {
-                            unfold_spawned_fields.push(quote::quote_spanned!(field.span() => #field_ident: Option<WithId<#asset_ty>>));
+                            unfold_spawned_fields.push(quote::quote_spanned!(field.span() => #field_ident: ::core::option::Option<::arcana::assets::WithId<#asset_ty>>));
                             unfold_spawned_fields_init.push(
                                 quote::quote_spanned!(field_ident.span() => #field_ident: None),
                             );
                         } else {
                             unfold_spawned_fields.push(
-                                quote::quote_spanned!(field.span() => Option<WithId<#asset_ty>>),
+                                quote::quote_spanned!(field.span() => ::core::option::Option<::arcana::assets::WithId<#asset_ty>>),
                             );
                             unfold_spawned_fields_init
                                 .push(quote::quote_spanned!(field_ident.span() => None));
                         }
 
-                        unfold_fn_arg_types.push(quote::quote_spanned!(field.span() => &#asset_ty));
+                        unfold_fn_arg_types
+                            .push(quote::quote_spanned!(field.span() => &::arcana::assets::WithId<#asset_ty>));
                         unfold_fn_args
                             .push(quote::quote_spanned!(field.span() => spawned.#field_ident.as_ref().unwrap()));
 
@@ -328,13 +332,15 @@ pub fn derive_unfold(item: TokenStream) -> syn::Result<TokenStream> {
                             let id = *Borrow::<AssetId>::borrow(&value.#field_ident);
                             match &spawned.#field_ident {
                                 Some(old_id) if WithId::id(old_id) == id => {}
-                                _ => match cx.res.with(AssetLoadCache::<#asset_ty>::new).get_or_load(id, cx.loader) {
+                                _ => match cx.assets.build::<#asset_ty, _>(id, cx.graphics) {
                                     None => {
+                                        tracing::error!("Asset is NOT READY");
                                         ready = false;
                                     },
                                     Some(asset) => {
+                                        tracing::error!("Asset is READY");
                                         updated = true;
-                                        spawned.#field_ident = Some(WithId::new(::core::clone::Clone::clone(asset), id));
+                                        spawned.#field_ident = Some(WithId::new(Clone::clone(asset), id));
                                     }
                                 },
                             }
@@ -344,7 +350,6 @@ pub fn derive_unfold(item: TokenStream) -> syn::Result<TokenStream> {
             }
 
             let unfold_spawned_struct = quote::quote_spanned!(ident.span() => struct #unfold_spawned_ident {
-                copy: #ident,
                 #(#unfold_spawned_fields,)*
             });
 
@@ -362,7 +367,11 @@ pub fn derive_unfold(item: TokenStream) -> syn::Result<TokenStream> {
                         #system_name
                     }
 
-                    fn run(&mut self, cx: ::arcana::system::SystemContext<'_>) -> ::arcana::eyre::Result<()> {
+                    fn run(&mut self, cx: ::arcana::system::SystemContext<'_>) {
+                        use core::{borrow::Borrow, clone::Clone, iter::Iterator, option::Option::{self, Some, None}};
+                        use std::vec::Vec;
+                        use ::arcana::{assets::WithId, hecs::{Entity, EntityBuilder, World}, unfold::{UnfoldBundle, UnfoldResult}, resources::Res};
+
                         let cleanup_query = cx.world.query_mut::<()>().with::<#unfold_spawned_ident>().without::<#ident>();
 
                         let mut cleanup = Vec::new_in(&*cx.scope);
@@ -371,16 +380,17 @@ pub fn derive_unfold(item: TokenStream) -> syn::Result<TokenStream> {
                         for e in cleanup {
                             let _ = cx.world.remove_one::<#unfold_spawned_ident>(e);
 
-                            fn cleanup<T: ::arcana::unfold::TupleComponentsRemove, I>(world: &mut ::arcana::hecs::World, entity: Entity, _: fn( #(#unfold_fn_arg_types,)* ) -> UnfoldResult<T, I>) {
+                            fn cleanup<T: UnfoldBundle, I>(world: &mut World, entity: Entity, _: fn( #(#unfold_fn_arg_types,)* &mut Res ) -> UnfoldResult<T, I>) {
                                 T::remove(world, entity);
                             }
 
-                            cleanup(world, e, #unfold);
+                            cleanup(cx.world, e, #unfold);
                         }
 
                         let query = cx.world.query_mut::<(&#ident, Option<&mut #unfold_spawned_ident>)>();
 
                         let mut inserts = Vec::new_in(&*cx.scope);
+                        let mut spawns = Vec::new_in(&*cx.scope);
 
                         for (e, (value, spawned)) in query {
                             let mut spawned_insert = None;
@@ -389,8 +399,8 @@ pub fn derive_unfold(item: TokenStream) -> syn::Result<TokenStream> {
 
                             let spawned: &mut #unfold_spawned_ident = match spawned {
                                 None => {
+                                    updated = true;
                                     spawned_insert.get_or_insert(#unfold_spawned_ident {
-                                        copy: ::core::clone::Clone::clone(value),
                                         #(#unfold_spawned_fields_init,)*
                                     })
                                 }
@@ -399,14 +409,22 @@ pub fn derive_unfold(item: TokenStream) -> syn::Result<TokenStream> {
 
                             #(#updates;)*
 
-                            let mut entity_builder = ::arcana::hecs::EntityBuilder::new();
-
-                            if let Some(spawned_insert) = spawned_insert {
-                                entity_builder.add(spawned_insert);
-                            }
+                            let mut entity_builder = EntityBuilder::new();
 
                             if updated && ready {
-                                let UnfoldResult { insert, spawn } = (#unfold)( #(#unfold_fn_args,)* );
+                                let UnfoldResult { insert, spawn } = (#unfold)( #(#unfold_fn_args,)* cx.res );
+                                entity_builder.add_bundle(insert);
+
+                                if Iterator::size_hint(&spawn).1 != Some(0) {
+                                    spawns.push((e, spawn));
+                                }
+
+                                if let Some(spawned_insert) = spawned_insert {
+                                    tracing::error!("Inserting new 'Spawned'");
+                                    entity_builder.add(spawned_insert);
+                                }
+
+                                inserts.push((e, entity_builder));
                             }
                         }
 
@@ -414,7 +432,9 @@ pub fn derive_unfold(item: TokenStream) -> syn::Result<TokenStream> {
                             cx.world.insert(e, entity_builder.build()).unwrap();
                         }
 
-                        ::arcana::eyre::Result::Ok(())
+                        for (e, mut spawn) in spawns {
+                            todo!()
+                        }
                     }
                 }
             }

@@ -27,7 +27,7 @@ impl System for LifeSpanSystem {
         "LifeSpan"
     }
 
-    fn run(&mut self, cx: SystemContext<'_>) -> eyre::Result<()> {
+    fn run(&mut self, cx: SystemContext<'_>) {
         let mut despawn = Vec::new_in(&*cx.scope);
 
         for (e, ls) in cx.world.query_mut::<&mut LifeSpan>() {
@@ -41,7 +41,5 @@ impl System for LifeSpanSystem {
         for e in despawn {
             let _ = cx.world.despawn(e);
         }
-
-        Ok(())
     }
 }

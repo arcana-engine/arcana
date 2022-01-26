@@ -239,7 +239,7 @@ impl System for SceneSystem {
         "Scene"
     }
 
-    fn run(&mut self, cx: SystemContext<'_>) -> eyre::Result<()> {
+    fn run(&mut self, cx: SystemContext<'_>) {
         #[cfg(feature = "2d")]
         {
             let mut update = VecDeque::with_capacity_in(self.cap_2, &*cx.scope);
@@ -355,7 +355,5 @@ impl System for SceneSystem {
                 self.cap_3 = self.cap_3 / 2 + count_3 / 2;
             }
         }
-
-        Ok(())
     }
 }

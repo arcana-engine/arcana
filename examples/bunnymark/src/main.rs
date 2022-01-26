@@ -15,7 +15,7 @@ struct Bunny;
 
 impl Bunny {
     fn spawn(self, cx: TaskContext<'_>) -> hecs::Entity {
-        let cat = cx.loader.load::<Texture, _>("bunny.png");
+        let cat = cx.assets.load::<Texture, _>("bunny.png");
 
         let entity = cx.world.spawn((
             self,

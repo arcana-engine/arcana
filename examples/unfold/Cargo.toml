@@ -1,5 +1,5 @@
 [package]
-name = "blocks"
+name = "unfold"
 version = "0.1.0"
 edition = "2021"
 authors = ["Zakarum <zakarumych@ya.ru>"]
@@ -7,6 +7,6 @@ license = "MIT OR Apache-2.0"
 publish = false
 
 [dependencies]
-arcana = { path = "../..", features = ["physics2d"] }
-rand = "0.8"
+arcana = { path = "../..", features = ["2d", "visible", "graphics", "treasury"] }
 tracing = "0.1"
+goods = { path = "../../../goods" }

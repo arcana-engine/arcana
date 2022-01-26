@@ -125,7 +125,7 @@ impl System for Physics2 {
         "Physics"
     }
 
-    fn run(&mut self, cx: SystemContext<'_>) -> eyre::Result<()> {
+    fn run(&mut self, cx: SystemContext<'_>) {
         let data = cx.res.with(PhysicsData2::new);
 
         let mut remove_bodies = Vec::with_capacity_in(64, &*cx.scope);
@@ -279,7 +279,5 @@ impl System for Physics2 {
                 }
             }
         }
-
-        Ok(())
     }
 }

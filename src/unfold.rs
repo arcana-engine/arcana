@@ -1,12 +1,6 @@
-use std::{any::type_name, borrow::Borrow, marker::PhantomData, mem::MaybeUninit};
+use hecs::{Bundle, Component, Entity, World};
 
-use goods::{Asset, AssetBuild, AssetId, Loader, TypedAssetId};
-use hecs::{Component, Entity, Query, World};
-
-use crate::{
-    assets::AssetLoadCache,
-    system::{System, SystemContext},
-};
+use crate::system::{Scheduler, System, SystemContext};
 
 pub use arcana_proc::Unfold;
 
@@ -26,9 +20,9 @@ pub use arcana_proc::Unfold;
 /// `#[unfold(asset: AssetType)] over field with type `AssetId` will cause unfold system
 /// to load specified asset and put it as a component to the same entity, and then keep it sync in case of id changes, or unfold component is removed
 ///
-/// Warning: unfold system will not have any chance to see if asset component changes.
+/// Warning: unfold system will not have any chance to see if asset component changes yet.
 ///
-/// If added component is a unfold, this will create cascade effect.
+/// If added component is a unfold itself with registered unfold system, this will create cascade effect.
 ///
 /// `#[unfold(funcname)]` placed over unfold type will cause `funcname` to be called.
 /// That function should take entity id, this type and asset references for each field with `#[unfold(asset)]` attribute as arguments and return `Unfold` structure with bundle `insert` and iterator of bundles `spawn`.
@@ -47,35 +41,36 @@ pub trait Unfold {
     /// and put loaded asset value as component next to the unfold component.
     /// If id changes in the unfold component, that system will replace asset component automatically.\
     /// Unfold systems are not limited to this behavior.
-    type UnfoldSystem: System;
+    type UnfoldSystem: System + Default;
+
+    fn schedule_unfold_system(scheduler: &mut Scheduler) {
+        #[cfg(feature = "visible")]
+        scheduler.add_system(Self::UnfoldSystem::default());
+        #[cfg(not(feature = "visible"))]
+        scheduler.add_ticking_system(Self::UnfoldSystem::default());
+    }
 }
 
-pub struct UnfoldResult<T, I> {
+pub struct UnfoldResult<T, I = std::iter::Empty<()>> {
     pub insert: T,
     pub spawn: I,
 }
 
-trait TupleComponentsRemove {
-    fn remove(world: &mut World, entity: Entity);
-}
-
-impl TupleComponentsRemove for () {
-    fn remove(world: &mut World, entity: Entity) {}
-}
-
-macro_rules! impl_tuple {
-    () => {};
-}
-impl<A> TupleComponentsRemove for (A,)
-where
-    A: Component,
-{
-    fn remove(world: &mut World, entity: Entity) {
-        let _ = world.remove_one::<A>(e);
+impl<T> UnfoldResult<T> {
+    pub fn with_bundle(bundle: T) -> Self {
+        UnfoldResult {
+            insert: bundle,
+            spawn: std::iter::empty(),
+        }
     }
 }
 
+pub trait UnfoldBundle: Bundle {
+    fn remove(world: &mut World, entity: Entity);
+}
+
 /// Dummy system for `Unfold`s that need no actions to be performed.
+#[derive(Clone, Copy, Debug, Default)]
 pub struct DummyUnfoldSystem;
 
 impl System for DummyUnfoldSystem {
@@ -83,7 +78,39 @@ impl System for DummyUnfoldSystem {
         "Dummy unfold system"
     }
 
-    fn run(&mut self, _: SystemContext<'_>) -> eyre::Result<()> {
-        Ok(())
-    }
+    fn run(&mut self, _: SystemContext<'_>) {}
 }
+
+macro_rules! for_tuple {
+    () => {
+        for_tuple!(for A B C D E F G H);
+    };
+
+    (for) => {
+        for_tuple!(impl);
+    };
+
+    (for $head:ident $($tail:ident)*) => {
+        for_tuple!(for $($tail)*);
+        for_tuple!(impl $head $($tail)*);
+    };
+
+    (impl) => {
+        impl UnfoldBundle for () {
+            fn remove(_world: &mut World, _entity: Entity) {}
+        }
+    };
+
+    (impl $($a:ident)+) => {
+        impl<$($a),+> UnfoldBundle for ($($a,)+)
+        where
+            $($a: Component,)+
+        {
+            fn remove(world: &mut World, entity: Entity) {
+                $(let _ = world.remove_one::<$a>(entity);)+
+            }
+        }
+    };
+}
+
+for_tuple!();
