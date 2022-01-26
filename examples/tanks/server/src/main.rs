@@ -6,24 +6,9 @@ use std::{
 };
 
 use arcana::{
-    assets::AssetId,
-    command::CommandQueue,
-    evoke::{
-        server::{RemotePlayer, ServerOwned, ServerSystem},
-        PlayerId,
-    },
-    game::headless,
-    hecs::{Entity, World},
-    lifespan::LifeSpan,
-    na,
-    palette::{FromColor, Lch, Srgb},
-    physics2::Physics2,
-    scene::Global2,
-    tiles::TileMap,
-    unfold::Unfold,
-    TimeSpan,
+    assets::AssetId, evoke, hecs, na, palette::*, physics2::Physics2, prelude::*, tiles::TileMap,
 };
-use eyre::Context;
+use eyre::WrapErr;
 use tokio::net::TcpListener;
 
 use tanks::*;
@@ -43,19 +28,19 @@ fn random_color() -> [f32; 3] {
 }
 
 struct RemoteTankPlayer {
-    entity: Entity,
+    entity: hecs::Entity,
 }
 
-impl RemotePlayer for RemoteTankPlayer {
+impl evoke::server::RemotePlayer for RemoteTankPlayer {
     type Input = Vec<tanks::TankCommand>;
     type Info = ();
 
-    fn accept((): (), pid: PlayerId, world: &mut World) -> eyre::Result<Self>
+    fn accept((): (), pid: evoke::PlayerId, world: &mut hecs::World) -> eyre::Result<Self>
     where
         Self: Sized,
     {
         let entity = world.spawn((
-            ServerOwned,
+            evoke::server::ServerOwned,
             pid,
             Global2::identity(),
             Tank {
@@ -73,7 +58,7 @@ impl RemotePlayer for RemoteTankPlayer {
     }
 
     #[inline(always)]
-    fn disconnected(self, world: &mut World)
+    fn disconnected(self, world: &mut hecs::World)
     where
         Self: Sized,
     {
@@ -89,7 +74,12 @@ impl RemotePlayer for RemoteTankPlayer {
         }
     }
 
-    fn apply_input(&mut self, entity: Entity, world: &mut World, pack: Vec<tanks::TankCommand>) {
+    fn apply_input(
+        &mut self,
+        entity: hecs::Entity,
+        world: &mut hecs::World,
+        pack: Vec<tanks::TankCommand>,
+    ) {
         if self.entity == entity {
             if let Ok(queue) = world.query_one_mut::<&mut CommandQueue<_>>(entity) {
                 queue.enque(pack);
@@ -133,7 +123,7 @@ fn main() {
                 game.world.spawn((
                     Global2::new(na::Isometry2::new(offset.into(), 0.0)),
                     map.clone(),
-                    ServerOwned,
+                    evoke::server::ServerOwned,
                 ));
             }
         }
@@ -152,8 +142,9 @@ fn main() {
         let local_addr = listener.local_addr()?;
 
         // Create server-side game session.
-        let server = ServerSystem::builder()
-            .with_descriptor::<TankDescriptor>()
+        let server = evoke::server::ServerSystem::builder()
+            .with_descriptor::<Tank>()
+            .with_descriptor::<TankState>()
             .with_descriptor::<TileMap>()
             .with_descriptor::<Global2>()
             .with_player::<RemoteTankPlayer>()

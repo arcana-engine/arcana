@@ -1,43 +1,21 @@
 #![feature(allocator_api)]
 
 use arcana::{
-    hecs::Entity,
+    assets::{Asset, AssetId},
     lifespan::LifeSpan,
     na,
-    physics2::{ContactQueue2, PhysicsData2},
+    physics2::{prelude::*, *},
     prelude::*,
-    rapier2d::prelude::{
-        ActiveEvents, Collider, ColliderBuilder, RigidBodyBuilder, RigidBodyHandle,
-    },
     unfold::{UnfoldBundle, UnfoldResult},
 };
 
-#[cfg(feature = "client")]
-use arcana::hecs::World;
-
-#[cfg(feature = "server")]
-use arcana::scoped_arena::Scope;
-
-cfg_if::cfg_if! {
-    if #[cfg(feature = "graphics")] {
-        use arcana::{
-            assets::WithId,
-            graphics::{Material, Texture},
-            rect::Rect,
-            sprite::{
-                anim::{SpriteGraphAnimation, SpriteGraphAnimationSystem},
-                sprite_sheet::{SpriteSheet, SpriteSheetMeta},
-                Sprite,graph::{AnimTransitionRule, CurrentAnimInfo}
-            },
-        };
-    }
-}
-
-#[cfg(any(feature = "client", feature = "server"))]
-use arcana::evoke;
-
-use arcana::assets::Asset;
-use goods::AssetId;
+#[cfg(feature = "graphics")]
+use arcana::{
+    assets::WithId,
+    graphics::{Material, Texture},
+    rect::Rect,
+    sprite::*,
+};
 
 pub struct Bullet;
 
@@ -221,9 +199,8 @@ impl System for TankSystem {
         {
             for collider in contacts.drain_contacts_started() {
                 let bits = physics.colliders.get(collider).unwrap().user_data as u64;
-                if let Some(entity) = Entity::from_bits(bits) {
-                    let bullet = cx.world.get_mut::<Bullet>(entity).is_ok();
-                    if bullet {
+                if let Some(entity) = arcana::hecs::Entity::from_bits(bits) {
+                    if cx.world.get_mut::<Bullet>(entity).is_ok() {
                         tank.alive = false;
                     }
                 }
@@ -397,56 +374,6 @@ fn unfold_tank(
         #[cfg(feature = "graphics")]
         tank_graph_animation(&sprite_sheet),
     ))
-}
-
-#[cfg(any(feature = "client", feature = "server"))]
-pub enum TankDescriptor {}
-
-#[cfg(feature = "client")]
-impl evoke::client::Descriptor for TankDescriptor {
-    type Query = (&'static mut Tank, &'static mut TankState);
-    type Pack = (Tank, TankState);
-
-    fn insert(pack: (Tank, TankState), entity: Entity, world: &mut World) {
-        let _ = world.insert(entity, pack);
-    }
-
-    fn modify(pack: (Tank, TankState), (tank, state): (&mut Tank, &mut TankState)) {
-        *tank = pack.0;
-        *state = pack.1;
-    }
-
-    fn remove(entity: Entity, world: &mut World) {
-        let _ = world.remove_one::<Tank>(entity);
-        let _ = world.remove_one::<TankState>(entity);
-    }
-}
-#[cfg(feature = "server")]
-impl evoke::server::DescriptorPack<'_> for TankDescriptor {
-    type Pack = (Tank, TankState);
-}
-
-#[cfg(feature = "server")]
-impl evoke::server::Descriptor for TankDescriptor {
-    type Query = (&'static Tank, &'static TankState);
-    type History = (Tank, TankState);
-
-    fn history((tank, state): (&Tank, &TankState)) -> (Tank, TankState) {
-        (*tank, *state)
-    }
-
-    fn replicate<'a>(
-        (tank, state): (&Tank, &TankState),
-        history: Option<&(Tank, TankState)>,
-        _scope: &'a Scope<'_>,
-    ) -> evoke::server::Replicate<(Tank, TankState)> {
-        match history {
-            Some((htank, hstate)) if htank == tank && hstate == state => {
-                evoke::server::Replicate::Unmodified
-            }
-            _ => evoke::server::Replicate::Modified((*tank, *state)),
-        }
-    }
 }
 
 #[cfg(feature = "graphics")]

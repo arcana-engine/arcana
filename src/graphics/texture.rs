@@ -1,12 +1,12 @@
 use std::future::{ready, Ready};
 
+use goods::AssetId;
 use sierra::{
     CreateImageError, ImageExtent, ImageInfo, ImageUsage, ImageViewInfo, Layout, Samples::Samples1,
 };
 
 pub use {
     super::Graphics,
-    crate::assets::AssetId,
     goods::{
         Asset, AssetBuild, AssetField, AssetFieldBuild, AssetHandle, AssetResult, Container, Error,
         Loader,
