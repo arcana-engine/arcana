@@ -1,7 +1,9 @@
-pub mod anim;
-// pub mod character;
-pub mod graph;
-pub mod sprite_sheet;
+mod anim;
+// mod character;
+mod graph;
+mod sprite_sheet;
+
+pub use self::{anim::*, graph::*, sprite_sheet::*};
 
 use bytemuck::{Pod, Zeroable};
 

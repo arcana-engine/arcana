@@ -4,36 +4,19 @@
 use std::net::Ipv4Addr;
 
 use arcana::{
-    camera::Camera2,
-    command::CommandQueue,
-    control::{Controlled, EntityController, EventTranslator, InputEvent},
-    event::{ElementState, KeyboardInput, VirtualKeyCode},
-    evoke::{
-        client::{ClientSystem, LocalPlayer, LocalPlayerPack},
-        PlayerId,
-    },
-    game::game2,
+    evoke,
     graphics::{simple::SimpleRenderer, sprite::SpriteDraw, DrawNode},
-    hecs::Entity,
-    physics2::Physics2,
-    prelude::Global2,
+    hecs,
+    physics2::*,
+    prelude::*,
     scoped_arena::Scope,
-    system::SystemContext,
     tiles::TileMap,
-    unfold::Unfold,
-    TimeSpan,
 };
 
 use tanks::*;
 
 #[derive(Debug)]
-pub struct TankComander {
-    forward: VirtualKeyCode,
-    backward: VirtualKeyCode,
-    left: VirtualKeyCode,
-    right: VirtualKeyCode,
-    fire: VirtualKeyCode,
-
+struct TankCommander {
     forward_pressed: bool,
     backward_pressed: bool,
     left_pressed: bool,
@@ -41,31 +24,9 @@ pub struct TankComander {
     fire_pressed: bool,
 }
 
-impl TankComander {
+impl TankCommander {
     pub fn main() -> Self {
-        TankComander {
-            forward: VirtualKeyCode::W,
-            backward: VirtualKeyCode::S,
-            left: VirtualKeyCode::A,
-            right: VirtualKeyCode::D,
-            fire: VirtualKeyCode::Space,
-
-            forward_pressed: false,
-            backward_pressed: false,
-            left_pressed: false,
-            right_pressed: false,
-            fire_pressed: false,
-        }
-    }
-
-    pub fn alt() -> Self {
-        TankComander {
-            forward: VirtualKeyCode::Up,
-            backward: VirtualKeyCode::Down,
-            left: VirtualKeyCode::Left,
-            right: VirtualKeyCode::Right,
-            fire: VirtualKeyCode::Numpad0,
-
+        TankCommander {
             forward_pressed: false,
             backward_pressed: false,
             left_pressed: false,
@@ -75,7 +36,7 @@ impl TankComander {
     }
 }
 
-impl EventTranslator for TankComander {
+impl EventTranslator for TankCommander {
     type Command = TankCommand;
 
     fn translate(&mut self, event: InputEvent) -> Option<TankCommand> {
@@ -84,71 +45,64 @@ impl EventTranslator for TankComander {
                 state,
                 virtual_keycode: Some(key),
                 ..
-            }) => {
-                if key == self.forward {
-                    match state {
-                        ElementState::Pressed if !self.forward_pressed => {
-                            self.forward_pressed = true;
-                            Some(TankCommand::Drive(1))
-                        }
-                        ElementState::Released if self.forward_pressed => {
-                            self.forward_pressed = false;
-                            Some(TankCommand::Drive(-1))
-                        }
-                        _ => None,
+            }) => match key {
+                VirtualKeyCode::W => match state {
+                    ElementState::Pressed if !self.forward_pressed => {
+                        self.forward_pressed = true;
+                        Some(TankCommand::Drive(1))
                     }
-                } else if key == self.backward {
-                    match state {
-                        ElementState::Pressed if !self.backward_pressed => {
-                            self.backward_pressed = true;
-                            Some(TankCommand::Drive(-1))
-                        }
-                        ElementState::Released if self.backward_pressed => {
-                            self.backward_pressed = false;
-                            Some(TankCommand::Drive(1))
-                        }
-                        _ => None,
+                    ElementState::Released if self.forward_pressed => {
+                        self.forward_pressed = false;
+                        Some(TankCommand::Drive(-1))
                     }
-                } else if key == self.left {
-                    match state {
-                        ElementState::Pressed if !self.left_pressed => {
-                            self.left_pressed = true;
-                            Some(TankCommand::Rotate(-1))
-                        }
-                        ElementState::Released if self.left_pressed => {
-                            self.left_pressed = false;
-                            Some(TankCommand::Rotate(1))
-                        }
-                        _ => None,
+                    _ => None,
+                },
+                VirtualKeyCode::S => match state {
+                    ElementState::Pressed if !self.backward_pressed => {
+                        self.backward_pressed = true;
+                        Some(TankCommand::Drive(-1))
                     }
-                } else if key == self.right {
-                    match state {
-                        ElementState::Pressed if !self.right_pressed => {
-                            self.right_pressed = true;
-                            Some(TankCommand::Rotate(1))
-                        }
-                        ElementState::Released if self.right_pressed => {
-                            self.right_pressed = false;
-                            Some(TankCommand::Rotate(-1))
-                        }
-                        _ => None,
+                    ElementState::Released if self.backward_pressed => {
+                        self.backward_pressed = false;
+                        Some(TankCommand::Drive(1))
                     }
-                } else if key == self.fire {
-                    match state {
-                        ElementState::Pressed if !self.fire_pressed => {
-                            self.fire_pressed = true;
-                            Some(TankCommand::Fire(true))
-                        }
-                        ElementState::Released if self.fire_pressed => {
-                            self.fire_pressed = false;
-                            Some(TankCommand::Fire(false))
-                        }
-                        _ => None,
+                    _ => None,
+                },
+                VirtualKeyCode::A => match state {
+                    ElementState::Pressed if !self.left_pressed => {
+                        self.left_pressed = true;
+                        Some(TankCommand::Rotate(-1))
                     }
-                } else {
-                    None
-                }
-            }
+                    ElementState::Released if self.left_pressed => {
+                        self.left_pressed = false;
+                        Some(TankCommand::Rotate(1))
+                    }
+                    _ => None,
+                },
+                VirtualKeyCode::D => match state {
+                    ElementState::Pressed if !self.right_pressed => {
+                        self.right_pressed = true;
+                        Some(TankCommand::Rotate(1))
+                    }
+                    ElementState::Released if self.right_pressed => {
+                        self.right_pressed = false;
+                        Some(TankCommand::Rotate(-1))
+                    }
+                    _ => None,
+                },
+                VirtualKeyCode::Space => match state {
+                    ElementState::Pressed if !self.fire_pressed => {
+                        self.fire_pressed = true;
+                        Some(TankCommand::Fire(true))
+                    }
+                    ElementState::Released if self.fire_pressed => {
+                        self.fire_pressed = false;
+                        Some(TankCommand::Fire(false))
+                    }
+                    _ => None,
+                },
+                _ => None,
+            },
             _ => None,
         }
     }
@@ -156,11 +110,11 @@ impl EventTranslator for TankComander {
 
 enum LocalTankPlayer {}
 
-impl<'a> LocalPlayerPack<'a> for LocalTankPlayer {
+impl<'a> evoke::client::LocalPlayerPack<'a> for LocalTankPlayer {
     type Pack = &'a [TankCommand];
 }
 
-impl LocalPlayer for LocalTankPlayer {
+impl evoke::client::LocalPlayer for LocalTankPlayer {
     type Query = &'static mut CommandQueue<TankCommand>;
 
     fn replicate<'a>(
@@ -244,8 +198,9 @@ fn main() {
         game.scheduler.add_system(tanks::BulletSystem);
 
         // Create client system to communicate with game server.
-        let mut client = ClientSystem::builder()
-            .with_descriptor::<TankDescriptor>()
+        let mut client = evoke::client::ClientSystem::builder()
+            .with_descriptor::<Tank>()
+            .with_descriptor::<TankState>()
             .with_descriptor::<TileMap>()
             .with_descriptor::<Global2>()
             .with_player::<LocalTankPlayer>()
@@ -270,8 +225,8 @@ fn main() {
         game.client = Some(client);
 
         struct RemoteControl {
-            entity: Option<Entity>,
-            pid: PlayerId,
+            entity: Option<hecs::Entity>,
+            pid: evoke::PlayerId,
         }
 
         let mut rc = RemoteControl { entity: None, pid };
@@ -279,7 +234,7 @@ fn main() {
         // Add system that will assume control of entities belonging to the added player.
         game.scheduler.add_system(move |cx: SystemContext<'_>| {
             if let Some(entity) = rc.entity {
-                if cx.world.query_one_mut::<&PlayerId>(entity).is_err() {
+                if cx.world.query_one_mut::<&evoke::PlayerId>(entity).is_err() {
                     tracing::error!("Controlled entity is broken");
 
                     let _ = cx.world.despawn(entity);
@@ -288,12 +243,16 @@ fn main() {
             }
 
             if rc.entity.is_none() {
-                for (e, pid) in cx.world.query_mut::<&PlayerId>().without::<Controlled>() {
+                for (e, pid) in cx
+                    .world
+                    .query_mut::<&evoke::PlayerId>()
+                    .without::<Controlled>()
+                {
                     if rc.pid == *pid {
                         tracing::info!("Found player's entity");
 
                         let controller =
-                            EntityController::assume_control(TankComander::main(), e, cx.world)
+                            EntityController::assume_control(TankCommander::main(), e, cx.world)
                                 .expect("Entity exists and is not controlled");
 
                         cx.control.add_global_controller(controller);
