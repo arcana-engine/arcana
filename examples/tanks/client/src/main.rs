@@ -19,7 +19,7 @@ use arcana::{
     prelude::Global2,
     scoped_arena::Scope,
     system::SystemContext,
-    tiles::{TileMap, TileMapDescriptor},
+    tiles::TileMap,
     unfold::Unfold,
     TimeSpan,
 };
@@ -246,7 +246,7 @@ fn main() {
         // Create client system to communicate with game server.
         let mut client = ClientSystem::builder()
             .with_descriptor::<TankDescriptor>()
-            .with_descriptor::<TileMapDescriptor>()
+            .with_descriptor::<TileMap>()
             .with_descriptor::<Global2>()
             .with_player::<LocalTankPlayer>()
             .build();
