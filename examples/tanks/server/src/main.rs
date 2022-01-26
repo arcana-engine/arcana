@@ -19,7 +19,7 @@ use arcana::{
     palette::{FromColor, Lch, Srgb},
     physics2::Physics2,
     scene::Global2,
-    tiles::{TileMap, TileMapDescriptor},
+    tiles::TileMap,
     unfold::Unfold,
     TimeSpan,
 };
@@ -154,7 +154,7 @@ fn main() {
         // Create server-side game session.
         let server = ServerSystem::builder()
             .with_descriptor::<TankDescriptor>()
-            .with_descriptor::<TileMapDescriptor>()
+            .with_descriptor::<TileMap>()
             .with_descriptor::<Global2>()
             .with_player::<RemoteTankPlayer>()
             .build(listener);
