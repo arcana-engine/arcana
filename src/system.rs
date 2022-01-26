@@ -51,6 +51,10 @@ pub struct SystemContext<'a> {
     /// Graphics context.
     #[cfg(feature = "graphics")]
     pub graphics: &'a mut Graphics,
+
+    #[cfg(not(feature = "graphics"))]
+    #[doc(hidden)]
+    pub graphics: &'a mut (),
 }
 
 impl<'a> SystemContext<'a> {
@@ -65,7 +69,7 @@ impl<'a> SystemContext<'a> {
             clock: self.clock,
             #[cfg(feature = "visible")]
             control: self.control,
-            #[cfg(feature = "graphics")]
+
             graphics: self.graphics,
         }
     }
@@ -82,7 +86,6 @@ impl<'a> SystemContext<'a> {
             #[cfg(feature = "visible")]
             control: self.control,
 
-            #[cfg(feature = "graphics")]
             graphics: self.graphics,
         }
     }

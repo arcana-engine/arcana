@@ -7,21 +7,26 @@ use hecs::{Entity, World};
 
 #[cfg(feature = "physics2d")]
 use parry2d::shape::SharedShape;
+
 #[cfg(feature = "physics2d")]
-use rapier2d::prelude::RigidBodyHandle;
-#[cfg(feature = "physics2d")]
-use rapier2d::prelude::{ColliderBuilder, RigidBodyBuilder};
+use rapier2d::prelude::{ColliderBuilder, RigidBodyBuilder, RigidBodyHandle};
 
 #[cfg(feature = "physics2d")]
 use crate::physics2::PhysicsData2;
 
-use crate::system::{System, SystemContext};
+use crate::{
+    assets::WithId,
+    resources::Res,
+    unfold::{Unfold, UnfoldBundle, UnfoldResult},
+};
 
 use super::set::TileSet;
 
-#[derive(Clone, PartialEq, serde::Serialize, serde::Deserialize, Asset)]
+#[derive(Clone, PartialEq, serde::Serialize, serde::Deserialize, Asset, Unfold)]
 #[asset(name = "arcana.tilemap")]
+#[unfold(fn unfold_tile_map)]
 pub struct TileMap {
+    #[unfold(asset: TileSet)]
     pub set: AssetId,
     pub cell_size: f32,
     pub width: usize,
@@ -39,128 +44,57 @@ impl TileMap {
     }
 }
 
-pub(crate) struct TileMapSpawned {
-    pub set_id: AssetId,
-    pub set: TileSet,
-}
+fn unfold_tile_map(
+    set: &WithId<TileSet>,
+    cell_size: &f32,
+    width: &usize,
+    cells: &Arc<[usize]>,
+    res: &mut Res,
+) -> UnfoldResult<impl UnfoldBundle> {
+    #[cfg(feature = "physics2d")]
+    let body: RigidBodyHandle = {
+        let mut compound = Vec::new();
 
-pub struct TileMapSystem;
-
-impl System for TileMapSystem {
-    fn name(&self) -> &str {
-        "TileMapSystem"
-    }
-
-    fn run(&mut self, cx: SystemContext<'_>) {
-        let mut spawn = Vec::new_in(&*cx.scope);
-
-        let query = cx
-            .world
-            .query_mut::<()>()
-            .with::<TileMapSpawned>()
-            .without::<TileMap>();
-
-        let mut destruct = Vec::new_in(&*cx.scope);
-        destruct.extend(query.into_iter().map(|(e, ())| e));
-
-        for e in destruct {
-            let _ = cx.world.remove_one::<TileMapSpawned>(e);
-
-            #[cfg(feature = "physics2d")]
-            let _ = cx.world.remove_one::<RigidBodyHandle>(e);
-        }
-
-        let query = cx
-            .world
-            .query_mut::<(&TileMap, Option<&mut TileMapSpawned>)>();
-
-        for (entity, (map, spawned)) in query {
-            if let Some(spawned) = &spawned {
-                if spawned.set_id == map.set {
-                    continue;
-                }
-            }
-
-            match spawned {
-                None => {
-                    #[cfg(feature = "graphics")]
-                    let opt = cx.assets.build::<TileSet, _>(map.set, cx.graphics);
-                    #[cfg(not(feature = "graphics"))]
-                    let opt = cx.assets.build::<TileSet, _>(map.set, &mut ());
-
-                    if let Some(set) = opt {
-                        spawn.push((entity, set.clone(), map.clone()));
+        for (j, row) in cells.chunks(*width).enumerate() {
+            for (i, &cell) in row.iter().enumerate() {
+                let tile = match set.tiles.get(cell) {
+                    None => {
+                        tracing::error!("Missing tile '{}' in the tileset", cell);
+                        continue;
                     }
-                }
-                Some(spawned) => {
-                    if spawned.set_id != map.set {
-                        #[cfg(feature = "graphics")]
-                        let opt = cx.assets.build::<TileSet, _>(map.set, cx.graphics);
-                        #[cfg(not(feature = "graphics"))]
-                        let opt = cx.assets.build::<TileSet, _>(map.set, &mut ());
+                    Some(tile) => tile,
+                };
 
-                        if let Some(set) = opt {
-                            spawn.push((entity, set.clone(), map.clone()));
-                        }
-                    } else {
-                        spawn.push((entity, spawned.set.clone(), map.clone()));
-                    }
+                if let Some(collider) = tile.collider {
+                    let tr = na::Translation2::new(i as f32 * cell_size, j as f32 * cell_size);
+
+                    let shape = collider.shared_shape(*cell_size, res);
+                    compound.push((tr.into(), shape));
                 }
             }
         }
 
-        for (entity, set, map) in spawn {
-            #[cfg(feature = "physics2d")]
-            {
-                let mut compound = Vec::new();
+        let shape = SharedShape::compound(compound);
 
-                for (j, row) in map.cells.chunks(map.width).enumerate() {
-                    for (i, &cell) in row.iter().enumerate() {
-                        let tile = match set.tiles.get(cell) {
-                            None => {
-                                tracing::error!("Missing tile '{}' in the tileset", cell);
-                                continue;
-                            }
-                            Some(tile) => tile,
-                        };
+        let physics = res.with(PhysicsData2::new);
+        let body = physics
+            .bodies
+            .insert(RigidBodyBuilder::new_static().build());
 
-                        if let Some(collider) = tile.collider {
-                            let tr = na::Translation2::new(
-                                i as f32 * map.cell_size,
-                                j as f32 * map.cell_size,
-                            );
+        physics.colliders.insert_with_parent(
+            ColliderBuilder::new(shape).build(),
+            body,
+            &mut physics.bodies,
+        );
 
-                            let shape = collider.shared_shape(map.cell_size, cx.res);
-                            compound.push((tr.into(), shape));
-                        }
-                    }
-                }
+        body
+    };
 
-                let shape = SharedShape::compound(compound);
-
-                let physics = cx.res.with(PhysicsData2::new);
-                let body = physics
-                    .bodies
-                    .insert(RigidBodyBuilder::new_static().build());
-
-                physics.colliders.insert_with_parent(
-                    ColliderBuilder::new(shape).build(),
-                    body,
-                    &mut physics.bodies,
-                );
-
-                let _ = cx.world.insert_one(entity, body);
-            }
-
-            let _ = cx.world.insert(
-                entity,
-                (TileMapSpawned {
-                    set,
-                    set_id: map.set,
-                },),
-            );
-        }
-    }
+    UnfoldResult::with_bundle((
+        #[cfg(feature = "physics2d")]
+        body,
+        TileSet::clone(set),
+    ))
 }
 
 #[cfg(any(feature = "client", feature = "server"))]
@@ -181,7 +115,6 @@ impl evoke::client::Descriptor for TileMapDescriptor {
 
     fn remove(entity: Entity, world: &mut World) {
         let _ = world.remove_one::<TileMap>(entity);
-        let _ = world.remove_one::<TileMapSpawned>(entity);
     }
 }
 

@@ -2,7 +2,6 @@ use crate::{
     assets::Assets,
     cfg::Config,
     clocks::{Clocks, TimeSpan},
-    fps::FpsMeter,
     lifespan::LifeSpanSystem,
     resources::Res,
     system::{Scheduler, SystemContext},
@@ -21,6 +20,7 @@ use crate::scene::SceneSystem;
 use crate::{
     control::Control,
     event::{Event, Loop, WindowEvent},
+    fps::FpsMeter,
     funnel::Funnel,
     hecs::DynamicBundle,
 };
@@ -147,6 +147,8 @@ impl Game {
             control: &mut self.control,
             #[cfg(feature = "graphics")]
             graphics: &mut self.graphics,
+            #[cfg(not(feature = "graphics"))]
+            graphics: Box::leak(Box::new(())),
         }
     }
 }
@@ -538,6 +540,7 @@ where
                                 spawner: &mut spawner,
                                 assets: &mut assets,
                                 scope: &mut scope,
+                                graphics: &mut (),
                             },
                             teardown_timeout.into(),
                         )
@@ -557,6 +560,7 @@ where
                     assets: &mut assets,
                     scope: &mut scope,
                     clock,
+                    graphics: &mut (),
                 };
 
                 scheduler.run(cx.reborrow());
@@ -585,6 +589,7 @@ where
                         spawner: &mut spawner,
                         assets: &mut assets,
                         scope: &mut scope,
+                        graphics: &mut (),
                     })
                     .wrap_err_with(|| "Task returned error")?;
 
