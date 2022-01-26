@@ -19,7 +19,7 @@ use arcana::{
     palette::{FromColor, Lch, Srgb},
     physics2::Physics2,
     scene::Global2,
-    tiles::{TileMap, TileMapDescriptor, TileMapSystem},
+    tiles::{TileMap, TileMapDescriptor},
     unfold::Unfold,
     TimeSpan,
 };
@@ -138,11 +138,12 @@ fn main() {
             }
         }
 
+        TileMap::schedule_unfold_system(&mut game.scheduler);
+        Tank::schedule_unfold_system(&mut game.scheduler);
+
         game.scheduler.add_ticking_system(Physics2::new());
-        game.scheduler.add_ticking_system(TileMapSystem);
         game.scheduler.add_ticking_system(tanks::TankSystem);
         game.scheduler.add_ticking_system(tanks::BulletSystem);
-        Tank::schedule_unfold_system(&mut game.scheduler);
 
         // Bind listener for incoming connections.
         // let listener = TcpListener::bind((Ipv4Addr::UNSPECIFIED, 12453)).await?;

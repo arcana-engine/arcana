@@ -1,7 +1,7 @@
 #![feature(allocator_api)]
 
 use arcana::{
-    hecs::{Entity, World},
+    hecs::Entity,
     lifespan::LifeSpan,
     na,
     physics2::{ContactQueue2, PhysicsData2},
@@ -11,6 +11,9 @@ use arcana::{
     },
     unfold::{UnfoldBundle, UnfoldResult},
 };
+
+#[cfg(feature = "client")]
+use arcana::hecs::World;
 
 #[cfg(feature = "server")]
 use arcana::scoped_arena::Scope;
@@ -344,6 +347,7 @@ pub struct Tank {
     pub sprite_sheet: AssetId,
 }
 
+#[allow(unused_variables)]
 fn unfold_tank(
     size: &na::Vector2<f32>,
     color: &[f32; 3],

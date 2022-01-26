@@ -167,7 +167,7 @@ impl Assets {
         self.caches.values_mut().for_each(|cache| cache.cleanup());
     }
 
-    pub fn build<A, B>(&mut self, id: AssetId, builder: &mut B) -> Option<&A>
+    pub fn build<A, B>(&mut self, id: AssetId, builder: &mut B) -> Option<Result<&A, &Error>>
     where
         A: AssetBuild<B>,
     {
@@ -178,7 +178,7 @@ impl Assets {
         cache.cast::<A>().build(id, &self.loader, builder)
     }
 
-    pub fn get<A>(&mut self, id: AssetId) -> Option<&A>
+    pub fn get<A>(&mut self, id: AssetId) -> Option<Result<&A, &Error>>
     where
         A: TrivialAsset,
     {

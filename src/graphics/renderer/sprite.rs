@@ -19,7 +19,7 @@ use crate::{
     rect::Rect,
     scene::Global2,
     sprite::Sprite,
-    tiles::{TileMap, TileMapSpawned},
+    tiles::{TileMap, TileSet},
 };
 
 pub struct SpriteDraw {
@@ -223,15 +223,12 @@ impl DrawNode for SpriteDraw {
             sprites.push(instance);
         }
 
-        for (_, (map, spawned, global)) in cx
-            .world
-            .query_mut::<(&TileMap, &TileMapSpawned, &Global2)>()
-        {
+        for (_, (map, set, global)) in cx.world.query_mut::<(&TileMap, &TileSet, &Global2)>() {
             let hc = map.cell_size * 0.5;
 
             for (j, row) in map.cells.chunks(map.width).enumerate() {
                 for (i, &cell) in row.iter().enumerate() {
-                    let tile = match spawned.set.tiles.get(cell) {
+                    let tile = match set.tiles.get(cell) {
                         None => {
                             return Err(eyre::eyre!("Missing tile '{}' in the tileset", cell));
                         }

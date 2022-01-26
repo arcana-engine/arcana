@@ -41,6 +41,10 @@ pub struct TaskContext<'a> {
     /// Graphics context.
     #[cfg(feature = "graphics")]
     pub graphics: &'a mut Graphics,
+
+    #[cfg(not(feature = "graphics"))]
+    #[doc(hidden)]
+    pub graphics: &'a mut (),
 }
 
 impl<'a> From<SystemContext<'a>> for TaskContext<'a> {
@@ -53,7 +57,7 @@ impl<'a> From<SystemContext<'a>> for TaskContext<'a> {
             scope: &*cx.scope,
             #[cfg(feature = "visible")]
             control: cx.control,
-            #[cfg(feature = "graphics")]
+
             graphics: cx.graphics,
         }
     }
@@ -76,7 +80,7 @@ impl<'a> TaskContext<'a> {
             scope: self.scope,
             #[cfg(feature = "visible")]
             control: self.control,
-            #[cfg(feature = "graphics")]
+
             graphics: self.graphics,
         }
     }
@@ -268,6 +272,7 @@ impl RawTaskContext {
             scope: NonNull::from(cx.scope).cast(),
             #[cfg(feature = "visible")]
             control: NonNull::from(cx.control),
+
             #[cfg(feature = "graphics")]
             graphics: NonNull::from(cx.graphics),
         }
@@ -282,8 +287,12 @@ impl RawTaskContext {
             scope: &*self.scope.cast().as_ptr(),
             #[cfg(feature = "visible")]
             control: &mut *self.control.as_ptr(),
+
             #[cfg(feature = "graphics")]
             graphics: &mut *self.graphics.as_ptr(),
+
+            #[cfg(not(feature = "graphics"))]
+            graphics: Box::leak(Box::new(())),
         }
     }
 }

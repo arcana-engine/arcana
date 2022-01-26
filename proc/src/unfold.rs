@@ -177,9 +177,13 @@ pub fn derive_unfold(item: TokenStream) -> syn::Result<TokenStream> {
                         Some(old_id) if old_id == id => {}
                         _ => match cx.assets.build::<#asset_ty, _>(id, cx.graphics) {
                             None => {},
-                            Some(asset) => {
+                            Some(Ok(asset)) => {
                                 spawned.#spawned_field_ident = Some(id);
                                 entity_builder.add(<#asset_ty as Clone>::clone(asset));
+                            }
+                            Some(Err(err)) => {
+                                tracing::error!("Failed to load asset '{}({:})'. {:#}", type_name::<#asset_ty>(), id, err);
+                                spawned.#spawned_field_ident = Some(id);
                             }
                         },
                     }
@@ -205,7 +209,7 @@ pub fn derive_unfold(item: TokenStream) -> syn::Result<TokenStream> {
                     }
 
                     fn run(&mut self, cx: ::arcana::system::SystemContext<'_>) {
-                        use core::{borrow::Borrow, clone::Clone, option::Option::{self, None, Some}};
+                        use core::{any::type_name, borrow::Borrow, clone::Clone, option::Option::{self, None, Some}};
                         use std::vec::Vec;
                         use arcana::{assets::{AssetId, TypedAssetIdExt}, hecs::{Entity, EntityBuilder}};
 
@@ -286,8 +290,9 @@ pub fn derive_unfold(item: TokenStream) -> syn::Result<TokenStream> {
                             );
                         } else {
                             unfold_spawned_fields.push(quote::quote_spanned!(field.span() => #ty));
-                            unfold_spawned_fields_init
-                                .push(quote::quote_spanned!(field_ident.span() => Clone::clone(&value.#field_ident)));
+                            unfold_spawned_fields_init.push(
+                                quote::quote_spanned!(field_ident.span() => Clone::clone(&value.#field_ident))
+                            );
                         }
 
                         unfold_fn_arg_types.push(quote::quote_spanned!(field.span() => &#ty));
@@ -311,7 +316,7 @@ pub fn derive_unfold(item: TokenStream) -> syn::Result<TokenStream> {
                         };
 
                         if field.ident.is_some() {
-                            unfold_spawned_fields.push(quote::quote_spanned!(field.span() => #field_ident: ::core::option::Option<::arcana::assets::WithId<#asset_ty>>));
+                            unfold_spawned_fields.push(quote::quote_spanned!(field.span() => #field_ident: ::core::option::Option< ::core::result::Result< ::arcana::assets::WithId<#asset_ty>, ::arcana::assets::AssetId > >));
                             unfold_spawned_fields_init.push(
                                 quote::quote_spanned!(field_ident.span() => #field_ident: None),
                             );
@@ -326,21 +331,26 @@ pub fn derive_unfold(item: TokenStream) -> syn::Result<TokenStream> {
                         unfold_fn_arg_types
                             .push(quote::quote_spanned!(field.span() => &::arcana::assets::WithId<#asset_ty>));
                         unfold_fn_args
-                            .push(quote::quote_spanned!(field.span() => spawned.#field_ident.as_ref().unwrap()));
+                            .push(quote::quote_spanned!(field.span() => spawned.#field_ident.as_ref().unwrap().as_ref().unwrap()));
 
                         updates.push(quote::quote_spanned!(field.span() => {
                             let id = *Borrow::<AssetId>::borrow(&value.#field_ident);
                             match &spawned.#field_ident {
-                                Some(old_id) if WithId::id(old_id) == id => {}
+                                Some(Ok(old_id)) if WithId::id(old_id) == id => {}
+                                Some(Err(old_id)) if *old_id == id => {}
                                 _ => match cx.assets.build::<#asset_ty, _>(id, cx.graphics) {
                                     None => {
-                                        tracing::error!("Asset is NOT READY");
                                         ready = false;
                                     },
-                                    Some(asset) => {
-                                        tracing::error!("Asset is READY");
+                                    Some(Ok(asset)) => {
                                         updated = true;
-                                        spawned.#field_ident = Some(WithId::new(Clone::clone(asset), id));
+                                        spawned.#field_ident = Some(Ok(WithId::new(Clone::clone(asset), id)));
+                                    }
+                                    Some(Err(err)) => {
+                                        ready = false;
+
+                                        tracing::error!("Failed to load asset '{}({:})'. {:#}", type_name::<#asset_ty>(), id, err);
+                                        spawned.#field_ident = Some(Err(id));
                                     }
                                 },
                             }
@@ -368,7 +378,7 @@ pub fn derive_unfold(item: TokenStream) -> syn::Result<TokenStream> {
                     }
 
                     fn run(&mut self, cx: ::arcana::system::SystemContext<'_>) {
-                        use core::{borrow::Borrow, clone::Clone, iter::Iterator, option::Option::{self, Some, None}};
+                        use core::{any::type_name, borrow::Borrow, clone::Clone, iter::Iterator, option::Option::{self, Some, None}};
                         use std::vec::Vec;
                         use ::arcana::{assets::WithId, hecs::{Entity, EntityBuilder, World}, unfold::{UnfoldBundle, UnfoldResult}, resources::Res};
 
@@ -418,12 +428,14 @@ pub fn derive_unfold(item: TokenStream) -> syn::Result<TokenStream> {
                                 if Iterator::size_hint(&spawn).1 != Some(0) {
                                     spawns.push((e, spawn));
                                 }
+                            }
 
-                                if let Some(spawned_insert) = spawned_insert {
-                                    tracing::error!("Inserting new 'Spawned'");
-                                    entity_builder.add(spawned_insert);
-                                }
 
+                            if let Some(spawned_insert) = spawned_insert {
+                                entity_builder.add(spawned_insert);
+                            }
+
+                            if entity_builder.component_types().next().is_some() {
                                 inserts.push((e, entity_builder));
                             }
                         }

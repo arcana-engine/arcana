@@ -1,6 +1,6 @@
 use std::any::TypeId;
 
-use goods::{AssetBuild, AssetHandle, AssetId, Loader};
+use goods::{AssetBuild, AssetHandle, AssetId, Error, Loader};
 use hashbrown::{hash_map::Entry, HashMap};
 
 enum AssetState<A> {
@@ -12,7 +12,7 @@ enum AssetState<A> {
         asset: A,
     },
     Error {
-        err: goods::Error,
+        error: goods::Error,
     },
 }
 
@@ -27,14 +27,19 @@ impl<A> AssetCache<A> {
         }
     }
 
-    pub fn build<B>(&mut self, id: AssetId, loader: &Loader, builder: &mut B) -> Option<&A>
+    pub fn build<B>(
+        &mut self,
+        id: AssetId,
+        loader: &Loader,
+        builder: &mut B,
+    ) -> Option<Result<&A, &Error>>
     where
         A: AssetBuild<B>,
     {
         match self.assets.entry(id) {
             Entry::Occupied(mut entry) => match entry.get_mut() {
                 AssetState::Loaded { .. } => match entry.into_mut() {
-                    AssetState::Loaded { asset } => Some(asset),
+                    AssetState::Loaded { asset } => Some(Ok(asset)),
                     _ => unreachable!(),
                 },
                 AssetState::Requested {
@@ -49,7 +54,7 @@ impl<A> AssetCache<A> {
                                 let asset = asset.clone();
                                 entry.insert(AssetState::Loaded { asset });
                                 match entry.into_mut() {
-                                    AssetState::Loaded { asset } => Some(asset),
+                                    AssetState::Loaded { asset } => Some(Ok(asset)),
                                     _ => unreachable!(),
                                 }
                             }
@@ -60,7 +65,7 @@ impl<A> AssetCache<A> {
                                     std::any::type_name::<A>(),
                                     err
                                 );
-                                entry.insert(AssetState::Error { err });
+                                entry.insert(AssetState::Error { error: err });
                                 None
                             }
                         },
@@ -84,13 +89,16 @@ impl<A> AssetCache<A> {
                             let asset = asset.clone();
                             let state = entry.insert(AssetState::Loaded { asset });
                             match state {
-                                AssetState::Loaded { asset } => Some(asset),
+                                AssetState::Loaded { asset } => Some(Ok(asset)),
                                 _ => unreachable!(),
                             }
                         }
                         Err(err) => {
-                            entry.insert(AssetState::Error { err });
-                            None
+                            let state = entry.insert(AssetState::Error { error: err });
+                            match state {
+                                AssetState::Error { error } => Some(Err(error)),
+                                _ => unreachable!(),
+                            }
                         }
                     },
                 }
@@ -99,15 +107,13 @@ impl<A> AssetCache<A> {
     }
 
     pub fn cleanup(&mut self) {
-        self.assets.retain(|id, state| match state {
+        self.assets.retain(|_, state| match state {
             AssetState::Requested { polled, .. } => {
                 *polled = false;
                 true
             }
             AssetState::Loaded { .. } => false,
-            AssetState::Error { err } => {
-                true
-            }
+            AssetState::Error { .. } => true,
         })
     }
 }
