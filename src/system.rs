@@ -4,12 +4,11 @@ use {
         resources::Res,
         task::{Spawner, TaskContext},
     },
-    eyre::WrapErr as _,
-    goods::Loader,
     hecs::World,
     scoped_arena::Scope,
 };
 
+use crate::assets::Assets;
 #[cfg(feature = "visible")]
 use crate::control::Control;
 
@@ -37,7 +36,7 @@ pub struct SystemContext<'a> {
     /// Asset loader.
     /// Assets are loaded asynchronously,
     /// result can be awaited in task. See `spawner` field.
-    pub loader: &'a Loader,
+    pub assets: &'a mut Assets,
 
     /// Arena allocator for allocations in hot-path.
     pub scope: &'a mut Scope<'static>,
@@ -61,7 +60,7 @@ impl<'a> SystemContext<'a> {
             world: self.world,
             res: self.res,
             spawner: self.spawner,
-            loader: self.loader,
+            assets: self.assets,
             scope: self.scope,
             clock: self.clock,
             #[cfg(feature = "visible")]
@@ -77,7 +76,7 @@ impl<'a> SystemContext<'a> {
             world: self.world,
             res: self.res,
             spawner: self.spawner,
-            loader: self.loader,
+            assets: self.assets,
             scope: &self.scope,
 
             #[cfg(feature = "visible")]
@@ -96,7 +95,7 @@ pub trait System: 'static {
     fn name(&self) -> &str;
 
     /// Run system with provided context.
-    fn run(&mut self, cx: SystemContext<'_>) -> eyre::Result<()>;
+    fn run(&mut self, cx: SystemContext<'_>);
 }
 
 /// Functions are systems.
@@ -108,9 +107,8 @@ where
         std::any::type_name::<F>()
     }
 
-    fn run(&mut self, cx: SystemContext<'_>) -> eyre::Result<()> {
+    fn run(&mut self, cx: SystemContext<'_>) {
         (*self)(cx);
-        Ok(())
     }
 }
 
@@ -136,6 +134,8 @@ impl Scheduler {
 
     /// Creates new scheduler with specified tick step.
     pub fn with_tick_span(tick_span: TimeSpan) -> Self {
+        assert_ne!(tick_span, TimeSpan::ZERO);
+
         Scheduler {
             var_systems: Vec::new(),
             fixed_systems: Vec::new(),
@@ -149,15 +149,23 @@ impl Scheduler {
         self.tick_span = tick_span;
     }
 
+    /// Waits for next system to run.
+    pub fn next_system_run(&self) -> TimeStamp {
+        match self.fixed_systems.iter().map(|fixed| fixed.next).min() {
+            None => self.next_tick,
+            Some(next_fixed) => self.next_tick.min(next_fixed),
+        }
+    }
+
     /// Adds system to the app.
-    #[cfg(feature = "visible")]
+    #[cfg(feature = "visible")] // TODO: Choose better guard than this feature.
     pub fn with_system(mut self, system: impl System) -> Self {
         self.var_systems.push(Box::new(system));
         self
     }
 
     /// Adds system to the app.
-    #[cfg(feature = "visible")]
+    #[cfg(feature = "visible")] // TODO: Choose better guard than this feature.
     pub fn add_system(&mut self, system: impl System) -> &mut Self {
         self.var_systems.push(Box::new(system));
         self
@@ -203,7 +211,7 @@ impl Scheduler {
         }
     }
 
-    pub fn run(&mut self, mut cx: SystemContext<'_>) -> eyre::Result<()> {
+    pub fn run(&mut self, mut cx: SystemContext<'_>) {
         let clock = cx.clock;
 
         // Run systems for game ticks.
@@ -213,9 +221,7 @@ impl Scheduler {
 
             for system in self.tick_systems.iter_mut() {
                 let cx = cx.reborrow();
-                system.run(cx).wrap_err_with(|| SystemFailure {
-                    name: system.name().to_owned(),
-                })?;
+                system.run(cx);
             }
 
             self.next_tick += self.tick_span;
@@ -231,9 +237,7 @@ impl Scheduler {
                     cx.clock.now = fixed.next;
 
                     let cx = cx.reborrow();
-                    fixed.system.run(cx).wrap_err_with(|| SystemFailure {
-                        name: fixed.system.name().to_owned(),
-                    })?;
+                    fixed.system.run(cx);
 
                     fixed.next += fixed.step;
                 }
@@ -245,12 +249,8 @@ impl Scheduler {
 
         for system in self.var_systems.iter_mut() {
             let cx = cx.reborrow();
-            system.run(cx).wrap_err_with(|| SystemFailure {
-                name: system.name().to_owned(),
-            })?;
+            system.run(cx);
         }
-
-        Ok(())
     }
 }
 

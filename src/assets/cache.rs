@@ -1,163 +1,139 @@
-use std::{marker::PhantomData, mem::take};
+use std::any::TypeId;
 
-use goods::{Asset, AssetBuild, AssetHandle, AssetId, AssetResult, Loader};
+use goods::{AssetBuild, AssetHandle, AssetId, Loader};
 use hashbrown::{hash_map::Entry, HashMap};
 
-use crate::{
-    system::{System, SystemContext},
-    task::{with_async_task_context, Spawner, TaskContext},
-};
-
-pub struct AssetLoadCache<A: Asset> {
-    to_load: Vec<(AssetId, Option<AssetHandle<A>>, Option<AssetResult<A>>)>,
-    loaded: HashMap<AssetId, Option<A>>,
-    task_running: bool,
+enum AssetState<A> {
+    Requested {
+        handle: AssetHandle<A>,
+        polled: bool,
+    },
+    Loaded {
+        asset: A,
+    },
+    Error {
+        err: goods::Error,
+    },
 }
 
-impl<A> AssetLoadCache<A>
-where
-    A: Asset,
-{
+pub(super) struct AssetCache<A> {
+    assets: HashMap<AssetId, AssetState<A>>,
+}
+
+impl<A> AssetCache<A> {
     pub fn new() -> Self {
-        AssetLoadCache {
-            to_load: Vec::new(),
-            loaded: HashMap::new(),
-            task_running: false,
+        AssetCache {
+            assets: HashMap::new(),
         }
     }
 
-    pub fn load(&mut self, id: AssetId, loader: &Loader) {
-        match self.loaded.entry(id) {
-            Entry::Occupied(_) => return,
-            Entry::Vacant(entry) => {
-                let handle = loader.load(id);
-                entry.insert(None);
-                self.to_load.push((id, Some(handle), None));
-            }
-        }
-    }
-
-    pub fn get_ready(&self, id: AssetId) -> Option<&A> {
-        self.loaded.get(&id).and_then(Option::as_ref)
-    }
-
-    pub fn get_or_load(&mut self, id: AssetId, loader: &Loader) -> Option<&A> {
-        match self.loaded.entry(id) {
-            Entry::Occupied(entry) => match entry.into_mut() {
-                None => None,
-                Some(asset) => Some(asset),
-            },
-            Entry::Vacant(entry) => {
-                let handle = loader.load(id);
-                entry.insert(None);
-                self.to_load.push((id, Some(handle), None));
-                None
-            }
-        }
-    }
-
-    pub fn ensure_task<B, F>(&mut self, spawner: &mut Spawner, builder: F)
+    pub fn build<B>(&mut self, id: AssetId, loader: &Loader, builder: &mut B) -> Option<&A>
     where
         A: AssetBuild<B>,
-        B: 'static,
-        F: Fn(TaskContext<'_>) -> &mut B + Send + 'static,
     {
-        if self.to_load.is_empty() || self.task_running {
-            return;
-        }
-
-        self.task_running = true;
-        spawner.spawn(async move {
-            let mut to_load = Vec::new();
-
-            loop {
-                debug_assert!(to_load.is_empty());
-
-                let run = with_async_task_context(|cx| {
-                    let me = cx.res.get_mut::<Self>().unwrap();
-
-                    if me.to_load.is_empty() {
-                        // If there's noting to load - end task.
-                        me.task_running = false;
-                        return false;
-                    }
-
-                    // Or take all sets to load into async scope.
-                    to_load = take(&mut me.to_load);
-                    true
-                });
-
-                if !run {
-                    break;
-                }
-
-                // Ensure all map assets are loaded.
-                for (_, handle, result) in &mut to_load {
-                    debug_assert!(handle.is_some());
-                    debug_assert!(result.is_none());
-                    *result = Some(handle.take().unwrap().await);
-                }
-
-                with_async_task_context(|mut cx| {
-                    for (id, handle, result) in to_load.drain(..) {
-                        debug_assert!(result.is_some());
-                        debug_assert!(handle.is_none());
-
-                        let mut result = result.unwrap();
-                        let set = result.build(builder(cx.reborrow()));
-
-                        match set {
-                            Ok(set) => {
-                                let me = cx.res.get_mut::<Self>().unwrap();
-                                me.loaded.insert(id, Some(set.clone()));
+        match self.assets.entry(id) {
+            Entry::Occupied(mut entry) => match entry.get_mut() {
+                AssetState::Loaded { .. } => match entry.into_mut() {
+                    AssetState::Loaded { asset } => Some(asset),
+                    _ => unreachable!(),
+                },
+                AssetState::Requested {
+                    handle,
+                    polled: polled @ false,
+                } => {
+                    *polled = true;
+                    match handle.get_ready() {
+                        None => None,
+                        Some(mut result) => match result.build(builder) {
+                            Ok(asset) => {
+                                let asset = asset.clone();
+                                entry.insert(AssetState::Loaded { asset });
+                                match entry.into_mut() {
+                                    AssetState::Loaded { asset } => Some(asset),
+                                    _ => unreachable!(),
+                                }
                             }
                             Err(err) => {
-                                tracing::error!("Failed to load set '{}': {:#}", id, err);
+                                tracing::error!(
+                                    "Failed to load asset {}: {}. {:#}",
+                                    id,
+                                    std::any::type_name::<A>(),
+                                    err
+                                );
+                                entry.insert(AssetState::Error { err });
+                                None
+                            }
+                        },
+                    }
+                }
+                _ => None,
+            },
+            Entry::Vacant(entry) => {
+                let mut handle = loader.load::<A, _>(id);
+
+                match handle.get_ready() {
+                    None => {
+                        entry.insert(AssetState::Requested {
+                            handle,
+                            polled: true,
+                        });
+                        None
+                    }
+                    Some(mut result) => match result.build(builder) {
+                        Ok(asset) => {
+                            let asset = asset.clone();
+                            let state = entry.insert(AssetState::Loaded { asset });
+                            match state {
+                                AssetState::Loaded { asset } => Some(asset),
+                                _ => unreachable!(),
                             }
                         }
-                    }
-                });
+                        Err(err) => {
+                            entry.insert(AssetState::Error { err });
+                            None
+                        }
+                    },
+                }
             }
-
-            Ok(())
-        });
-    }
-
-    pub fn clear_ready(&mut self) {
-        self.loaded.retain(|_, opt| opt.is_none());
-    }
-}
-
-pub struct AssetLoadCacheClearSystem<A> {
-    name: Box<str>,
-    marker: PhantomData<fn(A) -> A>,
-}
-
-impl<A> AssetLoadCacheClearSystem<A>
-where
-    A: Asset,
-{
-    pub fn new() -> Self {
-        AssetLoadCacheClearSystem {
-            name: format!("Asset load cache clear system for '{}'", A::name()).into_boxed_str(),
-            marker: PhantomData,
         }
     }
+
+    pub fn cleanup(&mut self) {
+        self.assets.retain(|id, state| match state {
+            AssetState::Requested { polled, .. } => {
+                *polled = false;
+                true
+            }
+            AssetState::Loaded { .. } => false,
+            AssetState::Error { err } => {
+                true
+            }
+        })
+    }
 }
 
-impl<A> System for AssetLoadCacheClearSystem<A>
+pub(super) trait AnyAssetCache: Send + Sync {
+    fn type_id(&self) -> TypeId;
+
+    fn cleanup(&mut self);
+}
+
+impl<A> AnyAssetCache for AssetCache<A>
 where
-    A: Asset,
+    A: Send + Sync + 'static,
 {
-    fn name(&self) -> &str {
-        &self.name
+    fn type_id(&self) -> TypeId {
+        TypeId::of::<Self>()
     }
 
-    fn run(&mut self, cx: SystemContext<'_>) -> eyre::Result<()> {
-        if let Some(cache) = cx.res.get_mut::<AssetLoadCache<A>>() {
-            cache.clear_ready();
-        }
+    fn cleanup(&mut self) {
+        self.cleanup();
+    }
+}
 
-        Ok(())
+impl dyn AnyAssetCache {
+    pub fn cast<A: 'static>(&mut self) -> &mut AssetCache<A> {
+        debug_assert_eq!(self.type_id(), TypeId::of::<AssetCache<A>>());
+        unsafe { &mut *(self as *mut dyn AnyAssetCache as *mut AssetCache<A>) }
     }
 }

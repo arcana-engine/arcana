@@ -11,6 +11,7 @@ mod cache;
 // mod font;
 
 use std::{
+    any::TypeId,
     borrow::Borrow,
     convert::Infallible,
     future::Future,
@@ -19,13 +20,15 @@ use std::{
     task::{ready, Context, Poll},
 };
 
-use goods::TypedAssetId;
 pub use goods::{
     Asset, AssetBuild, AssetField, AssetFieldBuild, AssetHandle, AssetId, AssetResult, Error,
-    External, Loader,
+    External, Key, Loader, TrivialAsset, TypedAssetId,
 };
+use hashbrown::hash_map::{Entry, HashMap};
 
-pub use self::cache::{AssetLoadCache, AssetLoadCacheClearSystem};
+use crate::noophash::NoopHasherBuilder;
+
+use self::cache::{AnyAssetCache, AssetCache};
 
 // #[cfg(feature = "visible")]
 // pub use self::{
@@ -144,4 +147,63 @@ where
     A: Asset,
 {
     type Asset = A;
+}
+
+/// Sync asset loader.
+pub struct Assets {
+    pub loader: Loader,
+    caches: HashMap<TypeId, Box<dyn AnyAssetCache>, NoopHasherBuilder>,
+}
+
+impl Assets {
+    pub fn new(loader: Loader) -> Self {
+        Assets {
+            loader,
+            caches: HashMap::with_hasher(NoopHasherBuilder),
+        }
+    }
+
+    pub fn cleanup(&mut self) {
+        self.caches.values_mut().for_each(|cache| cache.cleanup());
+    }
+
+    pub fn build<A, B>(&mut self, id: AssetId, builder: &mut B) -> Option<&A>
+    where
+        A: AssetBuild<B>,
+    {
+        let cache = match self.caches.entry(TypeId::of::<A>()) {
+            Entry::Occupied(entry) => entry.into_mut(),
+            Entry::Vacant(entry) => entry.insert(Box::new(AssetCache::<A>::new())),
+        };
+        cache.cast::<A>().build(id, &self.loader, builder)
+    }
+
+    pub fn get<A>(&mut self, id: AssetId) -> Option<&A>
+    where
+        A: TrivialAsset,
+    {
+        let cache = match self.caches.entry(TypeId::of::<A>()) {
+            Entry::Occupied(entry) => entry.into_mut(),
+            Entry::Vacant(entry) => entry.insert(Box::new(AssetCache::<A>::new())),
+        };
+        cache.cast::<A>().build(id, &self.loader, &mut ())
+    }
+
+    pub fn load<'a, A, K>(&mut self, key: K) -> AssetHandle<A>
+    where
+        A: Asset,
+        K: Into<Key<'a>>,
+    {
+        self.loader.load::<A, K>(key)
+    }
+
+    pub async fn build_async<'a, A, B, K>(&mut self, key: K, builder: &mut B) -> Result<A, Error>
+    where
+        A: AssetBuild<B>,
+        K: Into<Key<'a>>,
+    {
+        let handle = self.loader.load::<A, K>(key);
+        let mut result = handle.await;
+        Ok(result.build(builder)?.clone())
+    }
 }

@@ -107,7 +107,7 @@ where
         "SpriteGraphAnimationSystem"
     }
 
-    fn run(&mut self, cx: SystemContext<'_>) -> eyre::Result<()> {
+    fn run(&mut self, cx: SystemContext<'_>) {
         for (_, (state, anim, sprite)) in cx
             .world
             .query_mut::<(&S, &mut SpriteGraphAnimation<R>, &mut Sprite)>()
@@ -142,7 +142,5 @@ where
                 bottom: (frame.tex.y as f32 + frame.tex.h as f32) / anim.tex_size.h as f32,
             };
         }
-
-        Ok(())
     }
 }

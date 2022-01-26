@@ -15,20 +15,21 @@ extern crate self as arcana;
 
 pub mod assets;
 pub mod camera;
+pub mod cfg;
 pub mod clocks;
 pub mod command;
 pub mod debug;
 pub mod fps;
 pub mod game;
 pub mod lifespan;
+mod noophash;
 pub mod prelude;
 pub mod rect;
 pub mod resources;
 pub mod sprite;
 pub mod system;
 pub mod task;
-
-// pub mod unfold;
+pub mod unfold;
 
 // Reexport crates used in public API.
 pub use {bincode, eyre, hecs, na, palette, scoped_arena};

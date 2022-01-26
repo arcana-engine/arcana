@@ -9,6 +9,7 @@ use arcana::{
     rapier2d::prelude::{
         ActiveEvents, Collider, ColliderBuilder, RigidBodyBuilder, RigidBodyHandle,
     },
+    unfold::{UnfoldBundle, UnfoldResult},
 };
 
 #[cfg(feature = "server")]
@@ -20,14 +21,12 @@ cfg_if::cfg_if! {
             assets::WithId,
             graphics::{Material, Texture},
             rect::Rect,
-            assets::AssetLoadCache,
             sprite::{
                 anim::{SpriteGraphAnimation, SpriteGraphAnimationSystem},
                 sprite_sheet::{SpriteSheet, SpriteSheetMeta},
                 Sprite,graph::{AnimTransitionRule, CurrentAnimInfo}
             },
         };
-        use ordered_float::OrderedFloat;
     }
 }
 
@@ -86,113 +85,6 @@ fn tank_graph_animation(sheet: &SpriteSheetMeta) -> SpriteGraphAnimation<TankAni
     )
 }
 
-#[cfg(feature = "graphics")]
-fn tank_sprite_sheet_id(tank: &Tank) -> AssetId {
-    WithId::id(&tank.sprite_sheet)
-}
-
-#[cfg(not(feature = "graphics"))]
-fn tank_sprite_sheet_id(tank: &Tank) -> AssetId {
-    tank.sprite_sheet
-}
-
-#[derive(Clone, Debug, Asset)]
-#[asset(name = "tank")]
-pub struct Tank {
-    size: na::Vector2<f32>,
-    color: [f32; 3],
-
-    #[cfg(feature = "graphics")]
-    #[asset(external)]
-    sprite_sheet: WithId<SpriteSheet<Texture>>,
-
-    #[cfg(not(feature = "graphics"))]
-    sprite_sheet: AssetId,
-}
-
-impl Tank {
-    pub fn new(
-        size: na::Vector2<f32>,
-        color: [f32; 3],
-        #[cfg(feature = "graphics")] sprite_sheet: WithId<SpriteSheet<Texture>>,
-        #[cfg(not(feature = "graphics"))] sprite_sheet: AssetId,
-    ) -> Self {
-        Tank {
-            size,
-            color,
-
-            sprite_sheet: sprite_sheet.into(),
-        }
-    }
-
-    /// Spawn this tank.
-    pub fn spawn(self, iso: &na::Isometry2<f32>, world: &mut World, res: &mut Res) -> Entity {
-        let physics = res.with(PhysicsData2::new);
-        let hs = self.size * 0.5;
-
-        #[cfg(feature = "graphics")]
-        let sprite_sheet = &self.sprite_sheet;
-
-        let body = physics.bodies.insert(
-            RigidBodyBuilder::new_dynamic()
-                .linear_damping(0.3)
-                .angular_damping(0.3)
-                .position(*iso)
-                .build(),
-        );
-
-        physics.colliders.insert_with_parent(
-            ColliderBuilder::cuboid(hs.x * 0.625, hs.y * 0.6875)
-                .active_events(ActiveEvents::CONTACT_EVENTS)
-                .build(),
-            body,
-            &mut physics.bodies,
-        );
-
-        let entity = world.spawn((
-            Global2::new(*iso),
-            body,
-            ContactQueue2::new(),
-            TankState {
-                drive: 0,
-                rotate: 0,
-                alive: true,
-                fire: false,
-            },
-            #[cfg(feature = "graphics")]
-            Sprite {
-                world: Rect {
-                    left: -hs.x,
-                    right: hs.x,
-                    top: -hs.y,
-                    bottom: hs.y,
-                },
-                src: Rect::ONE_QUAD,
-                tex: Rect::ONE_QUAD,
-                layer: 1,
-            },
-            #[cfg(feature = "graphics")]
-            tank_graph_animation(&sprite_sheet),
-            #[cfg(feature = "graphics")]
-            Material {
-                albedo_coverage: Some(sprite_sheet.texture.clone()),
-                albedo_factor: [
-                    OrderedFloat(self.color[0]),
-                    OrderedFloat(self.color[1]),
-                    OrderedFloat(self.color[2]),
-                    OrderedFloat(1.0),
-                ],
-                ..Default::default()
-            },
-            self,
-        ));
-
-        tracing::info!("Tank is fully loaded");
-
-        entity
-    }
-}
-
 #[derive(Clone, Copy, Debug, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct TankState {
     drive: i8,
@@ -238,7 +130,7 @@ impl System for TankClientSystem {
         "TankClientSystem"
     }
 
-    fn run(&mut self, cx: SystemContext<'_>) -> eyre::Result<()> {
+    fn run(&mut self, cx: SystemContext<'_>) {
         let mut bullets = Vec::new_in(&*cx.scope);
 
         for (_entity, (global, tank)) in cx
@@ -287,12 +179,7 @@ impl System for TankClientSystem {
                     },
                     #[cfg(feature = "graphics")]
                     Material {
-                        albedo_factor: [
-                            OrderedFloat(1.0),
-                            OrderedFloat(0.8),
-                            OrderedFloat(0.2),
-                            OrderedFloat(1.0),
-                        ],
+                        albedo_factor: [1.0, 0.8, 0.2, 1.0],
                         ..Default::default()
                     },
                     ContactQueue2::new(),
@@ -300,8 +187,6 @@ impl System for TankClientSystem {
                 ));
             }
         }
-
-        Ok(())
     }
 }
 
@@ -314,7 +199,7 @@ impl System for TankSystem {
         "TankSystem"
     }
 
-    fn run(&mut self, cx: SystemContext<'_>) -> eyre::Result<()> {
+    fn run(&mut self, cx: SystemContext<'_>) {
         let physics = cx.res.with(PhysicsData2::new);
 
         let mut bullets = Vec::new_in(&*cx.scope);
@@ -391,7 +276,7 @@ impl System for TankSystem {
                     },
                     #[cfg(feature = "graphics")]
                     Material {
-                        albedo_factor: [OrderedFloat(1.0), OrderedFloat(0.8), OrderedFloat(0.2)],
+                        albedo_factor: [1.0, 0.8, 0.2, 1.0],
                         ..Default::default()
                     },
                     ContactQueue2::new(),
@@ -399,8 +284,6 @@ impl System for TankSystem {
                 ));
             }
         }
-
-        Ok(())
     }
 }
 
@@ -411,7 +294,7 @@ impl System for BulletSystem {
         "BulletSystem"
     }
 
-    fn run(&mut self, cx: SystemContext<'_>) -> eyre::Result<()> {
+    fn run(&mut self, cx: SystemContext<'_>) {
         let mut despawn = Vec::new_in(&*cx.scope);
 
         for (e, queue) in cx.world.query_mut::<&mut ContactQueue2>().with::<Bullet>() {
@@ -438,12 +321,7 @@ impl System for BulletSystem {
                         layer: 0,
                     },
                     Material {
-                        albedo_factor: [
-                            OrderedFloat(1.0),
-                            OrderedFloat(0.3),
-                            OrderedFloat(0.1),
-                            OrderedFloat(1.0),
-                        ],
+                        albedo_factor: [1.0, 0.3, 0.1, 1.0],
                         ..Default::default()
                     },
                     LifeSpan::new(TimeSpan::SECOND * 5),
@@ -451,217 +329,70 @@ impl System for BulletSystem {
             }
             let _ = cx.world.despawn(e);
         }
-
-        Ok(())
     }
 }
 
-#[cfg(feature = "graphics")]
-pub type TankAnimationSystem = SpriteGraphAnimationSystem<TankState, TankAnimTransitionRule>;
-
-#[derive(serde::Serialize, serde::Deserialize)]
-pub struct TankReplica {
+#[derive(Clone, Copy, Debug, PartialEq, serde::Serialize, serde::Deserialize, Asset)]
+#[asset(name = "tank")]
+#[derive(Unfold)]
+#[unfold(fn unfold_tank)]
+pub struct Tank {
     pub size: na::Vector2<f32>,
     pub color: [f32; 3],
+
+    #[cfg_attr(feature = "graphics", unfold(asset: SpriteSheet<Texture>))]
     pub sprite_sheet: AssetId,
-    pub state: TankState,
 }
 
-#[cfg(feature = "server")]
-impl TankReplica {
-    fn from_tank_state(tank: &Tank, state: &TankState) -> Self {
-        TankReplica {
-            size: tank.size,
-            color: tank.color,
-            sprite_sheet: tank_sprite_sheet_id(tank),
-            state: *state,
-        }
-    }
+fn unfold_tank(
+    size: &na::Vector2<f32>,
+    color: &[f32; 3],
+    #[cfg(feature = "graphics")] sprite_sheet: &WithId<SpriteSheet<Texture>>,
+    #[cfg(not(feature = "graphics"))] _sprite_sheet: &AssetId,
+    res: &mut Res,
+) -> UnfoldResult<impl UnfoldBundle> {
+    let hs = size / 2.0;
+    let physics = res.with(PhysicsData2::new);
 
-    fn equivalent(&self, tank: &Tank, state: &TankState) -> bool {
-        self.size == tank.size
-            && self.color == tank.color
-            && self.sprite_sheet == tank_sprite_sheet_id(tank)
-            && self.state == *state
-    }
-}
+    let body = physics.bodies.insert(
+        RigidBodyBuilder::new_dynamic()
+            .linear_damping(0.3)
+            .angular_damping(0.3)
+            .build(),
+    );
 
-#[cfg(feature = "graphics")]
-type TankReplicaCache = AssetLoadCache<SpriteSheet<Texture>>;
+    physics.colliders.insert_with_parent(
+        ColliderBuilder::cuboid(hs.x * 0.625, hs.y * 0.6875)
+            .active_events(ActiveEvents::CONTACT_EVENTS)
+            .build(),
+        body,
+        &mut physics.bodies,
+    );
 
-pub struct TankReplicaSystem;
-
-impl System for TankReplicaSystem {
-    fn name(&self) -> &str {
-        "TankReplicaSystem"
-    }
-
-    fn run(&mut self, cx: SystemContext<'_>) -> eyre::Result<()> {
+    UnfoldResult::with_bundle((
+        body,
+        ContactQueue2::new(),
         #[cfg(feature = "graphics")]
-        let cache = cx.res.with(TankReplicaCache::new);
-
-        let mut spawn = Vec::new_in(&*cx.scope);
-        let mut remove_replica = Vec::new_in(&*cx.scope);
-
+        Sprite {
+            world: Rect {
+                left: -hs.x,
+                right: hs.x,
+                top: -hs.y,
+                bottom: hs.y,
+            },
+            src: Rect::ONE_QUAD,
+            tex: Rect::ONE_QUAD,
+            layer: 1,
+        },
         #[cfg(feature = "graphics")]
-        type MaterialFetch = Option<&'static mut Material>;
-
-        #[cfg(not(feature = "graphics"))]
-        type MaterialFetch = ();
-
-        let query = cx.world.query_mut::<(
-            &Global2,
-            &TankReplica,
-            Option<&mut Tank>,
-            Option<&mut TankState>,
-            MaterialFetch,
-        )>();
-
-        for (entity, (global, replica, tank, state, mat)) in query {
-            #[cfg(not(feature = "graphics"))]
-            let () = mat;
-
-            match tank {
-                Some(tank) if tank_sprite_sheet_id(&tank) == replica.sprite_sheet => {
-                    *state.unwrap() = replica.state;
-
-                    #[cfg(feature = "graphics")]
-                    let () = mat.unwrap().albedo_factor = [
-                        OrderedFloat(replica.color[0]),
-                        OrderedFloat(replica.color[1]),
-                        OrderedFloat(replica.color[2]),
-                        OrderedFloat(1.0),
-                    ];
-
-                    remove_replica.push(entity);
-                    continue;
-                }
-                _ => {}
-            }
-
-            #[cfg(feature = "graphics")]
-            match &tank {
-                Some(tank) if tank_sprite_sheet_id(&tank) == replica.sprite_sheet => {}
-                _ => {
-                    cache.load(replica.sprite_sheet, cx.loader);
-                }
-            }
-
-            #[cfg(feature = "graphics")]
-            match tank {
-                None => {
-                    if let Some(sheet) = cache.get_ready(replica.sprite_sheet) {
-                        spawn.push((entity, global.iso, sheet.clone()));
-                    }
-                }
-                Some(tank) => {
-                    if tank_sprite_sheet_id(&tank) != replica.sprite_sheet {
-                        if let Some(sheet) = cache.get_ready(replica.sprite_sheet) {
-                            spawn.push((entity, global.iso, sheet.clone()));
-                        }
-                    } else {
-                        spawn.push((entity, global.iso, (&*tank.sprite_sheet).clone()));
-                    }
-                }
-            }
-
-            #[cfg(not(feature = "graphics"))]
-            spawn.push((entity, global.iso));
-        }
-
+        Material {
+            albedo_coverage: Some(sprite_sheet.texture.clone()),
+            albedo_factor: [color[0], color[1], color[2], 1.0],
+            ..Default::default()
+        },
         #[cfg(feature = "graphics")]
-        cache.ensure_task(cx.spawner, |cx| cx.graphics);
-
-        for tuple in spawn {
-            #[cfg(feature = "graphics")]
-            let (entity, iso, sheet) = tuple;
-            #[cfg(not(feature = "graphics"))]
-            let (entity, iso) = tuple;
-
-            let replica = cx.world.remove_one::<TankReplica>(entity).unwrap();
-
-            let tank = Tank {
-                #[cfg(feature = "graphics")]
-                sprite_sheet: WithId::new(sheet, replica.sprite_sheet),
-                #[cfg(not(feature = "graphics"))]
-                sprite_sheet: replica.sprite_sheet,
-                color: replica.color,
-                size: replica.size,
-            };
-            let state = replica.state;
-
-            let physics = cx.res.with(PhysicsData2::new);
-            let hs = tank.size * 0.5;
-
-            #[cfg(feature = "graphics")]
-            let sprite_sheet = &tank.sprite_sheet;
-
-            let body = physics.bodies.insert(
-                RigidBodyBuilder::new_dynamic()
-                    .linear_damping(0.3)
-                    .angular_damping(0.3)
-                    .position(iso)
-                    .build(),
-            );
-
-            physics.colliders.insert_with_parent(
-                ColliderBuilder::cuboid(hs.x * 0.625, hs.y * 0.6875)
-                    .active_events(ActiveEvents::CONTACT_EVENTS)
-                    .build(),
-                body,
-                &mut physics.bodies,
-            );
-
-            cx.world
-                .insert(
-                    entity,
-                    (
-                        body,
-                        ContactQueue2::new(),
-                        state,
-                        #[cfg(feature = "graphics")]
-                        Sprite {
-                            world: Rect {
-                                left: -hs.x,
-                                right: hs.x,
-                                top: -hs.y,
-                                bottom: hs.y,
-                            },
-                            src: Rect::ONE_QUAD,
-                            tex: Rect::ONE_QUAD,
-                            layer: 1,
-                        },
-                        #[cfg(feature = "graphics")]
-                        tank_graph_animation(&sprite_sheet),
-                        #[cfg(feature = "graphics")]
-                        Material {
-                            albedo_coverage: Some(sprite_sheet.texture.clone()),
-                            albedo_factor: [
-                                OrderedFloat(tank.color[0]),
-                                OrderedFloat(tank.color[1]),
-                                OrderedFloat(tank.color[2]),
-                                OrderedFloat(1.0),
-                            ],
-                            ..Default::default()
-                        },
-                        tank,
-                    ),
-                )
-                .unwrap();
-        }
-
-        for entity in remove_replica {
-            let _ = cx.world.remove_one::<TankReplica>(entity);
-        }
-
-        #[cfg(feature = "graphics")]
-        {
-            let cache = cx.res.get_mut::<TankReplicaCache>().unwrap();
-            cache.clear_ready();
-        }
-
-        Ok(())
-    }
+        tank_graph_animation(&sprite_sheet),
+    ))
 }
 
 #[cfg(any(feature = "client", feature = "server"))]
@@ -669,79 +400,50 @@ pub enum TankDescriptor {}
 
 #[cfg(feature = "client")]
 impl evoke::client::Descriptor for TankDescriptor {
-    type Query = &'static mut TankReplica;
-    type Pack = TankReplica;
+    type Query = (&'static mut Tank, &'static mut TankState);
+    type Pack = (Tank, TankState);
 
-    fn insert(pack: TankReplica, entity: Entity, world: &mut World) {
-        let _ = world.insert_one(entity, pack);
+    fn insert(pack: (Tank, TankState), entity: Entity, world: &mut World) {
+        let _ = world.insert(entity, pack);
     }
 
-    fn modify(pack: TankReplica, item: &mut TankReplica) {
-        *item = pack;
+    fn modify(pack: (Tank, TankState), (tank, state): (&mut Tank, &mut TankState)) {
+        *tank = pack.0;
+        *state = pack.1;
     }
 
     fn remove(entity: Entity, world: &mut World) {
-        let _ = world.remove_one::<TankReplica>(entity);
-
-        #[cfg(feature = "graphics")]
-        type Bundle = (
-            Tank,
-            TankState,
-            RigidBodyHandle,
-            ContactQueue2,
-            Material,
-            Sprite,
-            SpriteGraphAnimation<TankAnimTransitionRule>,
-        );
-
-        #[cfg(not(feature = "graphics"))]
-        type Bundle = (Tank, TankState, RigidBodyHandle, ContactQueue2);
-
-        if let Err(arcana::hecs::ComponentError::MissingComponent(component)) =
-            world.remove::<Bundle>(entity)
-        {
-            tracing::error!("Tank components missing: '{}'", component);
-
-            let _ = world.remove_one::<Tank>(entity);
-            let _ = world.remove_one::<TankState>(entity);
-            let _ = world.remove_one::<ContactQueue2>(entity);
-            let _ = world.remove_one::<RigidBodyHandle>(entity);
-
-            #[cfg(feature = "graphics")]
-            let _ = world.remove_one::<Material>(entity);
-
-            #[cfg(feature = "graphics")]
-            let _ = world.remove_one::<Sprite>(entity);
-
-            #[cfg(feature = "graphics")]
-            let _ = world.remove_one::<SpriteGraphAnimation<TankAnimTransitionRule>>(entity);
-        }
+        let _ = world.remove_one::<Tank>(entity);
+        let _ = world.remove_one::<TankState>(entity);
     }
 }
 #[cfg(feature = "server")]
 impl evoke::server::DescriptorPack<'_> for TankDescriptor {
-    type Pack = TankReplica;
+    type Pack = (Tank, TankState);
 }
 
 #[cfg(feature = "server")]
 impl evoke::server::Descriptor for TankDescriptor {
     type Query = (&'static Tank, &'static TankState);
-    type History = TankReplica;
+    type History = (Tank, TankState);
 
-    fn history((tank, state): (&Tank, &TankState)) -> TankReplica {
-        TankReplica::from_tank_state(tank, state)
+    fn history((tank, state): (&Tank, &TankState)) -> (Tank, TankState) {
+        (*tank, *state)
     }
 
     fn replicate<'a>(
         (tank, state): (&Tank, &TankState),
-        history: Option<&TankReplica>,
+        history: Option<&(Tank, TankState)>,
         _scope: &'a Scope<'_>,
-    ) -> evoke::server::Replicate<TankReplica> {
+    ) -> evoke::server::Replicate<(Tank, TankState)> {
         match history {
-            Some(history) if history.equivalent(tank, state) => {
+            Some((htank, hstate)) if htank == tank && hstate == state => {
                 evoke::server::Replicate::Unmodified
             }
-            _ => evoke::server::Replicate::Modified(TankReplica::from_tank_state(tank, state)),
+            _ => evoke::server::Replicate::Modified((*tank, *state)),
         }
     }
 }
+
+#[cfg(feature = "graphics")]
+pub type TankAnimationSystem = SpriteGraphAnimationSystem<TankState, TankAnimTransitionRule>;

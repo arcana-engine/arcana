@@ -129,14 +129,7 @@ impl DrawNode for BasicDraw {
         )>();
 
         for (_, (mesh, mat, global, renderable, scale)) in query {
-            let [r, g, b, a] = mat.albedo_factor;
-            uniforms.albedo_factor = [
-                r.into_inner(),
-                b.into_inner(),
-                g.into_inner(),
-                a.into_inner(),
-            ]
-            .into();
+            uniforms.albedo_factor = mat.albedo_factor.into();
 
             if let Some(albedo) = mat.albedo_coverage.clone() {
                 match scale {

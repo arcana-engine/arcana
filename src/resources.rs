@@ -1,52 +1,21 @@
+use crate::noophash::NoopHasherBuilder;
+
 use {
     hashbrown::hash_map::{Entry, HashMap},
-    std::{
-        any::{Any, TypeId},
-        hash::{BuildHasher, Hasher},
-    },
+    std::any::{Any, TypeId},
 };
-
-/// Builder for `NopHasher` hashers.
-pub struct NopHasherBuilder;
-
-/// Hasher that perform no operations.
-/// Can be used for keys that are already hashed,
-/// such as [`TypeId`].
-pub struct NopHasher(u64);
-
-impl BuildHasher for NopHasherBuilder {
-    type Hasher = NopHasher;
-
-    fn build_hasher(&self) -> NopHasher {
-        NopHasher(0)
-    }
-}
-
-impl Hasher for NopHasher {
-    #[inline(always)]
-    fn finish(&self) -> u64 {
-        self.0
-    }
-
-    #[inline(always)]
-    fn write(&mut self, bytes: &[u8]) {
-        let mut copy = [0u8; 8];
-        copy[..bytes.len().min(8)].copy_from_slice(bytes);
-        self.0 = u64::from_ne_bytes(copy);
-    }
-}
 
 /// Resources map.
 /// Can contain up to one instance of a type.
 pub struct Res {
-    map: HashMap<TypeId, Box<dyn Any + Send + Sync>, NopHasherBuilder>,
+    map: HashMap<TypeId, Box<dyn Any + Send + Sync>, NoopHasherBuilder>,
 }
 
 impl Res {
     /// Returns new empty resources map.
     pub fn new() -> Self {
         Res {
-            map: HashMap::with_hasher(NopHasherBuilder),
+            map: HashMap::with_hasher(NoopHasherBuilder),
         }
     }
 

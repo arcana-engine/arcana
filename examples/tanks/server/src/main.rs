@@ -20,6 +20,7 @@ use arcana::{
     physics2::Physics2,
     scene::Global2,
     tiles::{TileMap, TileMapDescriptor, TileMapSystem},
+    unfold::Unfold,
     TimeSpan,
 };
 use eyre::Context;
@@ -57,12 +58,12 @@ impl RemotePlayer for RemoteTankPlayer {
             ServerOwned,
             pid,
             Global2::identity(),
-            TankReplica {
+            Tank {
                 size: na::Vector2::new(1.0, 1.0),
                 color: random_color(),
                 sprite_sheet: AssetId::new(0x61cd051a6c24030d).unwrap(),
-                state: TankState::new(),
             },
+            TankState::new(),
             CommandQueue::<TankCommand>::new(),
         ));
 
@@ -102,19 +103,19 @@ impl RemotePlayer for RemoteTankPlayer {
 fn main() {
     headless(|mut game| async move {
         let maps = [
-            game.loader
+            game.assets
                 .load::<TileMap, _>("tanks-map1.json")
                 .await
                 .get()
                 .wrap_err("Failed to load tile map")?
                 .clone(),
-            // game.loader
+            // game.assets
             //     .load::<TileMap, _>("tanks-map2.json")
             //     .await
             //     .get()
             //     .wrap_err("Failed to load tile map")?
             //     .clone(),
-            // game.loader
+            // game.assets
             //     .load::<TileMap, _>("tanks-map3.json")
             //     .await
             //     .get()
@@ -122,8 +123,8 @@ fn main() {
             //     .clone(),
         ];
 
-        for i in -5..=5 {
-            for j in -5..=5 {
+        for i in -0..=0 {
+            for j in -0..=0 {
                 let index = rand::random::<usize>() % maps.len();
                 let map = &maps[index];
 
@@ -139,9 +140,9 @@ fn main() {
 
         game.scheduler.add_ticking_system(Physics2::new());
         game.scheduler.add_ticking_system(TileMapSystem);
-        game.scheduler.add_ticking_system(tanks::TankReplicaSystem);
         game.scheduler.add_ticking_system(tanks::TankSystem);
         game.scheduler.add_ticking_system(tanks::BulletSystem);
+        Tank::schedule_unfold_system(&mut game.scheduler);
 
         // Bind listener for incoming connections.
         // let listener = TcpListener::bind((Ipv4Addr::UNSPECIFIED, 12453)).await?;

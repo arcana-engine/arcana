@@ -1,18 +1,24 @@
 use arcana::{
-    game2, graphics, na,
+    game::game2,
+    graphics, hecs, na,
     physics2::{
         dynamics::RigidBodyBuilder,
         geometry::{Collider, ColliderBuilder},
         Physics2, PhysicsData2,
     },
-    Global2, TaskContext, TimeSpan,
+    rect::Rect,
+    scene::Global2,
+    sprite::Sprite,
+    system::SystemContext,
+    task::TaskContext,
+    TimeSpan,
 };
 
 #[derive(Clone, Debug)]
 struct Block;
 
 impl Block {
-    fn spawn(self, cx: TaskContext<'_>) -> hecs::Entity {
+    fn spawn(cx: SystemContext<'_>) {
         struct BlockCollider {
             cuboid: Collider,
         }
@@ -20,7 +26,7 @@ impl Block {
         let cuboid = cx
             .res
             .with(|| BlockCollider {
-                cuboid: ColliderBuilder::cuboid(0.02, 0.02)
+                cuboid: ColliderBuilder::cuboid(0.005, 0.005)
                     .friction(0.5)
                     .restitution(0.8)
                     .build(),
@@ -51,18 +57,18 @@ impl Block {
             .unwrap();
 
         let entity = cx.world.spawn((
-            self,
-            graphics::Sprite {
-                world: graphics::Rect {
-                    left: -0.02,
-                    right: 0.02,
-                    top: -0.02,
-                    bottom: 0.02,
+            Block,
+            Sprite {
+                world: Rect {
+                    left: -0.005,
+                    right: 0.005,
+                    top: -0.005,
+                    bottom: 0.005,
                 },
-                ..graphics::Sprite::default()
+                ..Sprite::default()
             },
             graphics::Material {
-                albedo_factor: [0.3.into(), 0.4.into(), 0.5.into()],
+                albedo_factor: [0.3.into(), 0.4.into(), 0.5.into(), 1.0.into()],
                 ..Default::default()
             },
             Global2::new(
@@ -74,18 +80,13 @@ impl Block {
             ),
             body,
         ));
-
-        entity
     }
 }
 
 fn main() {
     game2(|mut game| async move {
-        for _ in 0..1000 {
-            Block.spawn(game.cx());
-        }
-
         let physical_data = game.res.with(PhysicsData2::new);
+        physical_data.gravity = na::Vector2::new(0.0, 1.0);
 
         let top = physical_data
             .bodies
@@ -136,6 +137,23 @@ fn main() {
 
         game.scheduler
             .add_fixed_system(Physics2::new(), TimeSpan::MILLISECOND * 20);
+
+        game.scheduler
+            .add_fixed_system(Block::spawn, TimeSpan::MILLISECOND * 10);
+
+        game.scheduler.add_fixed_system(
+            |cx: SystemContext<'_>| {
+                let block_count = cx
+                    .world
+                    .query_mut::<()>()
+                    .with::<Block>()
+                    .into_iter()
+                    .count();
+
+                tracing::info!("{} blocks", block_count);
+            },
+            TimeSpan::SECOND,
+        );
 
         Ok(game)
     })

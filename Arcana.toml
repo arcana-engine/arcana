@@ -1,0 +1,5 @@
+# path to treasury root relative to this file
+treasury = "examples/assets"
+
+# Step for ticking systems
+main_step = "20ms"

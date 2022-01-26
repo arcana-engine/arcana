@@ -15,10 +15,7 @@ use rapier2d::prelude::{ColliderBuilder, RigidBodyBuilder};
 #[cfg(feature = "physics2d")]
 use crate::physics2::PhysicsData2;
 
-use crate::{
-    assets::AssetLoadCache,
-    system::{System, SystemContext},
-};
+use crate::system::{System, SystemContext};
 
 use super::set::TileSet;
 
@@ -49,16 +46,12 @@ pub(crate) struct TileMapSpawned {
 
 pub struct TileMapSystem;
 
-type TileMapSystemCache = AssetLoadCache<TileSet>;
-
 impl System for TileMapSystem {
     fn name(&self) -> &str {
         "TileMapSystem"
     }
 
-    fn run(&mut self, cx: SystemContext<'_>) -> eyre::Result<()> {
-        let cache = cx.res.with(TileMapSystemCache::new);
-
+    fn run(&mut self, cx: SystemContext<'_>) {
         let mut spawn = Vec::new_in(&*cx.scope);
 
         let query = cx
@@ -82,22 +75,31 @@ impl System for TileMapSystem {
             .query_mut::<(&TileMap, Option<&mut TileMapSpawned>)>();
 
         for (entity, (map, spawned)) in query {
-            match &spawned {
-                Some(spawned) if spawned.set_id == map.set => {
+            if let Some(spawned) = &spawned {
+                if spawned.set_id == map.set {
                     continue;
                 }
-                _ => cache.load(map.set, cx.loader),
             }
 
             match spawned {
                 None => {
-                    if let Some(set) = cache.get_ready(map.set) {
+                    #[cfg(feature = "graphics")]
+                    let opt = cx.assets.build::<TileSet, _>(map.set, cx.graphics);
+                    #[cfg(not(feature = "graphics"))]
+                    let opt = cx.assets.build::<TileSet, _>(map.set, &mut ());
+
+                    if let Some(set) = opt {
                         spawn.push((entity, set.clone(), map.clone()));
                     }
                 }
                 Some(spawned) => {
                     if spawned.set_id != map.set {
-                        if let Some(set) = cache.get_ready(map.set) {
+                        #[cfg(feature = "graphics")]
+                        let opt = cx.assets.build::<TileSet, _>(map.set, cx.graphics);
+                        #[cfg(not(feature = "graphics"))]
+                        let opt = cx.assets.build::<TileSet, _>(map.set, &mut ());
+
+                        if let Some(set) = opt {
                             spawn.push((entity, set.clone(), map.clone()));
                         }
                     } else {
@@ -106,11 +108,6 @@ impl System for TileMapSystem {
                 }
             }
         }
-
-        #[cfg(feature = "graphics")]
-        cache.ensure_task(cx.spawner, |cx| cx.graphics);
-        #[cfg(not(feature = "visible"))]
-        cache.ensure_task(cx.spawner, |cx| cx.world);
 
         for (entity, set, map) in spawn {
             #[cfg(feature = "physics2d")]
@@ -121,7 +118,8 @@ impl System for TileMapSystem {
                     for (i, &cell) in row.iter().enumerate() {
                         let tile = match set.tiles.get(cell) {
                             None => {
-                                return Err(eyre::eyre!("Missing tile '{}' in the tileset", cell));
+                                tracing::error!("Missing tile '{}' in the tileset", cell);
+                                continue;
                             }
                             Some(tile) => tile,
                         };
@@ -162,11 +160,6 @@ impl System for TileMapSystem {
                 },),
             );
         }
-
-        let cache = cx.res.get_mut::<TileMapSystemCache>().unwrap();
-        cache.clear_ready();
-
-        Ok(())
     }
 }
 

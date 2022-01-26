@@ -1,4 +1,6 @@
 use crate::{
+    assets::Assets,
+    cfg::Config,
     clocks::{Clocks, TimeSpan},
     fps::FpsMeter,
     lifespan::LifeSpanSystem,
@@ -10,11 +12,7 @@ use eyre::WrapErr;
 use goods::Loader;
 use hecs::World;
 use scoped_arena::Scope;
-use std::{
-    future::Future,
-    path::{Path, PathBuf},
-    time::Duration,
-};
+use std::future::Future;
 
 #[cfg(any(feature = "2d", feature = "3d"))]
 use crate::scene::SceneSystem;
@@ -114,7 +112,7 @@ pub struct Game {
     pub res: Res,
     pub world: World,
     pub scheduler: Scheduler,
-    pub loader: Loader,
+    pub assets: Assets,
     pub spawner: Spawner,
     pub scope: Scope<'static>,
 
@@ -143,7 +141,7 @@ impl Game {
             world: &mut self.world,
             res: &mut self.res,
             spawner: &mut self.spawner,
-            loader: &mut self.loader,
+            assets: &mut self.assets,
             scope: &mut self.scope,
             #[cfg(feature = "visible")]
             control: &mut self.control,
@@ -190,10 +188,12 @@ where
 
     Loop::run(|event_loop| async move {
         // Load config.
-        let cfg = load_default_config();
+        let cfg = Config::load_default();
 
         // Initialize asset loader.
         let loader = configure_loader(&cfg).await?;
+
+        let assets = Assets::new(loader);
 
         // Create new world with camera.
         let mut world = World::new();
@@ -241,7 +241,7 @@ where
             graphics,
             renderer: None,
             viewport,
-            loader,
+            assets,
             spawner,
             scope: Scope::new(),
 
@@ -262,7 +262,7 @@ where
             mut graphics,
             renderer,
             mut viewport,
-            mut loader,
+            mut assets,
             mut spawner,
             mut scope,
 
@@ -313,7 +313,7 @@ where
                     control: &mut control,
                 };
 
-                let event = event_loop.next_event(Duration::new(0, 1_000_000)).await;
+                let event = event_loop.next_event(TimeSpan::MILLISECOND).await;
 
                 // Filter event
                 let event = funnel.filter(&mut res, &mut world, event);
@@ -326,7 +326,7 @@ where
                                 world: &mut world,
                                 res: &mut res,
                                 spawner: &mut spawner,
-                                loader: &mut loader,
+                                assets: &mut assets,
                                 scope: &mut scope,
 
                                 #[cfg(feature = "visible")]
@@ -349,7 +349,7 @@ where
                             world: &mut world,
                             res: &mut res,
                             spawner: &mut spawner,
-                            loader: &mut loader,
+                            assets: &mut assets,
                             scope: &mut scope,
                             control: &mut control,
                             graphics: &mut graphics,
@@ -370,14 +370,12 @@ where
                 control: &mut control,
                 spawner: &mut spawner,
                 graphics: &mut graphics,
-                loader: &mut loader,
+                assets: &mut assets,
                 scope: &mut scope,
                 clock,
             };
 
-            scheduler
-                .run(cx.reborrow())
-                .wrap_err_with(|| "System returned error")?;
+            scheduler.run(cx.reborrow());
 
             step_ns += clock.delta.as_nanos();
 
@@ -409,7 +407,7 @@ where
                     control: &mut control,
                     spawner: &mut spawner,
                     graphics: &mut graphics,
-                    loader: &mut loader,
+                    assets: &mut assets,
                     scope: &mut scope,
                 })
                 .wrap_err_with(|| "Task returned error")?;
@@ -436,6 +434,8 @@ where
                 .wrap_err_with(|| "Renderer failed")?;
 
             scope.reset();
+
+            assets.cleanup();
         }
     });
 }
@@ -464,7 +464,7 @@ where
         .expect("Failed to build tokio runtime");
 
     // Load config.
-    let cfg = load_default_config();
+    let cfg = Config::load_default();
 
     let teardown_timeout = cfg.teardown_timeout;
     let main_step = cfg.main_step;
@@ -479,13 +479,14 @@ where
         .block_on(async move {
             // Initialize asset loader.
             let loader = configure_loader(&cfg).await?;
+            let assets = Assets::new(loader);
 
             // Configure game with closure.
             let game = f(Game {
                 res,
                 world,
                 scheduler: Scheduler::with_tick_span(main_step),
-                loader,
+                assets,
                 spawner,
                 scope: Scope::new(),
 
@@ -502,7 +503,7 @@ where
                 mut res,
                 mut world,
                 mut scheduler,
-                mut loader,
+                mut assets,
                 mut spawner,
                 mut scope,
 
@@ -517,21 +518,12 @@ where
 
             // Start the clocks.
             let mut clocks = Clocks::new();
-            let mut next = clocks.get_start();
 
             // Schedule default systems.
             #[cfg(any(feature = "2d", feature = "3d"))]
             scheduler.add_ticking_system(SceneSystem::new());
-            scheduler.add_ticking_system(LifeSpanSystem);
 
-            res.insert(FpsMeter::new(TimeSpan::SECOND));
-            scheduler.add_fixed_system(
-                |cx: SystemContext<'_>| {
-                    let fps = cx.res.get::<FpsMeter>().unwrap();
-                    tracing::info!("FPS: {}", fps.fps());
-                },
-                TimeSpan::SECOND,
-            );
+            scheduler.add_ticking_system(LifeSpanSystem);
 
             let mut executor = Executor::new();
 
@@ -544,7 +536,7 @@ where
                                 world: &mut world,
                                 res: &mut res,
                                 spawner: &mut spawner,
-                                loader: &mut loader,
+                                assets: &mut assets,
                                 scope: &mut scope,
                             },
                             teardown_timeout.into(),
@@ -562,14 +554,12 @@ where
                     world: &mut world,
                     res: &mut res,
                     spawner: &mut spawner,
-                    loader: &mut loader,
+                    assets: &mut assets,
                     scope: &mut scope,
                     clock,
                 };
 
-                scheduler
-                    .run(cx.reborrow())
-                    .wrap_err_with(|| "System returned error")?;
+                scheduler.run(cx.reborrow());
 
                 #[cfg(feature = "client")]
                 if let Some(client) = &mut client {
@@ -593,19 +583,21 @@ where
                         world: &mut world,
                         res: &mut res,
                         spawner: &mut spawner,
-                        loader: &mut loader,
+                        assets: &mut assets,
                         scope: &mut scope,
                     })
                     .wrap_err_with(|| "Task returned error")?;
 
-                res.get_mut::<FpsMeter>()
-                    .unwrap()
-                    .add_frame_time(clock.delta);
-
-                next += Duration::from(main_step);
-                tokio::time::sleep_until(next.into()).await;
-
                 scope.reset();
+
+                tokio::time::sleep_until(
+                    clocks
+                        .time_stamp_to_instant(scheduler.next_system_run())
+                        .into(),
+                )
+                .await;
+
+                assets.cleanup();
             }
         })
         .unwrap()
@@ -633,121 +625,22 @@ impl Funnel<Event> for GameFunnel<'_> {
     }
 }
 
-#[derive(Default, serde::Deserialize)]
-struct Config {
-    #[cfg(feature = "treasury")]
-    #[serde(default)]
-    treasury: Option<Box<Path>>,
-
-    #[serde(default = "default_teardown_timeout")]
-    teardown_timeout: TimeSpan,
-
-    #[serde(default = "default_main_step")]
-    main_step: TimeSpan,
-}
-
-fn default_teardown_timeout() -> TimeSpan {
-    TimeSpan::from_seconds(5)
-}
-
-fn default_main_step() -> TimeSpan {
-    TimeSpan::from_millis(20)
-}
-
-#[tracing::instrument]
-fn load_config(path: &Path) -> eyre::Result<Config> {
-    let cfg = std::fs::read(path)?;
-    let cfg = serde_json::from_slice(&cfg)?;
-    Ok(cfg)
-}
-
-fn try_load_default_config() -> eyre::Result<Config> {
-    tracing::debug!("Loading config");
-
-    let path = Path::new("cfg.json");
-    if path.is_file() {
-        load_config(path)
-    } else {
-        let mut path = std::env::current_exe()?;
-        path.set_file_name("cfg.json");
-
-        if path.is_file() {
-            load_config(&path)
-        } else {
-            Err(eyre::eyre!("Failed to locate config file"))
-        }
-    }
-}
-
-fn load_default_config() -> Config {
-    match try_load_default_config() {
-        Ok(cfg) => cfg,
-        Err(err) => {
-            tracing::debug!("Config file not found. {:#}", err);
-            Config::default()
-        }
-    }
-}
-
-#[allow(unused_mut)]
+#[allow(unused)]
 async fn configure_loader(cfg: &Config) -> eyre::Result<Loader> {
     #[allow(unused_mut)]
     let mut loader_builder = Loader::builder();
 
     #[cfg(feature = "treasury")]
     if let Some(path) = &cfg.treasury {
-        match lookup_relpath(path) {
-            None => {
-                tracing::error!("Failed to lookup for treasury manifest path");
-            }
-            Some(path) => {
-                tracing::info!("Found treasury manifest file at {}", path.display());
-                match goods::source::treasury::TreasurySource::open_local(&path).await {
-                    Err(err) => tracing::error!("Failed to initialize treasury loader. {:#}", err),
-                    Ok(treasury) => {
-                        loader_builder.add(treasury);
-                    }
-                }
+        let path = cfg.root.join(path);
+
+        match goods::source::treasury::TreasurySource::open_local(&path).await {
+            Err(err) => tracing::error!("Failed to initialize treasury loader. {:#}", err),
+            Ok(treasury) => {
+                loader_builder.add(treasury);
             }
         }
     }
 
     Ok(loader_builder.build())
-}
-
-fn lookup_in_current_dir(relpath: &Path) -> Option<PathBuf> {
-    let cd = std::env::current_dir().ok()?;
-
-    for dir in cd.ancestors() {
-        let candidate = dir.join(relpath);
-        if candidate.exists() {
-            return Some(candidate);
-        }
-    }
-    None
-}
-
-fn lookup_in_binary_dir(relpath: &Path) -> Option<PathBuf> {
-    let ce = std::env::current_exe().ok()?;
-
-    let mut ancestors = ce.ancestors();
-    ancestors.next();
-
-    for dir in ancestors {
-        let candidate = dir.join(relpath);
-        if candidate.exists() {
-            return Some(candidate);
-        }
-    }
-    None
-}
-
-fn lookup_relpath(relpath: &Path) -> Option<PathBuf> {
-    if let Some(path) = lookup_in_current_dir(relpath) {
-        return Some(path);
-    }
-    if let Some(path) = lookup_in_binary_dir(relpath) {
-        return Some(path);
-    }
-    None
 }

@@ -286,7 +286,7 @@ impl System for FreeCamera3System {
         "FreeCamera3System"
     }
 
-    fn run(&mut self, cx: SystemContext<'_>) -> eyre::Result<()> {
+    fn run(&mut self, cx: SystemContext<'_>) {
         let query = cx.world.query_mut::<(
             &mut Global3,
             &mut FreeCamera3,
@@ -306,7 +306,6 @@ impl System for FreeCamera3System {
             global.iso.translation.vector +=
                 global.iso.rotation * camera.mov * cx.clock.delta.as_secs_f32();
         }
-        Ok(())
     }
 }
 

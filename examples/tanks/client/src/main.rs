@@ -20,6 +20,7 @@ use arcana::{
     scoped_arena::Scope,
     system::SystemContext,
     tiles::{TileMapDescriptor, TileMapSystem},
+    unfold::Unfold,
     TimeSpan,
 };
 
@@ -237,10 +238,10 @@ fn main() {
         game.scheduler
             .add_fixed_system(Physics2::new(), TimeSpan::MILLISECOND * 20);
 
-        game.scheduler.add_ticking_system(tanks::TankReplicaSystem);
         game.scheduler.add_ticking_system(TileMapSystem);
         game.scheduler.add_system(tanks::TankClientSystem);
         game.scheduler.add_system(tanks::BulletSystem);
+        Tank::schedule_unfold_system(&mut game.scheduler);
 
         // Create client system to communicate with game server.
         let mut client = ClientSystem::builder()
