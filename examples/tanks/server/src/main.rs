@@ -113,8 +113,8 @@ fn main() {
             //     .clone(),
         ];
 
-        for i in -0..=0 {
-            for j in -0..=0 {
+        for i in -5..=5 {
+            for j in -5..=5 {
                 let index = rand::random::<usize>() % maps.len();
                 let map = &maps[index];
 
