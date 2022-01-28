@@ -34,6 +34,12 @@ impl TimeStamp {
     }
 }
 
+impl Default for TimeStamp {
+    fn default() -> Self {
+        Self::ORIGIN
+    }
+}
+
 impl Add<TimeSpan> for TimeStamp {
     type Output = Self;
 

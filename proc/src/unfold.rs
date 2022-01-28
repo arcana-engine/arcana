@@ -349,7 +349,7 @@ pub fn derive_unfold(item: TokenStream) -> syn::Result<TokenStream> {
                                     Some(Err(err)) => {
                                         ready = false;
 
-                                        tracing::error!("Failed to load asset '{}({:})'. {:#}", type_name::<#asset_ty>(), id, err);
+                                        ::arcana::tracing::error!("Failed to load asset '{}({:})'. {:#}", type_name::<#asset_ty>(), id, err);
                                         spawned.#field_ident = Some(Err(id));
                                     }
                                 },

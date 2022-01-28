@@ -6,7 +6,13 @@ use std::{
 };
 
 use arcana::{
-    assets::AssetId, evoke, hecs, na, palette::*, physics2::Physics2, prelude::*, tiles::TileMap,
+    assets::AssetId,
+    evoke, hecs, na,
+    palette::*,
+    physics2::{ContactQueue2, Physics2, PhysicsData2},
+    prelude::*,
+    rapier2d::prelude::{RigidBodyBuilder, RigidBodyHandle},
+    tiles::{TileMap, TileSet},
 };
 use eyre::WrapErr;
 use tokio::net::TcpListener;
@@ -39,16 +45,18 @@ impl evoke::server::RemotePlayer for RemoteTankPlayer {
     where
         Self: Sized,
     {
+        let pos = random_spawn_location(world);
         let entity = world.spawn((
             evoke::server::ServerOwned,
             pid,
-            Global2::identity(),
+            pos,
             Tank {
                 size: na::Vector2::new(1.0, 1.0),
                 color: random_color(),
                 sprite_sheet: AssetId::new(0x61cd051a6c24030d).unwrap(),
             },
             TankState::new(),
+            TankStateInternal::new(),
             CommandQueue::<TankCommand>::new(),
         ));
 
@@ -90,6 +98,177 @@ impl evoke::server::RemotePlayer for RemoteTankPlayer {
     }
 }
 
+pub struct TankStateInternal {
+    reload: TimeSpan,
+    last_fire: TimeStamp,
+    pending_fire: bool,
+}
+
+impl TankStateInternal {
+    pub fn new() -> Self {
+        TankStateInternal {
+            reload: TimeSpan::SECOND,
+            last_fire: TimeStamp::ORIGIN,
+            pending_fire: false,
+        }
+    }
+}
+
+struct Respawner {
+    tank: hecs::Entity,
+    timeout: TimeStamp,
+}
+
+pub struct TankSystem;
+
+impl System for TankSystem {
+    fn name(&self) -> &str {
+        "TankSystem"
+    }
+
+    fn run(&mut self, cx: SystemContext<'_>) {
+        let physics = cx.res.with(PhysicsData2::new);
+
+        let mut bullets = Vec::new_in(&*cx.scope);
+        let mut respawners = Vec::new_in(&*cx.scope);
+
+        for (entity, (body, global, tank, internal, commands, contacts)) in cx
+            .world
+            .query::<(
+                &RigidBodyHandle,
+                &Global2,
+                &mut TankState,
+                &mut TankStateInternal,
+                &mut CommandQueue<TankCommand>,
+                &mut ContactQueue2,
+            )>()
+            .with::<Tank>()
+            .iter()
+        {
+            for collider in contacts.drain_contacts_started() {
+                let bits = physics.colliders.get(collider).unwrap().user_data as u64;
+                if let Some(collider_entity) = arcana::hecs::Entity::from_bits(bits) {
+                    if cx.world.get::<Bullet>(collider_entity).is_ok() {
+                        tank.alive = false;
+                        respawners.push(Respawner {
+                            tank: entity,
+                            timeout: cx.clock.now + timespan!(5s),
+                        });
+                    }
+                }
+            }
+
+            if tank.alive {
+                tank.fire = false;
+
+                for cmd in commands.drain() {
+                    match cmd {
+                        TankCommand::Drive(i) => tank.drive = tank.drive.saturating_add(i),
+                        TankCommand::Rotate(i) => tank.rotate = tank.rotate.saturating_add(i),
+                        TankCommand::Fire => {
+                            if internal.last_fire + internal.reload
+                                <= cx.clock.now + internal.reload / 4
+                            {
+                                internal.pending_fire = true;
+                            }
+                        }
+                    }
+                }
+
+                if internal.pending_fire && internal.last_fire + internal.reload <= cx.clock.now {
+                    tank.fire = true;
+                    internal.pending_fire = false;
+                    internal.last_fire = cx.clock.now;
+                }
+
+                if let Some(body) = physics.bodies.get_mut(*body) {
+                    let vel = na::Vector2::new(0.0, -tank.drive as f32);
+                    let vel = global.iso.rotation.transform_vector(&vel);
+
+                    body.set_linvel(vel, false);
+                    body.set_angvel(tank.rotate as f32 * 3.0, true);
+                }
+
+                if tank.fire {
+                    let pos = global.iso.transform_point(&na::Point2::new(0.0, -0.6));
+                    let dir = global.iso.transform_vector(&na::Vector2::new(0.0, -10.0));
+                    bullets.push((pos, dir));
+                }
+            }
+        }
+
+        if !bullets.is_empty() {
+            let collider = cx.res.with(BulletCollider::new).0.clone();
+            let physics = cx.res.with(PhysicsData2::new);
+
+            for (pos, dir) in bullets {
+                let body = physics
+                    .bodies
+                    .insert(RigidBodyBuilder::new_dynamic().linvel(dir).build());
+                physics
+                    .colliders
+                    .insert_with_parent(collider.clone(), body, &mut physics.bodies);
+
+                cx.world.spawn((
+                    Global2::new(na::Translation2::new(pos.x, pos.y).into()),
+                    Bullet,
+                    body,
+                    #[cfg(feature = "graphics")]
+                    Sprite {
+                        world: Rect {
+                            left: -0.05,
+                            right: 0.05,
+                            top: -0.05,
+                            bottom: 0.05,
+                        },
+                        src: Rect::ONE_QUAD,
+                        tex: Rect::ONE_QUAD,
+                        layer: 0,
+                    },
+                    #[cfg(feature = "graphics")]
+                    Material {
+                        albedo_factor: [1.0, 0.8, 0.2, 1.0],
+                        ..Default::default()
+                    },
+                    ContactQueue2::new(),
+                    LifeSpan::new(TimeSpan::SECOND),
+                ));
+            }
+        }
+
+        let mut remove_respawners = Vec::new_in(&*cx.scope);
+        let mut respawn_tanks = Vec::new_in(&*cx.scope);
+
+        for (e, respawner) in cx.world.query_mut::<&Respawner>() {
+            if respawner.timeout < cx.clock.now {
+                remove_respawners.push(e);
+                respawn_tanks.push(respawner.tank);
+            }
+        }
+
+        for e in remove_respawners {
+            let _ = cx.world.despawn(e);
+        }
+
+        for e in respawn_tanks {
+            let spawn_at = random_spawn_location(cx.world);
+
+            if let Ok((tank, internal, global)) =
+                cx.world
+                    .query_one_mut::<(&mut TankState, &mut TankStateInternal, &mut Global2)>(e)
+            {
+                *tank = TankState::new();
+                *internal = TankStateInternal::new();
+                *global = spawn_at;
+            }
+        }
+
+        for spawner in respawners {
+            cx.world.spawn((spawner,));
+        }
+    }
+}
+
 fn main() {
     headless(|mut game| async move {
         let maps = [
@@ -99,22 +278,22 @@ fn main() {
                 .get()
                 .wrap_err("Failed to load tile map")?
                 .clone(),
-            // game.assets
-            //     .load::<TileMap, _>("tanks-map2.json")
-            //     .await
-            //     .get()
-            //     .wrap_err("Failed to load tile map")?
-            //     .clone(),
-            // game.assets
-            //     .load::<TileMap, _>("tanks-map3.json")
-            //     .await
-            //     .get()
-            //     .wrap_err("Failed to load tile map")?
-            //     .clone(),
+            game.assets
+                .load::<TileMap, _>("tanks-map2.json")
+                .await
+                .get()
+                .wrap_err("Failed to load tile map")?
+                .clone(),
+            game.assets
+                .load::<TileMap, _>("tanks-map3.json")
+                .await
+                .get()
+                .wrap_err("Failed to load tile map")?
+                .clone(),
         ];
 
-        for i in -5..=5 {
-            for j in -5..=5 {
+        for i in -1..=1 {
+            for j in -1..=1 {
                 let index = rand::random::<usize>() % maps.len();
                 let map = &maps[index];
 
@@ -132,7 +311,7 @@ fn main() {
         Tank::schedule_unfold_system(&mut game.scheduler);
 
         game.scheduler.add_ticking_system(Physics2::new());
-        game.scheduler.add_ticking_system(tanks::TankSystem);
+        game.scheduler.add_ticking_system(TankSystem);
         game.scheduler.add_ticking_system(tanks::BulletSystem);
 
         // Bind listener for incoming connections.
@@ -158,4 +337,35 @@ fn main() {
         // Game configured. Run it.
         Ok(game)
     })
+}
+
+fn random_spawn_location(world: &mut hecs::World) -> Global2 {
+    let maps_count = world
+        .query_mut::<()>()
+        .with::<TileMap>()
+        .with::<TileSet>()
+        .with::<Global2>()
+        .into_iter()
+        .count();
+
+    let map_index = rand::random::<usize>() % maps_count;
+
+    let (_, (map, set, global)) = world
+        .query_mut::<(&TileMap, &TileSet, &Global2)>()
+        .into_iter()
+        .nth(map_index)
+        .unwrap();
+
+    let dim = map.dimensions();
+
+    loop {
+        let x = rand::random::<usize>() % dim.x;
+        let y = rand::random::<usize>() % dim.y;
+
+        let cell = map.cell_at(x, y);
+        let tile = &set.tiles[cell];
+        if tile.collider.is_none() {
+            return Global2::new(global.iso * na::Translation2::from(map.cell_center(x, y)));
+        }
+    }
 }

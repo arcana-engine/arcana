@@ -28,6 +28,23 @@ pub struct TileMap {
 }
 
 impl TileMap {
+    pub fn dimensions(&self) -> na::Vector2<usize> {
+        if self.cells.len() == 0 {
+            return na::Vector2::zeros();
+        }
+        let x = self.width;
+        let y = ((self.cells.len() - 1) / self.width) + 1;
+        na::Vector2::new(x, y)
+    }
+
+    pub fn cell_at(&self, x: usize, y: usize) -> usize {
+        self.cells[y * self.width + x]
+    }
+
+    pub fn cell_center(&self, x: usize, y: usize) -> na::Point2<f32> {
+        na::Point2::new(x as f32 * self.cell_size, y as f32 * self.cell_size)
+    }
+
     pub fn size(&self) -> na::Vector2<f32> {
         if self.cells.len() == 0 {
             return na::Vector2::zeros();

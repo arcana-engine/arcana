@@ -32,7 +32,7 @@ pub mod task;
 pub mod unfold;
 
 // Reexport crates used in public API.
-pub use {bincode, eyre, hecs, na, palette, scoped_arena};
+pub use {bincode, eyre, hecs, na, palette, scoped_arena, tracing};
 
 cfg_if::cfg_if! {
     if #[cfg(feature = "visible")] {

@@ -19,10 +19,10 @@ use arcana::{
 
 pub struct Bullet;
 
-struct BulletCollider(Collider);
+pub struct BulletCollider(pub Collider);
 
 impl BulletCollider {
-    fn new() -> Self {
+    pub fn new() -> Self {
         BulletCollider(
             ColliderBuilder::ball(0.1)
                 .active_events(ActiveEvents::CONTACT_EVENTS)
@@ -59,19 +59,19 @@ fn tank_graph_animation(sheet: &SpriteSheetMeta) -> SpriteGraphAnimation<TankAni
         vec![
             (TankAnimTransitionRule::AnimationComplete, vec![0], 0),
             (TankAnimTransitionRule::AnimationComplete, vec![1], 1),
-            (TankAnimTransitionRule::Moving, vec![0], 1),
+            (TankAnimTransitionRule::Moving, vec![0, 2], 1),
             (TankAnimTransitionRule::Broken, vec![0, 1], 2),
-            (TankAnimTransitionRule::Idle, vec![1], 0),
+            (TankAnimTransitionRule::Idle, vec![1, 2], 0),
         ],
     )
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct TankState {
-    drive: i8,
-    rotate: i8,
-    fire: bool,
-    alive: bool,
+    pub drive: i8,
+    pub rotate: i8,
+    pub fire: bool,
+    pub alive: bool,
 }
 
 impl TankState {
@@ -83,188 +83,13 @@ impl TankState {
             alive: true,
         }
     }
-
-    pub fn set_commands(&mut self, commands: impl Iterator<Item = TankCommand>) {
-        for cmd in commands {
-            match cmd {
-                TankCommand::Drive(i) => self.drive = self.drive.saturating_add(i),
-                TankCommand::Rotate(i) => self.rotate = self.rotate.saturating_add(i),
-                TankCommand::Fire(fire) => self.fire = fire,
-            }
-        }
-    }
 }
 
 #[derive(Clone, Copy, Debug, serde::Serialize, serde::Deserialize)]
 pub enum TankCommand {
     Drive(i8),
     Rotate(i8),
-    Fire(bool),
-}
-
-#[cfg(feature = "client")]
-pub struct TankClientSystem;
-
-#[cfg(feature = "client")]
-impl System for TankClientSystem {
-    fn name(&self) -> &str {
-        "TankClientSystem"
-    }
-
-    fn run(&mut self, cx: SystemContext<'_>) {
-        let mut bullets = Vec::new_in(&*cx.scope);
-
-        for (_entity, (global, tank)) in cx
-            .world
-            .query::<(&Global2, &mut TankState)>()
-            .with::<Tank>()
-            .iter()
-        {
-            if tank.alive {
-                if tank.fire {
-                    let pos = global.iso.transform_point(&na::Point2::new(0.0, -0.6));
-                    let dir = global.iso.transform_vector(&na::Vector2::new(0.0, -10.0));
-                    bullets.push((pos, dir));
-                    tank.fire = false;
-                }
-            }
-        }
-
-        if !bullets.is_empty() {
-            let collider = cx.res.with(BulletCollider::new).0.clone();
-            let physics = cx.res.with(PhysicsData2::new);
-
-            for (pos, dir) in bullets {
-                let body = physics
-                    .bodies
-                    .insert(RigidBodyBuilder::new_dynamic().linvel(dir).build());
-                physics
-                    .colliders
-                    .insert_with_parent(collider.clone(), body, &mut physics.bodies);
-
-                cx.world.spawn((
-                    Global2::new(na::Translation2::new(pos.x, pos.y).into()),
-                    Bullet,
-                    body,
-                    #[cfg(feature = "graphics")]
-                    Sprite {
-                        world: Rect {
-                            left: -0.05,
-                            right: 0.05,
-                            top: -0.05,
-                            bottom: 0.05,
-                        },
-                        src: Rect::ONE_QUAD,
-                        tex: Rect::ONE_QUAD,
-                        layer: 0,
-                    },
-                    #[cfg(feature = "graphics")]
-                    Material {
-                        albedo_factor: [1.0, 0.8, 0.2, 1.0],
-                        ..Default::default()
-                    },
-                    ContactQueue2::new(),
-                    LifeSpan::new(TimeSpan::SECOND),
-                ));
-            }
-        }
-    }
-}
-
-#[cfg(feature = "server")]
-pub struct TankSystem;
-
-#[cfg(feature = "server")]
-impl System for TankSystem {
-    fn name(&self) -> &str {
-        "TankSystem"
-    }
-
-    fn run(&mut self, cx: SystemContext<'_>) {
-        let physics = cx.res.with(PhysicsData2::new);
-
-        let mut bullets = Vec::new_in(&*cx.scope);
-
-        for (_entity, (body, global, tank, commands, contacts)) in cx
-            .world
-            .query::<(
-                &RigidBodyHandle,
-                &Global2,
-                &mut TankState,
-                &mut CommandQueue<TankCommand>,
-                &mut ContactQueue2,
-            )>()
-            .with::<Tank>()
-            .iter()
-        {
-            for collider in contacts.drain_contacts_started() {
-                let bits = physics.colliders.get(collider).unwrap().user_data as u64;
-                if let Some(entity) = arcana::hecs::Entity::from_bits(bits) {
-                    if cx.world.get_mut::<Bullet>(entity).is_ok() {
-                        tank.alive = false;
-                    }
-                }
-            }
-
-            if tank.alive {
-                tank.fire = false;
-                tank.set_commands(commands.drain());
-
-                if let Some(body) = physics.bodies.get_mut(*body) {
-                    let vel = na::Vector2::new(0.0, -tank.drive as f32);
-                    let vel = global.iso.rotation.transform_vector(&vel);
-
-                    body.set_linvel(vel, false);
-                    body.set_angvel(tank.rotate as f32 * 3.0, true);
-                }
-
-                if tank.fire {
-                    let pos = global.iso.transform_point(&na::Point2::new(0.0, -0.6));
-                    let dir = global.iso.transform_vector(&na::Vector2::new(0.0, -10.0));
-                    bullets.push((pos, dir));
-                }
-            }
-        }
-
-        if !bullets.is_empty() {
-            let collider = cx.res.with(BulletCollider::new).0.clone();
-            let physics = cx.res.with(PhysicsData2::new);
-
-            for (pos, dir) in bullets {
-                let body = physics
-                    .bodies
-                    .insert(RigidBodyBuilder::new_dynamic().linvel(dir).build());
-                physics
-                    .colliders
-                    .insert_with_parent(collider.clone(), body, &mut physics.bodies);
-
-                cx.world.spawn((
-                    Global2::new(na::Translation2::new(pos.x, pos.y).into()),
-                    Bullet,
-                    body,
-                    #[cfg(feature = "graphics")]
-                    Sprite {
-                        world: Rect {
-                            left: -0.05,
-                            right: 0.05,
-                            top: -0.05,
-                            bottom: 0.05,
-                        },
-                        src: Rect::ONE_QUAD,
-                        tex: Rect::ONE_QUAD,
-                        layer: 0,
-                    },
-                    #[cfg(feature = "graphics")]
-                    Material {
-                        albedo_factor: [1.0, 0.8, 0.2, 1.0],
-                        ..Default::default()
-                    },
-                    ContactQueue2::new(),
-                    LifeSpan::new(TimeSpan::SECOND),
-                ));
-            }
-        }
-    }
+    Fire,
 }
 
 pub struct BulletSystem;

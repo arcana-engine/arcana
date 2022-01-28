@@ -1,7 +1,7 @@
 use crate::{
     assets::Assets,
     cfg::Config,
-    clocks::{Clocks, TimeSpan},
+    clocks::Clocks,
     lifespan::LifeSpanSystem,
     resources::Res,
     system::{Scheduler, SystemContext},
@@ -18,6 +18,7 @@ use crate::scene::SceneSystem;
 
 #[cfg(feature = "visible")]
 use crate::{
+    clocks::TimeSpan,
     control::Control,
     event::{Event, Loop, WindowEvent},
     fps::FpsMeter,

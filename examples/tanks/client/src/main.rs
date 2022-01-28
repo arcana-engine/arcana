@@ -5,11 +5,14 @@ use std::net::Ipv4Addr;
 
 use arcana::{
     evoke,
-    graphics::{simple::SimpleRenderer, sprite::SpriteDraw, DrawNode},
-    hecs,
+    graphics::{simple::SimpleRenderer, sprite::SpriteDraw, DrawNode, Material},
+    hecs, na,
     physics2::*,
     prelude::*,
+    rapier2d::prelude::RigidBodyBuilder,
+    rect::Rect,
     scoped_arena::Scope,
+    sprite::Sprite,
     tiles::TileMap,
 };
 
@@ -93,17 +96,82 @@ impl EventTranslator for TankCommander {
                 VirtualKeyCode::Space => match state {
                     ElementState::Pressed if !self.fire_pressed => {
                         self.fire_pressed = true;
-                        Some(TankCommand::Fire(true))
+                        Some(TankCommand::Fire)
                     }
                     ElementState::Released if self.fire_pressed => {
                         self.fire_pressed = false;
-                        Some(TankCommand::Fire(false))
+                        None
                     }
                     _ => None,
                 },
                 _ => None,
             },
             _ => None,
+        }
+    }
+}
+
+pub struct TankClientSystem;
+
+impl System for TankClientSystem {
+    fn name(&self) -> &str {
+        "TankClientSystem"
+    }
+
+    fn run(&mut self, cx: SystemContext<'_>) {
+        let mut bullets = Vec::new_in(&*cx.scope);
+
+        for (_entity, (global, tank)) in cx
+            .world
+            .query::<(&Global2, &mut TankState)>()
+            .with::<Tank>()
+            .iter()
+        {
+            if tank.alive {
+                if tank.fire {
+                    let pos = global.iso.transform_point(&na::Point2::new(0.0, -0.6));
+                    let dir = global.iso.transform_vector(&na::Vector2::new(0.0, -10.0));
+                    bullets.push((pos, dir));
+                    tank.fire = false;
+                }
+            }
+        }
+
+        if !bullets.is_empty() {
+            let collider = cx.res.with(BulletCollider::new).0.clone();
+            let physics = cx.res.with(PhysicsData2::new);
+
+            for (pos, dir) in bullets {
+                let body = physics
+                    .bodies
+                    .insert(RigidBodyBuilder::new_dynamic().linvel(dir).build());
+                physics
+                    .colliders
+                    .insert_with_parent(collider.clone(), body, &mut physics.bodies);
+
+                cx.world.spawn((
+                    Global2::new(na::Translation2::new(pos.x, pos.y).into()),
+                    Bullet,
+                    body,
+                    Sprite {
+                        world: Rect {
+                            left: -0.05,
+                            right: 0.05,
+                            top: -0.05,
+                            bottom: 0.05,
+                        },
+                        src: Rect::ONE_QUAD,
+                        tex: Rect::ONE_QUAD,
+                        layer: 0,
+                    },
+                    Material {
+                        albedo_factor: [1.0, 0.8, 0.2, 1.0],
+                        ..Default::default()
+                    },
+                    ContactQueue2::new(),
+                    LifeSpan::new(TimeSpan::SECOND),
+                ));
+            }
         }
     }
 }
@@ -194,7 +262,7 @@ fn main() {
 
         Tank::schedule_unfold_system(&mut game.scheduler);
         TileMap::schedule_unfold_system(&mut game.scheduler);
-        game.scheduler.add_system(tanks::TankClientSystem);
+        game.scheduler.add_system(TankClientSystem);
         game.scheduler.add_system(tanks::BulletSystem);
 
         // Create client system to communicate with game server.
