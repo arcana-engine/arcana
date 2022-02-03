@@ -1,6 +1,9 @@
 use std::collections::hash_map::{Entry, HashMap};
 
-use hecs::{Entity, World};
+use edict::{
+    prelude::{EntityId, World},
+    world::NoSuchEntity,
+};
 
 use crate::{
     command::CommandQueue,
@@ -200,11 +203,11 @@ pub trait EventTranslator {
 pub enum AssumeControlError {
     /// Failed to assume control of non-existing entity.
     #[error("Failed to assume control of non-existing entity ({entity:?})")]
-    NoSuchEntity { entity: Entity },
+    NoSuchEntity { entity: EntityId },
 
-    /// Entity is already controlled
-    #[error("Entity ({entity:?}) is already controlled")]
-    AlreadyControlled { entity: Entity },
+    /// EntityId is already controlled
+    #[error("EntityId ({entity:?}) is already controlled")]
+    AlreadyControlled { entity: EntityId },
 }
 
 /// Marker component. Marks that entity is being controlled.
@@ -218,7 +221,7 @@ const CONTROLLED: Controlled = Controlled { __: () };
 /// A kind of [`InputController`]s that yield commands and sends them to a command queue of an entity.
 pub struct EntityController<T> {
     commander: T,
-    entity: Entity,
+    entity: EntityId,
 }
 
 impl<T> EntityController<T>
@@ -228,15 +231,15 @@ where
 {
     pub fn assume_control(
         commander: T,
-        entity: Entity,
+        entity: EntityId,
         world: &mut World,
     ) -> Result<Self, AssumeControlError> {
-        match world.query_one_mut::<&Controlled>(entity).is_ok() {
+        match world.query_one_mut::<&Controlled>(&entity).is_ok() {
             true => Err(AssumeControlError::AlreadyControlled { entity }),
             false => {
                 world
-                    .insert(entity, (CONTROLLED, CommandQueue::<T::Command>::new()))
-                    .map_err(|hecs::NoSuchEntity| AssumeControlError::NoSuchEntity { entity })?;
+                    .try_insert(&entity, (CONTROLLED, CommandQueue::<T::Command>::new()))
+                    .map_err(|NoSuchEntity| AssumeControlError::NoSuchEntity { entity })?;
                 Ok(EntityController { commander, entity })
             }
         }
@@ -249,7 +252,7 @@ where
     T::Command: Send + Sync + 'static,
 {
     fn control(&mut self, event: InputEvent, _res: &mut Res, world: &mut World) -> ControlResult {
-        match world.query_one_mut::<&mut CommandQueue<T::Command>>(self.entity) {
+        match world.query_one_mut::<&mut CommandQueue<T::Command>>(&self.entity) {
             Ok(queue) => match self.commander.translate(event) {
                 None => ControlResult::Ignored,
                 Some(command) => {

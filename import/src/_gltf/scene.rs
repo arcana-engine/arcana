@@ -8,11 +8,11 @@ use {
         scene::{Global3, Local3},
     },
     gltf::Node,
-    hecs::{Entity, World},
+    edict::{EntityId, World},
 };
 
 pub struct GltfScene {
-    nodes: Box<[Entity]>,
+    nodes: Box<[EntityId]>,
 }
 
 pub struct Gltf {
@@ -43,7 +43,7 @@ impl Prefab for Gltf {
         res: &mut Res,
         world: &mut World,
         graphics: &mut Graphics,
-        entity: Entity,
+        entity: EntityId,
     ) -> eyre::Result<()> {
         if world.get::<Self>(entity).is_err() {
             tracing::warn!("Prefab loading aborted");
@@ -93,12 +93,12 @@ impl Prefab for Gltf {
 }
 
 fn spawn_node(
-    parent: Option<Entity>,
+    parent: Option<EntityId>,
     parent_scale: na::Vector3<f32>,
     node: Node<'_>,
     asset: &GltfAsset,
     world: &mut World,
-) -> Entity {
+) -> EntityId {
     let (iso, scale) = node_transform(&node, parent_scale);
 
     let renderables = node
@@ -160,7 +160,7 @@ fn spawn_node(
 }
 
 fn spawn_children(
-    entity: Entity,
+    entity: EntityId,
     scale: na::Vector3<f32>,
     node: &Node<'_>,
     asset: &GltfAsset,

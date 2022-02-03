@@ -28,8 +28,8 @@ const STATE_UPDATE: [u8; 16] = *b"arcanastateupdte";
 
 /// Unique network identifier for an entity.
 /// Uniqueness can be guaranteed only within one game session.
-/// Servers may safely convert `Entity` to `NetId`.
-/// Clients must map their `Entity` to `NetId`.
+/// Servers may safely convert `EntityId` to `NetId`.
+/// Clients must map their `EntityId` to `NetId`.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 #[repr(transparent)]
 pub struct NetId {
@@ -37,14 +37,14 @@ pub struct NetId {
 }
 
 impl NetId {
-    pub fn from_server_entity(entity: hecs::Entity) -> Self {
+    pub fn from_server_entity(entity: edict::EntityId) -> Self {
         NetId {
             value: NonZeroU64::new(entity.to_bits() + 1).unwrap(),
         }
     }
 
-    pub fn into_server_entity(self) -> hecs::Entity {
-        hecs::Entity::from_bits(self.value.get() - 1)
+    pub fn into_server_entity(self) -> edict::EntityId {
+        edict::EntityId::from_bits(self.value.get() - 1)
     }
 }
 

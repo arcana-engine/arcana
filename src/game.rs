@@ -7,9 +7,9 @@ use crate::{
     system::{Scheduler, SystemContext},
     task::{Executor, Spawner, TaskContext},
 };
+use edict::world::World;
 use eyre::WrapErr;
 use goods::Loader;
-use hecs::World;
 use scoped_arena::Scope;
 use std::future::Future;
 
@@ -20,10 +20,10 @@ use crate::scene::SceneSystem;
 use crate::{
     clocks::TimeSpan,
     control::Control,
+    edict::bundle::DynamicBundle,
     event::{Event, Loop, WindowEvent},
     fps::FpsMeter,
     funnel::Funnel,
-    hecs::DynamicBundle,
 };
 
 #[cfg(feature = "visible")]
@@ -214,12 +214,12 @@ where
             let aspect = window_size.width as f32 / window_size.height as f32;
 
             #[cfg(feature = "2d")]
-            if let Ok(mut camera) = world.get_mut::<Camera2>(camera) {
+            if let Ok(camera) = world.query_one_mut::<&mut Camera2>(&camera) {
                 camera.set_aspect(aspect);
             }
 
             #[cfg(feature = "3d")]
-            if let Ok(mut camera) = world.get_mut::<Camera3>(camera) {
+            if let Ok(camera) = world.query_one_mut::<&mut Camera3>(&camera) {
                 camera.set_aspect(aspect);
             }
         }

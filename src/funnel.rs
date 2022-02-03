@@ -1,4 +1,5 @@
-use {crate::resources::Res, hecs::World};
+use crate::resources::Res;
+use edict::world::World;
 
 /// Funnel for input events.
 pub trait Funnel<T> {

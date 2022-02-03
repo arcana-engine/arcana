@@ -1,6 +1,6 @@
 use arcana::{
     game::game2,
-    graphics, hecs, na,
+    graphics, edict, na,
     physics2::{
         dynamics::RigidBodyBuilder,
         geometry::{Collider, ColliderBuilder},

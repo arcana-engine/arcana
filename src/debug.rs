@@ -1,5 +1,5 @@
 use {
-    hecs::{Entity, EntityRef, World},
+    edict::{entity::EntityId, world::World},
     std::fmt::{self, Display},
 };
 
@@ -12,7 +12,7 @@ pub struct DebugInfo {
 }
 
 impl DebugInfo {
-    pub fn for_entity(&self, entity: Entity) -> EntityDebugInfo<'_> {
+    pub fn for_entity(&self, entity: EntityId) -> EntityDebugInfo<'_> {
         EntityDebugInfo {
             entity,
             name: &*self.name,
@@ -22,7 +22,7 @@ impl DebugInfo {
 }
 
 pub struct EntityDebugInfo<'a> {
-    entity: Entity,
+    entity: EntityId,
     name: &'a str,
     description: Option<&'a str>,
 }
@@ -33,96 +33,61 @@ impl Display for EntityDebugInfo<'_> {
             (true, Some(description)) => write!(
                 fmt,
                 "{{ {} : {} - {} }}",
-                self.name,
-                self.entity.id(),
-                description
+                self.name, self.entity, description
             ),
-            _ => write!(fmt, "{{ {} : {} }}", self.name, self.entity.id()),
+            _ => write!(fmt, "{{ {} : {} }}", self.name, self.entity),
         }
     }
 }
 
 pub struct EntityRefDebugInfo<'a> {
-    entity: Entity,
-    entity_ref: EntityRef<'a>,
+    entity: EntityId,
+    info: &'a DebugInfo,
 }
 
 impl<'a> EntityRefDebugInfo<'a> {
-    pub fn new(entity: Entity, entity_ref: EntityRef<'a>) -> Self {
-        EntityRefDebugInfo { entity, entity_ref }
+    pub fn new(entity: EntityId, info: &'a DebugInfo) -> Self {
+        EntityRefDebugInfo { entity, info }
     }
 
-    pub fn fetch(entity: Entity, world: &'a World) -> Option<Self> {
-        let entity_ref = world.entity(entity).ok()?;
-        Some(EntityRefDebugInfo { entity, entity_ref })
+    pub fn fetch(entity: EntityId, world: &'a World) -> Option<Self> {
+        let info = world.query_one::<&DebugInfo>(&entity).ok()?;
+        Some(EntityRefDebugInfo { entity, info })
     }
 }
 
 impl Display for EntityRefDebugInfo<'_> {
     fn fmt(&self, fmt: &mut fmt::Formatter<'_>) -> fmt::Result {
-        match (
-            fmt.alternate(),
-            self.entity_ref.get::<DebugInfo>().as_deref(),
-        ) {
-            (
-                true,
-                Some(DebugInfo {
-                    name,
-                    description: Some(description),
-                }),
-            ) => write!(
-                fmt,
-                "{{ {} : {} - {} }}",
-                name,
-                self.entity.id(),
-                description,
-            ),
-            (_, Some(DebugInfo { name, .. })) => {
-                write!(fmt, "{{ {} : {} }}", name, self.entity.id())
+        match (fmt.alternate(), &self.info.description) {
+            (true, Some(description)) => {
+                write!(
+                    fmt,
+                    "{{ {} : {} - {} }}",
+                    self.info.name, self.entity, description
+                )
             }
-            (_, None) => write!(fmt, "{{ {} }}", self.entity.id()),
+
+            _ => write!(fmt, "{{ {} : {} }}", self.info.name, self.entity),
         }
     }
 }
 
 pub trait WorldExt {
-    fn entity_display(&self, entity: Entity) -> Option<EntityRefDebugInfo<'_>>;
+    fn entity_display(&self, entity: EntityId) -> Option<EntityRefDebugInfo<'_>>;
 }
 
 impl WorldExt for World {
-    fn entity_display(&self, entity: Entity) -> Option<EntityRefDebugInfo<'_>> {
+    fn entity_display(&self, entity: EntityId) -> Option<EntityRefDebugInfo<'_>> {
         EntityRefDebugInfo::fetch(entity, self)
     }
 }
 
 pub trait EntityDisplay {
-    fn display_ref<'a>(&self, entity_ref: EntityRef<'a>) -> EntityRefDebugInfo<'a>;
-
     fn display<'a>(&self, info: &'a DebugInfo) -> EntityDebugInfo<'a>;
 }
 
-impl EntityDisplay for Entity {
-    fn display_ref<'a>(&self, entity_ref: EntityRef<'a>) -> EntityRefDebugInfo<'a> {
-        EntityRefDebugInfo {
-            entity: *self,
-            entity_ref,
-        }
-    }
-
+impl EntityDisplay for EntityId {
     fn display<'a>(&self, info: &'a DebugInfo) -> EntityDebugInfo<'a> {
         info.for_entity(*self)
-    }
-}
-
-pub trait EntityRefDisplay<'a> {
-    fn display(&self, entity: Entity) -> EntityRefDebugInfo<'a>;
-}
-
-impl<'a> EntityRefDisplay<'a> for EntityRef<'a> {
-    fn display(&self, entity: Entity) -> EntityRefDebugInfo<'a> {
-        EntityRefDebugInfo {
-            entity,
-            entity_ref: *self,
-        }
     }
 }

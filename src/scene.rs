@@ -4,45 +4,45 @@ use std::{
 };
 
 use bitsetium::{BitEmpty, BitSet, BitTest, Bits65536};
-use hecs::Entity;
+use edict::{prelude::EntityId, world::EntityError};
 
 use crate::system::{System, SystemContext};
 
 #[cfg(feature = "2d")]
 #[derive(Clone, Copy, Debug, PartialEq)]
 pub struct Local2 {
-    pub parent: Entity,
+    pub parent: EntityId,
     pub iso: na::Isometry2<f32>,
 }
 
 #[cfg(feature = "2d")]
 impl Display for Local2 {
     fn fmt(&self, fmt: &mut fmt::Formatter<'_>) -> fmt::Result {
-        write!(fmt, "{}@{}", self.parent.to_bits(), self.iso)
+        write!(fmt, "{}@{}", self.parent, self.iso)
     }
 }
 
 #[cfg(feature = "2d")]
 impl Local2 {
-    pub fn identity(parent: Entity) -> Self {
+    pub fn identity(parent: EntityId) -> Self {
         Local2 {
             parent,
             iso: na::Isometry2::identity(),
         }
     }
 
-    pub fn new(parent: Entity, iso: na::Isometry2<f32>) -> Self {
+    pub fn new(parent: EntityId, iso: na::Isometry2<f32>) -> Self {
         Local2 { parent, iso }
     }
 
-    pub fn from_translation(parent: Entity, tr: na::Translation2<f32>) -> Self {
+    pub fn from_translation(parent: EntityId, tr: na::Translation2<f32>) -> Self {
         Local2 {
             parent,
             iso: na::Isometry2::from_parts(tr, na::UnitComplex::identity()),
         }
     }
 
-    pub fn from_rotation(parent: Entity, rot: na::UnitComplex<f32>) -> Self {
+    pub fn from_rotation(parent: EntityId, rot: na::UnitComplex<f32>) -> Self {
         Local2 {
             parent,
             iso: na::Isometry2::from_parts(na::Translation2::identity(), rot),
@@ -115,7 +115,7 @@ impl Global2 {
 #[cfg(feature = "3d")]
 #[derive(Clone, Copy, Debug, PartialEq)]
 pub struct Local3 {
-    pub parent: Entity,
+    pub parent: EntityId,
     pub iso: na::Isometry3<f32>,
 }
 
@@ -128,25 +128,25 @@ impl Display for Local3 {
 
 #[cfg(feature = "3d")]
 impl Local3 {
-    pub fn identity(parent: Entity) -> Self {
+    pub fn identity(parent: EntityId) -> Self {
         Local3 {
             parent,
             iso: na::Isometry3::identity(),
         }
     }
 
-    pub fn new(parent: Entity, iso: na::Isometry3<f32>) -> Self {
+    pub fn new(parent: EntityId, iso: na::Isometry3<f32>) -> Self {
         Local3 { parent, iso }
     }
 
-    pub fn from_translation(parent: Entity, tr: na::Translation3<f32>) -> Self {
+    pub fn from_translation(parent: EntityId, tr: na::Translation3<f32>) -> Self {
         Local3 {
             parent,
             iso: na::Isometry3::from_parts(tr, na::UnitQuaternion::identity()),
         }
     }
 
-    pub fn from_rotation(parent: Entity, rot: na::UnitQuaternion<f32>) -> Self {
+    pub fn from_rotation(parent: EntityId, rot: na::UnitQuaternion<f32>) -> Self {
         Local3 {
             parent,
             iso: na::Isometry3::from_parts(na::Translation3::identity(), rot),
@@ -254,37 +254,36 @@ impl System for SceneSystem {
             }
 
             while let Some((entity, local)) = update.front() {
-                if !ready.test(entity.id() as usize) {
-                    ready.set(entity.id() as usize);
+                if !ready.test(entity.bits() as usize) {
+                    ready.set(entity.bits() as usize);
                     count_2 += 1;
                     match cx
                         .world
-                        .query_one_mut::<(Option<&Local2>, &Global2)>(local.parent)
+                        .query_one_mut::<(Option<&Local2>, &Global2)>(&local.parent)
                     {
                         Ok((None, parent_global)) => {
                             let iso = parent_global.iso * local.iso;
-                            cx.world.query_one_mut::<&mut Global2>(*entity).unwrap().iso = iso;
+                            cx.world.query_one_mut::<&mut Global2>(entity).unwrap().iso = iso;
                             update.pop_front();
                         }
                         Ok((Some(parent_local), parent_global)) => {
-                            if !ready.test(local.parent.id() as usize) {
-                                ready.set(local.parent.id() as usize);
+                            if !ready.test(local.parent.bits() as usize) {
+                                ready.set(local.parent.bits() as usize);
                                 let elem = (local.parent, *parent_local);
                                 update.push_front(elem);
                             } else {
                                 let iso = parent_global.iso * local.iso;
-                                cx.world.query_one_mut::<&mut Global2>(*entity).unwrap().iso = iso;
+                                cx.world.query_one_mut::<&mut Global2>(entity).unwrap().iso = iso;
                                 update.pop_front();
                             }
                         }
-                        Err(hecs::QueryOneError::NoSuchEntity) => {
-                            let entity = *entity;
+                        Err(EntityError::NoSuchEntity) => {
                             let _ = cx.world.despawn(entity);
                             update.pop_front();
                         }
-                        Err(hecs::QueryOneError::Unsatisfied) => {
+                        Err(EntityError::MissingComponents) => {
                             let entity = *entity;
-                            let _ = cx.world.remove_one::<Global2>(entity);
+                            let _ = cx.world.remove::<Global2>(&entity);
                             update.pop_front();
                         }
                     }
@@ -317,11 +316,11 @@ impl System for SceneSystem {
                     count_3 += 1;
                     match cx
                         .world
-                        .query_one_mut::<(Option<&Local3>, &Global3)>(local.parent)
+                        .query_one_mut::<(Option<&Local3>, &Global3)>(&local.parent)
                     {
                         Ok((None, parent_global)) => {
                             let iso = parent_global.iso * local.iso;
-                            cx.world.query_one_mut::<&mut Global3>(*entity).unwrap().iso = iso;
+                            cx.world.query_one_mut::<&mut Global3>(entity).unwrap().iso = iso;
                             update.pop_front();
                         }
                         Ok((Some(parent_local), parent_global)) => {
@@ -331,18 +330,16 @@ impl System for SceneSystem {
                                 update.push_front(elem);
                             } else {
                                 let iso = parent_global.iso * local.iso;
-                                cx.world.query_one_mut::<&mut Global3>(*entity).unwrap().iso = iso;
+                                cx.world.query_one_mut::<&mut Global3>(entity).unwrap().iso = iso;
                                 update.pop_front();
                             }
                         }
-                        Err(hecs::QueryOneError::NoSuchEntity) => {
-                            let entity = *entity;
+                        Err(EntityError::NoSuchEntity) => {
                             let _ = cx.world.despawn(entity);
                             update.pop_front();
                         }
-                        Err(hecs::QueryOneError::Unsatisfied) => {
-                            let entity = *entity;
-                            let _ = cx.world.remove_one::<Global3>(entity);
+                        Err(EntityError::MissingComponents) => {
+                            let _ = cx.world.remove::<Global3>(entity);
                             update.pop_front();
                         }
                     }

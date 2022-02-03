@@ -111,12 +111,12 @@ pub fn derive_unfold(item: TokenStream) -> syn::Result<TokenStream> {
     let system_ident = quote::format_ident!("{ident}UnfoldSystem");
     let system_name = syn::LitStr::new(&format!("{ident} unfold system"), ident.span());
     let system_struct = quote::quote_spanned!(ident.span() => #[derive(Clone, Copy, Debug, Default)] pub struct #system_ident;);
-    let unfold_spawned_ident = quote::format_ident!("{ident}UnfoldSpawned");
+    let unfolded_ident = quote::format_ident!("{ident}UnfoldSpawned");
 
     let stream = match &parsed.attrs.func {
         None => {
-            let mut unfold_spawned_fields = Vec::new();
-            let mut unfold_spawned_fields_init = Vec::new();
+            let mut unfolded_fields = Vec::new();
+            let mut unfolded_fields_init = Vec::new();
 
             let mut cleanup_statements = Vec::new();
             let mut updates = Vec::new();
@@ -140,10 +140,10 @@ pub fn derive_unfold(item: TokenStream) -> syn::Result<TokenStream> {
                 };
 
                 cleanup_statements.push(
-                    quote::quote_spanned!(ty.span() => let _ = cx.world.remove_one::<#asset_ty>(e);)
+                    quote::quote_spanned!(ty.span() => let _ = cx.world.remove::<#asset_ty>(&e);),
                 );
 
-                let spawned_field_ident = match &field.ident {
+                let unfolded_field_ident = match &field.ident {
                     None => syn::Member::Unnamed(syn::Index {
                         span: field.span(),
                         index: spawned_idx as u32,
@@ -160,38 +160,38 @@ pub fn derive_unfold(item: TokenStream) -> syn::Result<TokenStream> {
                 };
 
                 if field.ident.is_some() {
-                    unfold_spawned_fields
-                        .push(quote::quote_spanned!(field.span() => #spawned_field_ident: ::core::option::Option<::arcana::assets::AssetId>));
-                    unfold_spawned_fields_init
-                        .push(quote::quote_spanned!(field.span() => #spawned_field_ident: ::core::option::Option::None));
+                    unfolded_fields
+                        .push(quote::quote_spanned!(field.span() => #unfolded_field_ident: ::core::option::Option<::arcana::assets::AssetId>));
+                    unfolded_fields_init
+                        .push(quote::quote_spanned!(field.span() => #unfolded_field_ident: ::core::option::Option::None));
                 } else {
-                    unfold_spawned_fields
+                    unfolded_fields
                         .push(quote::quote_spanned!(field.span() => ::core::option::Option<::arcana::assets::AssetId>));
-                    unfold_spawned_fields_init
+                    unfolded_fields_init
                         .push(quote::quote_spanned!(field.span() => ::core::option::Option::None));
                 }
 
                 updates.push(quote::quote_spanned!(field.span() => {
                     let id = *Borrow::<AssetId>::borrow(&value.#value_field_ident);
-                    match spawned.#spawned_field_ident {
+                    match unfolded.#unfolded_field_ident {
                         Some(old_id) if old_id == id => {}
                         _ => match cx.assets.build::<#asset_ty, _>(id, cx.graphics) {
                             None => {},
                             Some(Ok(asset)) => {
-                                spawned.#spawned_field_ident = Some(id);
+                                unfolded.#unfolded_field_ident = Some(id);
                                 entity_builder.add(<#asset_ty as Clone>::clone(asset));
                             }
                             Some(Err(err)) => {
                                 tracing::error!("Failed to load asset '{}({:})'. {:#}", type_name::<#asset_ty>(), id, err);
-                                spawned.#spawned_field_ident = Some(id);
+                                unfolded.#unfolded_field_ident = Some(id);
                             }
                         },
                     }
                 }));
             }
 
-            let unfold_spawned_struct = quote::quote_spanned!(ident.span() => struct #unfold_spawned_ident {
-                #(#unfold_spawned_fields,)*
+            let unfolded_struct = quote::quote_spanned!(ident.span() => struct #unfolded_ident {
+                #(#unfolded_fields,)*
             });
 
             quote::quote! {
@@ -201,7 +201,7 @@ pub fn derive_unfold(item: TokenStream) -> syn::Result<TokenStream> {
 
                 #system_struct
 
-                #unfold_spawned_struct
+                #unfolded_struct
 
                 impl ::arcana::system::System for #system_ident {
                     fn name(&self) -> &str {
@@ -211,57 +211,57 @@ pub fn derive_unfold(item: TokenStream) -> syn::Result<TokenStream> {
                     fn run(&mut self, cx: ::arcana::system::SystemContext<'_>) {
                         use core::{any::type_name, borrow::Borrow, clone::Clone, option::Option::{self, None, Some}};
                         use std::vec::Vec;
-                        use arcana::{assets::{AssetId, TypedAssetIdExt}, hecs::{Entity, EntityBuilder}};
+                        use arcana::{assets::{AssetId, TypedAssetIdExt}, edict::entity::{EntityId, EntityBuilder}};
 
-                        let cleanup_query = cx.world.query_mut::<()>().with::<#unfold_spawned_ident>().without::<#ident>();
+                        let cleanup_query = cx.world.query_mut::<()>().with::<#unfolded_ident>().without::<#ident>();
 
                         let mut cleanup = Vec::new_in(&*cx.scope);
                         cleanup.extend(cleanup_query.into_iter().map(|(e, ())| e));
 
                         for e in cleanup {
-                            let _ = cx.world.remove_one::<#unfold_spawned_ident>(e);
+                            let _ = cx.world.remove::<#unfolded_ident>(&e);
                             #( #cleanup_statements )*
                         }
 
-                        let query = cx.world.query_mut::<(&#ident, Option<&mut #unfold_spawned_ident>)>();
+                        let query = cx.world.query_mut::<(&#ident, Option<&mut #unfolded_ident>)>();
 
                         let mut inserts = Vec::new_in(&*cx.scope);
 
-                        for (e, (value, spawned)) in query {
-                            let mut spawned_insert = None;
+                        for (e, (value, unfolded)) in query {
+                            let mut unfolded_insert = None;
 
-                            let spawned: &mut #unfold_spawned_ident = match spawned {
+                            let unfolded: &mut #unfolded_ident = match unfolded {
                                 None => {
-                                    spawned_insert.get_or_insert(#unfold_spawned_ident {
-                                        #(#unfold_spawned_fields_init,)*
+                                    unfolded_insert.get_or_insert(#unfolded_ident {
+                                        #(#unfolded_fields_init,)*
                                     })
                                 }
-                                Some(spawned) => spawned,
+                                Some(unfolded) => unfolded,
                             };
 
                             let mut entity_builder = EntityBuilder::new();
 
                             #(#updates;)*
 
-                            if let Some(spawned_insert) = spawned_insert {
-                                entity_builder.add(spawned_insert);
+                            if let Some(unfolded_insert) = unfolded_insert {
+                                entity_builder.add(unfolded_insert);
                             }
 
-                            if entity_builder.component_types().next().is_some() {
+                            if !entity_builder.is_empty() {
                                 inserts.push((e, entity_builder));
                             }
                         }
 
                         for (e, mut entity_builder) in inserts {
-                            cx.world.insert(e, entity_builder.build()).unwrap();
+                            cx.world.try_insert(&e, entity_builder).unwrap();
                         }
                     }
                 }
             }
         }
         Some(unfold) => {
-            let mut unfold_spawned_fields = Vec::new();
-            let mut unfold_spawned_fields_init = Vec::new();
+            let mut unfolded_fields = Vec::new();
+            let mut unfolded_fields_init = Vec::new();
 
             let mut updates = Vec::new();
 
@@ -283,24 +283,24 @@ pub fn derive_unfold(item: TokenStream) -> syn::Result<TokenStream> {
                 match &f.asset {
                     None => {
                         if field.ident.is_some() {
-                            unfold_spawned_fields
+                            unfolded_fields
                                 .push(quote::quote_spanned!(field.span() => #field_ident: #ty));
-                            unfold_spawned_fields_init.push(
+                            unfolded_fields_init.push(
                                 quote::quote_spanned!(field_ident.span() => #field_ident: Clone::clone(&value.#field_ident)),
                             );
                         } else {
-                            unfold_spawned_fields.push(quote::quote_spanned!(field.span() => #ty));
-                            unfold_spawned_fields_init.push(
+                            unfolded_fields.push(quote::quote_spanned!(field.span() => #ty));
+                            unfolded_fields_init.push(
                                 quote::quote_spanned!(field_ident.span() => Clone::clone(&value.#field_ident))
                             );
                         }
 
                         unfold_fn_arg_types.push(quote::quote_spanned!(field.span() => &#ty));
                         unfold_fn_args
-                            .push(quote::quote_spanned!(field.span() => &spawned.#field_ident));
+                            .push(quote::quote_spanned!(field.span() => &unfolded.#field_ident));
 
                         updates.push(quote::quote_spanned!(field.span() => {
-                            if value.#field_ident != spawned.#field_ident {
+                            if value.#field_ident != unfolded.#field_ident {
                                 updated = true;
                             }
                         }));
@@ -316,26 +316,26 @@ pub fn derive_unfold(item: TokenStream) -> syn::Result<TokenStream> {
                         };
 
                         if field.ident.is_some() {
-                            unfold_spawned_fields.push(quote::quote_spanned!(field.span() => #field_ident: ::core::option::Option< ::core::result::Result< ::arcana::assets::WithId<#asset_ty>, ::arcana::assets::AssetId > >));
-                            unfold_spawned_fields_init.push(
+                            unfolded_fields.push(quote::quote_spanned!(field.span() => #field_ident: ::core::option::Option< ::core::result::Result< ::arcana::assets::WithId<#asset_ty>, ::arcana::assets::AssetId > >));
+                            unfolded_fields_init.push(
                                 quote::quote_spanned!(field_ident.span() => #field_ident: None),
                             );
                         } else {
-                            unfold_spawned_fields.push(
+                            unfolded_fields.push(
                                 quote::quote_spanned!(field.span() => ::core::option::Option<::arcana::assets::WithId<#asset_ty>>),
                             );
-                            unfold_spawned_fields_init
+                            unfolded_fields_init
                                 .push(quote::quote_spanned!(field_ident.span() => None));
                         }
 
                         unfold_fn_arg_types
                             .push(quote::quote_spanned!(field.span() => &::arcana::assets::WithId<#asset_ty>));
                         unfold_fn_args
-                            .push(quote::quote_spanned!(field.span() => spawned.#field_ident.as_ref().unwrap().as_ref().unwrap()));
+                            .push(quote::quote_spanned!(field.span() => unfolded.#field_ident.as_ref().unwrap().as_ref().unwrap()));
 
                         updates.push(quote::quote_spanned!(field.span() => {
                             let id = *Borrow::<AssetId>::borrow(&value.#field_ident);
-                            match &spawned.#field_ident {
+                            match &unfolded.#field_ident {
                                 Some(Ok(old_id)) if WithId::id(old_id) == id => {}
                                 Some(Err(old_id)) if *old_id == id => {}
                                 _ => match cx.assets.build::<#asset_ty, _>(id, cx.graphics) {
@@ -344,13 +344,13 @@ pub fn derive_unfold(item: TokenStream) -> syn::Result<TokenStream> {
                                     },
                                     Some(Ok(asset)) => {
                                         updated = true;
-                                        spawned.#field_ident = Some(Ok(WithId::new(Clone::clone(asset), id)));
+                                        unfolded.#field_ident = Some(Ok(WithId::new(Clone::clone(asset), id)));
                                     }
                                     Some(Err(err)) => {
                                         ready = false;
 
                                         ::arcana::tracing::error!("Failed to load asset '{}({:})'. {:#}", type_name::<#asset_ty>(), id, err);
-                                        spawned.#field_ident = Some(Err(id));
+                                        unfolded.#field_ident = Some(Err(id));
                                     }
                                 },
                             }
@@ -359,8 +359,8 @@ pub fn derive_unfold(item: TokenStream) -> syn::Result<TokenStream> {
                 }
             }
 
-            let unfold_spawned_struct = quote::quote_spanned!(ident.span() => struct #unfold_spawned_ident {
-                #(#unfold_spawned_fields,)*
+            let unfolded_struct = quote::quote_spanned!(ident.span() => struct #unfolded_ident {
+                #(#unfolded_fields,)*
             });
 
             quote::quote! {
@@ -370,7 +370,7 @@ pub fn derive_unfold(item: TokenStream) -> syn::Result<TokenStream> {
 
                 #system_struct
 
-                #unfold_spawned_struct
+                #unfolded_struct
 
                 impl ::arcana::system::System for #system_ident {
                     fn name(&self) -> &str {
@@ -380,71 +380,70 @@ pub fn derive_unfold(item: TokenStream) -> syn::Result<TokenStream> {
                     fn run(&mut self, cx: ::arcana::system::SystemContext<'_>) {
                         use core::{any::type_name, borrow::Borrow, clone::Clone, iter::Iterator, option::Option::{self, Some, None}};
                         use std::vec::Vec;
-                        use ::arcana::{assets::WithId, hecs::{Entity, EntityBuilder, World}, unfold::{UnfoldBundle, UnfoldResult}, resources::Res};
+                        use ::arcana::{assets::WithId, edict::{bundle::Bundle, entity::EntityId, world::World}, unfold::UnfoldResult, resources::Res};
 
-                        let cleanup_query = cx.world.query_mut::<()>().with::<#unfold_spawned_ident>().without::<#ident>();
+                        let cleanup_query = cx.world.query_mut::<&#unfolded_ident>().without::<#ident>();
 
                         let mut cleanup = Vec::new_in(&*cx.scope);
-                        cleanup.extend(cleanup_query.into_iter().map(|(e, ())| e));
+                        cleanup.extend(cleanup_query.into_iter().map(|(e, _)| e));
 
                         for e in cleanup {
-                            let _ = cx.world.remove_one::<#unfold_spawned_ident>(e);
+                            let _ = cx.world.remove::<#unfolded_ident>(&e);
 
-                            fn cleanup<T: UnfoldBundle, I>(world: &mut World, entity: Entity, _: fn( #(#unfold_fn_arg_types,)* &mut Res ) -> UnfoldResult<T, I>) {
-                                T::remove(world, entity);
+                            fn cleanup<T: Bundle, I>(world: &mut World, entity: &EntityId, _: fn( #(#unfold_fn_arg_types,)* &mut Res ) -> UnfoldResult<T, I>) {
+                                let _ = world.remove_bundle::<T>(entity);
                             }
 
-                            cleanup(cx.world, e, #unfold);
+                            cleanup(cx.world, &e, #unfold);
                         }
 
-                        let query = cx.world.query_mut::<(&#ident, Option<&mut #unfold_spawned_ident>)>();
+                        let query = cx.world.query_mut::<(&#ident, Option<&mut #unfolded_ident>)>();
 
+                        let mut unfolded_inserts = Vec::new_in(&*cx.scope);
                         let mut inserts = Vec::new_in(&*cx.scope);
                         let mut spawns = Vec::new_in(&*cx.scope);
 
-                        for (e, (value, spawned)) in query {
-                            let mut spawned_insert = None;
+                        for (e, (value, unfolded)) in query {
+                            let mut unfolded_insert = None;
                             let mut ready = true;
                             let mut updated = false;
 
-                            let spawned: &mut #unfold_spawned_ident = match spawned {
+                            let unfolded: &mut #unfolded_ident = match unfolded {
                                 None => {
                                     updated = true;
-                                    spawned_insert.get_or_insert(#unfold_spawned_ident {
-                                        #(#unfold_spawned_fields_init,)*
+                                    unfolded_insert.get_or_insert(#unfolded_ident {
+                                        #(#unfolded_fields_init,)*
                                     })
                                 }
-                                Some(spawned) => spawned,
+                                Some(unfolded) => unfolded,
                             };
 
                             #(#updates;)*
 
-                            let mut entity_builder = EntityBuilder::new();
 
                             if updated && ready {
                                 let UnfoldResult { insert, spawn } = (#unfold)( #(#unfold_fn_args,)* cx.res );
-                                entity_builder.add_bundle(insert);
+                                inserts.push((e, insert));
 
                                 if Iterator::size_hint(&spawn).1 != Some(0) {
                                     spawns.push((e, spawn));
                                 }
                             }
 
-
-                            if let Some(spawned_insert) = spawned_insert {
-                                entity_builder.add(spawned_insert);
-                            }
-
-                            if entity_builder.component_types().next().is_some() {
-                                inserts.push((e, entity_builder));
+                            if let Some(unfolded_insert) = unfolded_insert {
+                                unfolded_inserts.push((e, unfolded_insert));
                             }
                         }
 
-                        for (e, mut entity_builder) in inserts {
-                            cx.world.insert(e, entity_builder.build()).unwrap();
+                        for (e, insert) in inserts {
+                            cx.world.try_insert_bundle(&e, insert).unwrap();
                         }
 
-                        for (e, mut spawn) in spawns {
+                        for (e, unfolded) in unfolded_inserts {
+                            cx.world.try_insert(&e, unfolded).unwrap();
+                        }
+
+                        for (e, spawn) in spawns {
                             todo!()
                         }
                     }

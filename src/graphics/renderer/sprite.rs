@@ -1,6 +1,6 @@
 use std::{convert::TryFrom, mem::size_of, ops::Range};
 
-use hecs::Entity;
+use edict::entity::EntityId;
 use palette::LinSrgba;
 use sierra::{
     descriptors, graphics_pipeline_desc, mat3, pipeline, shader_repr, AccessFlags, Buffer,
@@ -169,21 +169,13 @@ impl DrawNode for SpriteDraw {
         fence_index: usize,
         encoder: &mut Encoder<'a>,
         render_pass: &mut RenderPassEncoder<'_, 'b>,
-        camera: Entity,
+        camera: EntityId,
         _viewport: Extent2d,
     ) -> eyre::Result<()> {
-        let view = cx
-            .world
-            .get_mut::<Global2>(camera)?
-            .iso
-            .inverse()
-            .to_homogeneous();
+        let (global, camera) = cx.world.query_one::<(&Global2, &Camera2)>(&camera)?;
 
-        let affine = cx
-            .world
-            .get_mut::<Camera2>(camera)?
-            .affine()
-            .to_homogeneous();
+        let view = global.iso.inverse().to_homogeneous();
+        let affine = camera.affine().to_homogeneous();
 
         self.descriptors.uniforms.camera = mat3_na_to_sierra(affine * view);
 

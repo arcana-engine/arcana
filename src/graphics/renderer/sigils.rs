@@ -1,7 +1,7 @@
 use std::{collections::HashMap, convert::TryFrom, mem::size_of_val};
 
+use edict::entity::EntityId;
 use goods::AssetId;
-use hecs::Entity;
 use palette::LinSrgba;
 use sierra::{
     align_up, descriptors, graphics_pipeline_desc, pipeline, shader_repr, AccessFlags, Buffer,
@@ -147,7 +147,7 @@ impl DrawNode for SigilsDraw {
         fence_index: usize,
         encoder: &mut Encoder<'a>,
         render_pass: &mut RenderPassEncoder<'_, 'b>,
-        _camera: Entity,
+        _camera: EntityId,
         viewport: Extent2d,
     ) -> eyre::Result<()> {
         cx.res.with(|| SigilsDrawAssets {

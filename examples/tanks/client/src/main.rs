@@ -6,7 +6,7 @@ use std::net::Ipv4Addr;
 use arcana::{
     evoke,
     graphics::{simple::SimpleRenderer, sprite::SpriteDraw, DrawNode, Material},
-    hecs, na,
+    edict, na,
     physics2::*,
     prelude::*,
     rapier2d::prelude::RigidBodyBuilder,
@@ -293,7 +293,7 @@ fn main() {
         game.client = Some(client);
 
         struct RemoteControl {
-            entity: Option<hecs::Entity>,
+            entity: Option<edict::EntityId>,
             pid: evoke::PlayerId,
         }
 
@@ -321,7 +321,7 @@ fn main() {
 
                         let controller =
                             EntityController::assume_control(TankCommander::main(), e, cx.world)
-                                .expect("Entity exists and is not controlled");
+                                .expect("EntityId exists and is not controlled");
 
                         cx.control.add_global_controller(controller);
                         rc.entity = Some(e);

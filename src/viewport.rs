@@ -4,7 +4,7 @@ use crate::{
     graphics::Graphics,
     resources::Res,
 };
-use hecs::{Entity, World};
+use edict::{entity::EntityId, world::World};
 use sierra::{Format, ImageUsage, PresentMode, Surface, SurfaceError, Swapchain, SwapchainImage};
 use winit::window::{Window, WindowId};
 
@@ -21,7 +21,7 @@ use sigils::Ui;
 
 /// Viewport into the world.
 pub struct Viewport {
-    camera: Entity,
+    camera: EntityId,
     window: WindowId,
     #[allow(unused)]
     surface: Surface,
@@ -33,7 +33,7 @@ pub struct Viewport {
 
 impl Viewport {
     /// Returns new viewport instance attached to specified camera.
-    pub fn new(camera: Entity, window: &Window, graphics: &Graphics) -> eyre::Result<Self> {
+    pub fn new(camera: EntityId, window: &Window, graphics: &Graphics) -> eyre::Result<Self> {
         let mut surface = graphics.create_surface(window)?;
         let mut swapchain = graphics.create_swapchain(&mut surface)?;
         swapchain.configure(
@@ -55,11 +55,11 @@ impl Viewport {
         })
     }
 
-    pub fn set_camera(&mut self, camera: Entity) {
+    pub fn set_camera(&mut self, camera: EntityId) {
         self.camera = camera;
     }
 
-    pub fn camera(&self) -> Entity {
+    pub fn camera(&self) -> EntityId {
         self.camera
     }
 
@@ -104,12 +104,12 @@ impl Funnel<Event> for Viewport {
                 let aspect = size.width as f32 / size.height as f32;
 
                 #[cfg(feature = "2d")]
-                if let Ok(mut camera) = world.get_mut::<Camera2>(self.camera) {
+                if let Ok(camera) = world.query_one_mut::<&mut Camera2>(&self.camera) {
                     camera.set_aspect(aspect);
                 }
 
                 #[cfg(feature = "3d")]
-                if let Ok(mut camera) = world.get_mut::<Camera3>(self.camera) {
+                if let Ok(camera) = world.query_one_mut::<&mut Camera3>(&self.camera) {
                     camera.set_aspect(aspect);
                 }
 

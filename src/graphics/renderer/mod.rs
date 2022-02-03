@@ -1,4 +1,5 @@
-use hecs::Entity;
+use edict::{entity::EntityId, world::World};
+use scoped_arena::Scope;
 use sierra::{Encoder, Extent2d, RenderPassEncoder};
 
 #[cfg(feature = "3d")]
@@ -9,12 +10,9 @@ pub mod sprite;
 
 pub mod simple;
 
-use {
-    super::Graphics,
-    crate::{clocks::ClockIndex, resources::Res, viewport::Viewport},
-    hecs::World,
-    scoped_arena::Scope,
-};
+use crate::{clocks::ClockIndex, resources::Res, viewport::Viewport};
+
+use super::Graphics;
 
 pub struct RendererContext<'a, 'b> {
     /// World on which systems are run.
@@ -89,7 +87,7 @@ pub trait DrawNode: 'static {
         fence_index: usize,
         encoder: &mut Encoder<'a>,
         render_pass: &mut RenderPassEncoder<'_, 'b>,
-        camera: Entity,
+        camera: EntityId,
         viewport: Extent2d,
     ) -> eyre::Result<()>;
 }
@@ -104,7 +102,7 @@ where
         fence_index: usize,
         encoder: &mut Encoder<'a>,
         render_pass: &mut RenderPassEncoder<'_, 'b>,
-        camera: Entity,
+        camera: EntityId,
         viewport: Extent2d,
     ) -> eyre::Result<()> {
         (&mut **self).draw(cx, fence_index, encoder, render_pass, camera, viewport)
@@ -115,7 +113,7 @@ where
 pub struct DrawNodeInputs<'a> {
     pub encoder: &'a mut Encoder<'a>,
     pub render_pass: RenderPassEncoder<'a, 'a>,
-    pub camera: Entity,
+    pub camera: EntityId,
     pub viewport: Extent2d,
 }
 

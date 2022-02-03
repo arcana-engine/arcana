@@ -1,9 +1,7 @@
-use {
-    super::Graphics,
-    crate::{clocks::ClockIndex, resources::Res},
-    hecs::World,
-    scoped_arena::Scope,
-};
+use super::Graphics;
+use crate::{clocks::ClockIndex, resources::Res};
+use edict::world::World;
+use scoped_arena::Scope;
 
 pub struct NodeContext<'a> {
     pub graphics: &'a mut Graphics,

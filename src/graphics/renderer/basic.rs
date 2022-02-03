@@ -1,4 +1,4 @@
-use hecs::Entity;
+use edict::entity::EntityId;
 use sierra::{
     descriptors, graphics_pipeline_desc, mat4, pipeline, shader_repr, vec4, DepthTest,
     DescriptorsInput, DynamicGraphicsPipeline, Encoder, Extent2d, Format, FragmentShader,
@@ -76,7 +76,7 @@ impl DrawNode for BasicDraw {
         fence_index: usize,
         encoder: &mut Encoder<'a>,
         render_pass: &mut RenderPassEncoder<'_, 'b>,
-        camera: Entity,
+        camera: EntityId,
         _viewport: Extent2d,
     ) -> eyre::Result<()> {
         let view = cx

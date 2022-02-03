@@ -7,7 +7,7 @@ use std::{
 
 use arcana::{
     assets::AssetId,
-    evoke, hecs, na,
+    evoke, edict, na,
     palette::*,
     physics2::{ContactQueue2, Physics2, PhysicsData2},
     prelude::*,
@@ -34,14 +34,14 @@ fn random_color() -> [f32; 3] {
 }
 
 struct RemoteTankPlayer {
-    entity: hecs::Entity,
+    entity: edict::EntityId,
 }
 
 impl evoke::server::RemotePlayer for RemoteTankPlayer {
     type Input = Vec<tanks::TankCommand>;
     type Info = ();
 
-    fn accept((): (), pid: evoke::PlayerId, world: &mut hecs::World) -> eyre::Result<Self>
+    fn accept((): (), pid: evoke::PlayerId, world: &mut edict::World) -> eyre::Result<Self>
     where
         Self: Sized,
     {
@@ -66,7 +66,7 @@ impl evoke::server::RemotePlayer for RemoteTankPlayer {
     }
 
     #[inline(always)]
-    fn disconnected(self, world: &mut hecs::World)
+    fn disconnected(self, world: &mut edict::World)
     where
         Self: Sized,
     {
@@ -84,8 +84,8 @@ impl evoke::server::RemotePlayer for RemoteTankPlayer {
 
     fn apply_input(
         &mut self,
-        entity: hecs::Entity,
-        world: &mut hecs::World,
+        entity: edict::EntityId,
+        world: &mut edict::World,
         pack: Vec<tanks::TankCommand>,
     ) {
         if self.entity == entity {
@@ -115,7 +115,7 @@ impl TankStateInternal {
 }
 
 struct Respawner {
-    tank: hecs::Entity,
+    tank: edict::EntityId,
     timeout: TimeStamp,
 }
 
@@ -147,7 +147,7 @@ impl System for TankSystem {
         {
             for collider in contacts.drain_contacts_started() {
                 let bits = physics.colliders.get(collider).unwrap().user_data as u64;
-                if let Some(collider_entity) = arcana::hecs::Entity::from_bits(bits) {
+                if let Some(collider_entity) = arcana::edict::EntityId::from_bits(bits) {
                     if cx.world.get::<Bullet>(collider_entity).is_ok() {
                         tank.alive = false;
                         respawners.push(Respawner {
@@ -339,7 +339,7 @@ fn main() {
     })
 }
 
-fn random_spawn_location(world: &mut hecs::World) -> Global2 {
+fn random_spawn_location(world: &mut edict::World) -> Global2 {
     let maps_count = world
         .query_mut::<()>()
         .with::<TileMap>()

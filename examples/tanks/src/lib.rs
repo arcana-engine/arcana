@@ -6,7 +6,7 @@ use arcana::{
     na,
     physics2::{prelude::*, *},
     prelude::*,
-    unfold::{UnfoldBundle, UnfoldResult},
+    unfold::UnfoldResult,
 };
 
 #[cfg(feature = "graphics")]
@@ -156,7 +156,7 @@ fn unfold_tank(
     #[cfg(feature = "graphics")] sprite_sheet: &WithId<SpriteSheet<Texture>>,
     #[cfg(not(feature = "graphics"))] _sprite_sheet: &AssetId,
     res: &mut Res,
-) -> UnfoldResult<impl UnfoldBundle> {
+) -> UnfoldResult<impl Bundle> {
     let hs = size / 2.0;
     let physics = res.with(PhysicsData2::new);
 

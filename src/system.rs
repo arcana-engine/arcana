@@ -4,7 +4,7 @@ use {
         resources::Res,
         task::{Spawner, TaskContext},
     },
-    hecs::World,
+    edict::world::World,
     scoped_arena::Scope,
 };
 

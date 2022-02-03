@@ -1,11 +1,12 @@
 use std::sync::Arc;
 
+use edict::bundle::Bundle;
 use goods::{Asset, AssetId};
 
 use crate::{
     assets::WithId,
     resources::Res,
-    unfold::{Unfold, UnfoldBundle, UnfoldResult},
+    unfold::{Unfold, UnfoldResult},
 };
 
 #[cfg(feature = "physics2d")]
@@ -61,7 +62,10 @@ fn unfold_tile_map(
     width: &usize,
     cells: &Arc<[usize]>,
     res: &mut Res,
-) -> UnfoldResult<impl UnfoldBundle> {
+) -> UnfoldResult<impl Bundle> {
+    #[cfg(not(feature = "physics2d"))]
+    drop((cell_size, width, cells, res));
+
     #[cfg(feature = "physics2d")]
     let body: RigidBodyHandle = {
         let mut compound = Vec::new();

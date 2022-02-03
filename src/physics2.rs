@@ -5,8 +5,8 @@ use {
         system::{System, SystemContext, DEFAULT_TICK_SPAN},
     },
     approx::relative_ne,
+    edict::entity::EntityId,
     flume::{unbounded, Sender},
-    hecs::Entity,
     rapier2d::{
         dynamics::{
             CCDSolver, IntegrationParameters, IslandManager, JointSet, RigidBodyHandle,
@@ -131,8 +131,8 @@ impl System for Physics2 {
         let mut remove_bodies = Vec::with_capacity_in(64, &*cx.scope);
         let world = &mut *cx.world;
         data.bodies.iter().for_each(|(handle, body)| {
-            if let Some(e) = Entity::from_bits(body.user_data as u64) {
-                match world.query_one_mut::<&RigidBodyHandle>(e) {
+            if let Some(e) = EntityId::from_bits(body.user_data as u64) {
+                match world.query_one_mut::<&RigidBodyHandle>(&e) {
                     Ok(body) if *body == handle => {}
                     _ => remove_bodies.push(handle),
                 }
@@ -150,7 +150,7 @@ impl System for Physics2 {
         for (entity, body) in cx.world.query_mut::<&RigidBodyHandle>() {
             let body = data.bodies.get_mut(*body).unwrap();
 
-            match Entity::from_bits(body.user_data as u64) {
+            match EntityId::from_bits(body.user_data as u64) {
                 Some(e) if e == entity => {}
                 _ => {
                     body.user_data = entity.to_bits().get().into();
@@ -214,14 +214,14 @@ impl System for Physics2 {
             match event {
                 ContactEvent::Started(lhs, rhs) => {
                     let bits = data.colliders.get(lhs).unwrap().user_data as u64;
-                    let entity = Entity::from_bits(bits).unwrap();
+                    let entity = EntityId::from_bits(bits).unwrap();
 
                     if let Ok(mut queue) = cx.world.get_mut::<ContactQueue2>(entity) {
                         queue.contacts_started.push(rhs);
                     }
 
                     let bits = data.colliders.get(rhs).unwrap().user_data as u64;
-                    let entity = Entity::from_bits(bits).unwrap();
+                    let entity = EntityId::from_bits(bits).unwrap();
 
                     if let Ok(mut queue) = cx.world.get_mut::<ContactQueue2>(entity) {
                         queue.contacts_started.push(lhs);
@@ -229,14 +229,14 @@ impl System for Physics2 {
                 }
                 ContactEvent::Stopped(lhs, rhs) => {
                     let bits = data.colliders.get(lhs).unwrap().user_data as u64;
-                    let entity = Entity::from_bits(bits).unwrap();
+                    let entity = EntityId::from_bits(bits).unwrap();
 
                     if let Ok(mut queue) = cx.world.get_mut::<ContactQueue2>(entity) {
                         queue.contacts_stopped.push(rhs);
                     }
 
                     let bits = data.colliders.get(rhs).unwrap().user_data as u64;
-                    let entity = Entity::from_bits(bits).unwrap();
+                    let entity = EntityId::from_bits(bits).unwrap();
 
                     if let Ok(mut queue) = cx.world.get_mut::<ContactQueue2>(entity) {
                         queue.contacts_stopped.push(lhs);
@@ -251,28 +251,28 @@ impl System for Physics2 {
 
             if event.intersecting {
                 let bits = data.colliders.get(lhs).unwrap().user_data as u64;
-                let entity = Entity::from_bits(bits).unwrap();
+                let entity = EntityId::from_bits(bits).unwrap();
 
                 if let Ok(mut queue) = cx.world.get_mut::<IntersectionQueue2>(entity) {
                     queue.intersecting_started.push(rhs);
                 }
 
                 let bits = data.colliders.get(rhs).unwrap().user_data as u64;
-                let entity = Entity::from_bits(bits).unwrap();
+                let entity = EntityId::from_bits(bits).unwrap();
 
                 if let Ok(mut queue) = cx.world.get_mut::<IntersectionQueue2>(entity) {
                     queue.intersecting_started.push(lhs);
                 }
             } else {
                 let bits = data.colliders.get(lhs).unwrap().user_data as u64;
-                let entity = Entity::from_bits(bits).unwrap();
+                let entity = EntityId::from_bits(bits).unwrap();
 
                 if let Ok(mut queue) = cx.world.get_mut::<IntersectionQueue2>(entity) {
                     queue.intersecting_stopped.push(rhs);
                 }
 
                 let bits = data.colliders.get(rhs).unwrap().user_data as u64;
-                let entity = Entity::from_bits(bits).unwrap();
+                let entity = EntityId::from_bits(bits).unwrap();
 
                 if let Ok(mut queue) = cx.world.get_mut::<IntersectionQueue2>(entity) {
                     queue.intersecting_stopped.push(lhs);

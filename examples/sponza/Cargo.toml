@@ -9,4 +9,4 @@ publish = false
 [dependencies]
 arcana = { path = "../.." }
 color-eyre = "0.6"
-hecs = "0.6"
+edict = "0.0.5"

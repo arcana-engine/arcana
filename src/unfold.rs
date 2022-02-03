@@ -1,5 +1,3 @@
-use hecs::{Bundle, Component, Entity, World};
-
 use crate::system::{Scheduler, System, SystemContext};
 
 pub use arcana_proc::Unfold;
@@ -65,10 +63,6 @@ impl<T> UnfoldResult<T> {
     }
 }
 
-pub trait UnfoldBundle: Bundle {
-    fn remove(world: &mut World, entity: Entity);
-}
-
 /// Dummy system for `Unfold`s that need no actions to be performed.
 #[derive(Clone, Copy, Debug, Default)]
 pub struct DummyUnfoldSystem;
@@ -80,37 +74,3 @@ impl System for DummyUnfoldSystem {
 
     fn run(&mut self, _: SystemContext<'_>) {}
 }
-
-macro_rules! for_tuple {
-    () => {
-        for_tuple!(for A B C D E F G H);
-    };
-
-    (for) => {
-        for_tuple!(impl);
-    };
-
-    (for $head:ident $($tail:ident)*) => {
-        for_tuple!(for $($tail)*);
-        for_tuple!(impl $head $($tail)*);
-    };
-
-    (impl) => {
-        impl UnfoldBundle for () {
-            fn remove(_world: &mut World, _entity: Entity) {}
-        }
-    };
-
-    (impl $($a:ident)+) => {
-        impl<$($a),+> UnfoldBundle for ($($a,)+)
-        where
-            $($a: Component,)+
-        {
-            fn remove(world: &mut World, entity: Entity) {
-                $(let _ = world.remove_one::<$a>(entity);)+
-            }
-        }
-    };
-}
-
-for_tuple!();

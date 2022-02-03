@@ -8,7 +8,7 @@ use std::{
 };
 
 use crate::{assets::Assets, resources::Res, system::SystemContext};
-use hecs::World;
+use edict::world::World;
 use scoped_arena::Scope;
 
 #[cfg(feature = "visible")]

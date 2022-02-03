@@ -1,7 +1,7 @@
 use arcana::{
     game::game2,
     graphics::{self, Texture},
-    hecs, na,
+    edict, na,
     rect::Rect,
     scene::Global2,
     sprite::Sprite,
@@ -14,7 +14,7 @@ use arcana::{
 struct Bunny;
 
 impl Bunny {
-    fn spawn(self, cx: TaskContext<'_>) -> hecs::Entity {
+    fn spawn(self, cx: TaskContext<'_>) -> edict::EntityId {
         let cat = cx.assets.load::<Texture, _>("bunny.png");
 
         let entity = cx.world.spawn((

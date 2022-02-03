@@ -39,7 +39,7 @@ impl System for LifeSpanSystem {
         }
 
         for e in despawn {
-            let _ = cx.world.despawn(e);
+            let _ = cx.world.despawn(&e);
         }
     }
 }
