@@ -7,7 +7,8 @@ use std::{
 
 use arcana::{
     assets::AssetId,
-    evoke, edict, na,
+    edict::{entity::EntityId, world::World},
+    evoke, na,
     palette::*,
     physics2::{ContactQueue2, Physics2, PhysicsData2},
     prelude::*,
@@ -34,14 +35,14 @@ fn random_color() -> [f32; 3] {
 }
 
 struct RemoteTankPlayer {
-    entity: edict::EntityId,
+    entity: EntityId,
 }
 
 impl evoke::server::RemotePlayer for RemoteTankPlayer {
     type Input = Vec<tanks::TankCommand>;
     type Info = ();
 
-    fn accept((): (), pid: evoke::PlayerId, world: &mut edict::World) -> eyre::Result<Self>
+    fn accept((): (), pid: evoke::PlayerId, world: &mut World) -> eyre::Result<Self>
     where
         Self: Sized,
     {
@@ -66,7 +67,7 @@ impl evoke::server::RemotePlayer for RemoteTankPlayer {
     }
 
     #[inline(always)]
-    fn disconnected(self, world: &mut edict::World)
+    fn disconnected(self, world: &mut World)
     where
         Self: Sized,
     {
@@ -74,22 +75,17 @@ impl evoke::server::RemotePlayer for RemoteTankPlayer {
 
         const KEEP_DISCONNECTED_FOR: TimeSpan = TimeSpan::from_seconds(5);
 
-        match world.query_one_mut::<&mut LifeSpan>(self.entity) {
+        match world.query_one_mut::<&mut LifeSpan>(&self.entity) {
             Ok(lifespan) => lifespan.truncate(KEEP_DISCONNECTED_FOR),
             _ => {
-                let _ = world.insert_one(self.entity, LifeSpan::new(KEEP_DISCONNECTED_FOR));
+                let _ = world.try_insert(&self.entity, LifeSpan::new(KEEP_DISCONNECTED_FOR));
             }
         }
     }
 
-    fn apply_input(
-        &mut self,
-        entity: edict::EntityId,
-        world: &mut edict::World,
-        pack: Vec<tanks::TankCommand>,
-    ) {
+    fn apply_input(&mut self, entity: EntityId, world: &mut World, pack: Vec<tanks::TankCommand>) {
         if self.entity == entity {
-            if let Ok(queue) = world.query_one_mut::<&mut CommandQueue<_>>(entity) {
+            if let Ok(queue) = world.query_one_mut::<&mut CommandQueue<_>>(&entity) {
                 queue.enque(pack);
             }
         } else {
@@ -115,7 +111,7 @@ impl TankStateInternal {
 }
 
 struct Respawner {
-    tank: edict::EntityId,
+    tank: EntityId,
     timeout: TimeStamp,
 }
 
@@ -132,23 +128,23 @@ impl System for TankSystem {
         let mut bullets = Vec::new_in(&*cx.scope);
         let mut respawners = Vec::new_in(&*cx.scope);
 
-        for (entity, (body, global, tank, internal, commands, contacts)) in cx
-            .world
-            .query::<(
-                &RigidBodyHandle,
-                &Global2,
-                &mut TankState,
-                &mut TankStateInternal,
-                &mut CommandQueue<TankCommand>,
-                &mut ContactQueue2,
-            )>()
-            .with::<Tank>()
-            .iter()
-        {
+        let (meta, query) = cx.world.meta_query_mut::<(
+            &RigidBodyHandle,
+            &Global2,
+            &mut TankState,
+            &mut TankStateInternal,
+            &mut CommandQueue<TankCommand>,
+            &mut ContactQueue2,
+        )>();
+
+        for (entity, (body, global, tank, internal, commands, contacts)) in query.with::<Tank>() {
             for collider in contacts.drain_contacts_started() {
                 let bits = physics.colliders.get(collider).unwrap().user_data as u64;
-                if let Some(collider_entity) = arcana::edict::EntityId::from_bits(bits) {
-                    if cx.world.get::<Bullet>(collider_entity).is_ok() {
+                if let Some(collider_entity) = EntityId::from_bits(bits) {
+                    if meta
+                        .has_component::<Bullet>(&collider_entity)
+                        .unwrap_or(false)
+                    {
                         tank.alive = false;
                         respawners.push(Respawner {
                             tank: entity,
@@ -213,25 +209,8 @@ impl System for TankSystem {
                     Global2::new(na::Translation2::new(pos.x, pos.y).into()),
                     Bullet,
                     body,
-                    #[cfg(feature = "graphics")]
-                    Sprite {
-                        world: Rect {
-                            left: -0.05,
-                            right: 0.05,
-                            top: -0.05,
-                            bottom: 0.05,
-                        },
-                        src: Rect::ONE_QUAD,
-                        tex: Rect::ONE_QUAD,
-                        layer: 0,
-                    },
-                    #[cfg(feature = "graphics")]
-                    Material {
-                        albedo_factor: [1.0, 0.8, 0.2, 1.0],
-                        ..Default::default()
-                    },
                     ContactQueue2::new(),
-                    LifeSpan::new(TimeSpan::SECOND),
+                    LifeSpan::new(TimeSpan::SECOND * 3),
                 ));
             }
         }
@@ -247,7 +226,7 @@ impl System for TankSystem {
         }
 
         for e in remove_respawners {
-            let _ = cx.world.despawn(e);
+            let _ = cx.world.despawn(&e);
         }
 
         for e in respawn_tanks {
@@ -255,7 +234,7 @@ impl System for TankSystem {
 
             if let Ok((tank, internal, global)) =
                 cx.world
-                    .query_one_mut::<(&mut TankState, &mut TankStateInternal, &mut Global2)>(e)
+                    .query_one_mut::<(&mut TankState, &mut TankStateInternal, &mut Global2)>(&e)
             {
                 *tank = TankState::new();
                 *internal = TankStateInternal::new();
@@ -339,7 +318,7 @@ fn main() {
     })
 }
 
-fn random_spawn_location(world: &mut edict::World) -> Global2 {
+fn random_spawn_location(world: &mut World) -> Global2 {
     let maps_count = world
         .query_mut::<()>()
         .with::<TileMap>()

@@ -2,6 +2,7 @@
 
 use arcana::{
     assets::{Asset, AssetId},
+    edict::bundle::Bundle,
     lifespan::LifeSpan,
     na,
     physics2::{prelude::*, *},
@@ -111,7 +112,7 @@ impl System for BulletSystem {
 
         for e in despawn {
             #[cfg(feature = "graphics")]
-            if let Ok(iso) = cx.world.get::<Global2>(e).map(|g| g.iso) {
+            if let Ok(iso) = cx.world.query_one::<&Global2>(&e).map(|g| g.iso) {
                 cx.world.spawn((
                     Global2::new(iso),
                     Sprite {
@@ -132,7 +133,7 @@ impl System for BulletSystem {
                     LifeSpan::new(TimeSpan::SECOND * 5),
                 ));
             }
-            let _ = cx.world.despawn(e);
+            let _ = cx.world.despawn(&e);
         }
     }
 }

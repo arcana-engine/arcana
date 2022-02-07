@@ -7,8 +7,8 @@ use {
         resources::Res,
         scene::{Global3, Local3},
     },
-    gltf::Node,
     edict::{EntityId, World},
+    gltf::Node,
 };
 
 pub struct GltfScene {
@@ -83,7 +83,7 @@ impl Prefab for Gltf {
                     })
                     .collect();
 
-                world.insert(entity, (GltfScene { nodes },)).unwrap();
+                world.try_insert(&entity, GltfScene { nodes }).unwrap();
                 tracing::info!("Gltf asset loaded");
             }
         }

@@ -79,14 +79,10 @@ impl DrawNode for BasicDraw {
         camera: EntityId,
         _viewport: Extent2d,
     ) -> eyre::Result<()> {
-        let view = cx
-            .world
-            .get_mut::<Global3>(camera)?
-            .iso
-            .inverse()
-            .to_homogeneous();
+        let (global, camera) = cx.world.query_one::<(&Global3, &Camera3)>(&camera)?;
 
-        let proj = cx.world.get_mut::<Camera3>(camera)?.proj().to_homogeneous();
+        let view = global.iso.inverse().to_homogeneous();
+        let proj = camera.proj().to_homogeneous();
 
         let mut uniforms = Uniforms::default();
         uniforms.camera_view = mat4_na_to_sierra(view);
@@ -107,8 +103,8 @@ impl DrawNode for BasicDraw {
 
         for e in new_entities {
             cx.world
-                .insert_one(
-                    e,
+                .try_insert(
+                    &e,
                     BasicRenderable {
                         descriptors: self.pipeline_layout.set.instance(),
                     },

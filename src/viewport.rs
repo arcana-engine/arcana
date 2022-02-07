@@ -77,10 +77,14 @@ impl Viewport {
         self.size
     }
 
-    pub fn acquire_image(&mut self, optimal: bool) -> Result<SwapchainImage, SurfaceError> {
-        let image = self.swapchain.acquire_image(optimal)?;
+    pub fn acquire_image(&mut self) -> Result<SwapchainImage, SurfaceError> {
+        let image = self.swapchain.acquire_image()?;
         self.needs_redraw = false;
         Ok(image)
+    }
+
+    pub fn update_swapchain(&mut self) -> Result<(), SurfaceError> {
+        self.swapchain.update()
     }
 }
 

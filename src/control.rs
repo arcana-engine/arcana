@@ -238,7 +238,7 @@ where
             true => Err(AssumeControlError::AlreadyControlled { entity }),
             false => {
                 world
-                    .try_insert(&entity, (CONTROLLED, CommandQueue::<T::Command>::new()))
+                    .try_insert_bundle(&entity, (CONTROLLED, CommandQueue::<T::Command>::new()))
                     .map_err(|NoSuchEntity| AssumeControlError::NoSuchEntity { entity })?;
                 Ok(EntityController { commander, entity })
             }

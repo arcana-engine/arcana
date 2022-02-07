@@ -4,9 +4,10 @@
 use std::net::Ipv4Addr;
 
 use arcana::{
+    edict::entity::EntityId,
     evoke,
     graphics::{simple::SimpleRenderer, sprite::SpriteDraw, DrawNode, Material},
-    edict, na,
+    na,
     physics2::*,
     prelude::*,
     rapier2d::prelude::RigidBodyBuilder,
@@ -123,9 +124,8 @@ impl System for TankClientSystem {
 
         for (_entity, (global, tank)) in cx
             .world
-            .query::<(&Global2, &mut TankState)>()
+            .query_mut::<(&Global2, &mut TankState)>()
             .with::<Tank>()
-            .iter()
         {
             if tank.alive {
                 if tank.fire {
@@ -169,7 +169,7 @@ impl System for TankClientSystem {
                         ..Default::default()
                     },
                     ContactQueue2::new(),
-                    LifeSpan::new(TimeSpan::SECOND),
+                    LifeSpan::new(TimeSpan::SECOND * 3),
                 ));
             }
         }
@@ -251,7 +251,7 @@ fn main() {
         let camera = game.viewport.camera();
 
         game.world
-            .get_mut::<Camera2>(camera)
+            .query_one_mut::<&mut Camera2>(&camera)
             .unwrap()
             .set_scaley(0.2);
 
@@ -293,7 +293,7 @@ fn main() {
         game.client = Some(client);
 
         struct RemoteControl {
-            entity: Option<edict::EntityId>,
+            entity: Option<EntityId>,
             pid: evoke::PlayerId,
         }
 
@@ -302,10 +302,10 @@ fn main() {
         // Add system that will assume control of entities belonging to the added player.
         game.scheduler.add_system(move |cx: SystemContext<'_>| {
             if let Some(entity) = rc.entity {
-                if cx.world.query_one_mut::<&evoke::PlayerId>(entity).is_err() {
+                if cx.world.query_one_mut::<&evoke::PlayerId>(&entity).is_err() {
                     tracing::error!("Controlled entity is broken");
 
-                    let _ = cx.world.despawn(entity);
+                    let _ = cx.world.despawn(&entity);
                     rc.entity = None;
                 }
             }
@@ -332,8 +332,8 @@ fn main() {
             }
 
             if let Some(entity) = rc.entity {
-                if let Some(pos) = cx.world.query_one_mut::<&Global2>(entity).ok().copied() {
-                    if let Ok(cam) = cx.world.query_one_mut::<&mut Global2>(camera) {
+                if let Some(pos) = cx.world.query_one_mut::<&Global2>(&entity).ok().copied() {
+                    if let Ok(cam) = cx.world.query_one_mut::<&mut Global2>(&camera) {
                         cam.iso.translation = pos.iso.translation;
                     }
                 }

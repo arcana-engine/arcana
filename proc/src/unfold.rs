@@ -253,7 +253,7 @@ pub fn derive_unfold(item: TokenStream) -> syn::Result<TokenStream> {
                         }
 
                         for (e, mut entity_builder) in inserts {
-                            cx.world.try_insert(&e, entity_builder).unwrap();
+                            cx.world.try_insert_bundle(&e, entity_builder).unwrap();
                         }
                     }
                 }

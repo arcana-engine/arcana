@@ -153,7 +153,7 @@ impl System for Physics3 {
             match EntityId::from_bits(body.user_data as u64) {
                 Some(e) if e == entity => {}
                 _ => {
-                    body.user_data = entity.to_bits().get() as u128;
+                    body.user_data = entity.bits() as u128;
 
                     for (index, &collider) in body.colliders().iter().enumerate() {
                         data.colliders.get_mut(collider).unwrap().user_data =
@@ -167,7 +167,7 @@ impl System for Physics3 {
             let collider = data.colliders.get_mut(*collider).unwrap();
 
             if collider.user_data == 0 {
-                collider.user_data = entity.to_bits().get().into();
+                collider.user_data = entity.bits().into();
             }
         }
 
@@ -213,7 +213,7 @@ impl System for Physics3 {
             },
         );
 
-        for (_, (global, body)) in cx.world.query::<(&mut Global3, &RigidBodyHandle)>().iter() {
+        for (_, (global, body)) in cx.world.query_mut::<(&mut Global3, &RigidBodyHandle)>() {
             let body = data.bodies.get_mut(*body).unwrap();
             global.iso = *body.position();
         }
@@ -224,14 +224,14 @@ impl System for Physics3 {
                     let bits = data.colliders.get(lhs).unwrap().user_data as u64;
                     let entity = EntityId::from_bits(bits).unwrap();
 
-                    if let Ok(mut queue) = cx.world.get_mut::<ContactQueue3>(entity) {
+                    if let Ok(queue) = cx.world.query_one_mut::<&mut ContactQueue3>(&entity) {
                         queue.contacts_started.push(rhs);
                     }
 
                     let bits = data.colliders.get(rhs).unwrap().user_data as u64;
                     let entity = EntityId::from_bits(bits).unwrap();
 
-                    if let Ok(mut queue) = cx.world.get_mut::<ContactQueue3>(entity) {
+                    if let Ok(queue) = cx.world.query_one_mut::<&mut ContactQueue3>(&entity) {
                         queue.contacts_started.push(lhs);
                     }
                 }
@@ -239,14 +239,14 @@ impl System for Physics3 {
                     let bits = data.colliders.get(lhs).unwrap().user_data as u64;
                     let entity = EntityId::from_bits(bits).unwrap();
 
-                    if let Ok(mut queue) = cx.world.get_mut::<ContactQueue3>(entity) {
+                    if let Ok(queue) = cx.world.query_one_mut::<&mut ContactQueue3>(&entity) {
                         queue.contacts_stopped.push(rhs);
                     }
 
                     let bits = data.colliders.get(rhs).unwrap().user_data as u64;
                     let entity = EntityId::from_bits(bits).unwrap();
 
-                    if let Ok(mut queue) = cx.world.get_mut::<ContactQueue3>(entity) {
+                    if let Ok(queue) = cx.world.query_one_mut::<&mut ContactQueue3>(&entity) {
                         queue.contacts_stopped.push(lhs);
                     }
                 }
@@ -261,28 +261,28 @@ impl System for Physics3 {
                 let bits = data.colliders.get(lhs).unwrap().user_data as u64;
                 let entity = EntityId::from_bits(bits).unwrap();
 
-                if let Ok(mut queue) = cx.world.get_mut::<IntersectionQueue3>(entity) {
+                if let Ok(queue) = cx.world.query_one_mut::<&mut IntersectionQueue3>(&entity) {
                     queue.intersecting_started.push(rhs);
                 }
 
                 let bits = data.colliders.get(rhs).unwrap().user_data as u64;
                 let entity = EntityId::from_bits(bits).unwrap();
 
-                if let Ok(mut queue) = cx.world.get_mut::<IntersectionQueue3>(entity) {
+                if let Ok(queue) = cx.world.query_one_mut::<&mut IntersectionQueue3>(&entity) {
                     queue.intersecting_started.push(lhs);
                 }
             } else {
                 let bits = data.colliders.get(lhs).unwrap().user_data as u64;
                 let entity = EntityId::from_bits(bits).unwrap();
 
-                if let Ok(mut queue) = cx.world.get_mut::<IntersectionQueue3>(entity) {
+                if let Ok(queue) = cx.world.query_one_mut::<&mut IntersectionQueue3>(&entity) {
                     queue.intersecting_stopped.push(rhs);
                 }
 
                 let bits = data.colliders.get(rhs).unwrap().user_data as u64;
                 let entity = EntityId::from_bits(bits).unwrap();
 
-                if let Ok(mut queue) = cx.world.get_mut::<IntersectionQueue3>(entity) {
+                if let Ok(queue) = cx.world.query_one_mut::<&mut IntersectionQueue3>(&entity) {
                     queue.intersecting_stopped.push(lhs);
                 }
             }

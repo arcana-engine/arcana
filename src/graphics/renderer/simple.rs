@@ -74,7 +74,7 @@ where
 
         let camera = viewport.camera();
 
-        let mut swapchain_image = viewport.acquire_image(true)?;
+        let mut swapchain_image = viewport.acquire_image()?;
 
         let viewport_extent = swapchain_image.image().info().extent.into_2d();
 
@@ -123,7 +123,13 @@ where
             &*cx.scope,
         );
 
+        let optimal = swapchain_image.is_optimal();
+
         cx.graphics.present(swapchain_image)?;
+
+        if !optimal {
+            viewport.update_swapchain()?;
+        }
 
         Ok(())
     }

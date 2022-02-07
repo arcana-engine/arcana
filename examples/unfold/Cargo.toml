@@ -9,4 +9,4 @@ publish = false
 [dependencies]
 arcana = { path = "../..", features = ["2d", "visible", "graphics", "treasury"] }
 tracing = "0.1"
-goods = { path = "../../../goods" }
+goods = { version = "0.12" }

@@ -14,6 +14,6 @@ server = []
 [dependencies]
 alkahest = { version = "0.1", features = ["nightly"] }
 arcana = { path = "../..", features = ["physics2d"], default-features = false }
-goods = { path = "../../../goods" }
+goods = { version = "0.12" }
 eyre = "0.6"
 serde = "1.0"

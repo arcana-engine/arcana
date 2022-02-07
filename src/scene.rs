@@ -122,7 +122,7 @@ pub struct Local3 {
 #[cfg(feature = "3d")]
 impl Display for Local3 {
     fn fmt(&self, fmt: &mut fmt::Formatter<'_>) -> fmt::Result {
-        write!(fmt, "{}@{}", self.parent.to_bits(), self.iso)
+        write!(fmt, "{}@{}", self.parent, self.iso)
     }
 }
 
@@ -311,8 +311,8 @@ impl System for SceneSystem {
             }
 
             while let Some((entity, local)) = update.front() {
-                if !ready.test(entity.id() as usize) {
-                    ready.set(entity.id() as usize);
+                if !ready.test(entity.bits() as usize) {
+                    ready.set(entity.bits() as usize);
                     count_3 += 1;
                     match cx
                         .world
@@ -324,8 +324,8 @@ impl System for SceneSystem {
                             update.pop_front();
                         }
                         Ok((Some(parent_local), parent_global)) => {
-                            if !ready.test(local.parent.id() as usize) {
-                                ready.set(local.parent.id() as usize);
+                            if !ready.test(local.parent.bits() as usize) {
+                                ready.set(local.parent.bits() as usize);
                                 let elem = (local.parent, *parent_local);
                                 update.push_front(elem);
                             } else {
