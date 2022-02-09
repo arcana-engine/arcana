@@ -155,7 +155,7 @@ impl DrawNode for SigilsDraw {
             fonts: HashMap::new(),
         });
 
-        let (ui, assets) = match cx.res.get_two_mut::<Ui, SigilsDrawAssets>() {
+        let (ui, assets) = match cx.res.query::<(&mut Ui, &mut SigilsDrawAssets)>() {
             None => return Ok(()),
             Some(pair) => pair,
         };

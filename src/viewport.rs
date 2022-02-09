@@ -16,9 +16,6 @@ use crate::camera::Camera2;
 #[cfg(feature = "3d")]
 use crate::camera::Camera3;
 
-#[cfg(feature = "sigils")]
-use sigils::Ui;
-
 /// Viewport into the world.
 pub struct Viewport {
     camera: EntityId,
@@ -29,11 +26,49 @@ pub struct Viewport {
     needs_redraw: bool,
     focused: bool,
     size: PhysicalSize<u32>,
+    scale_factor: f64,
+    swapchain_suboptimal_counter: u32,
+}
+
+const MAX_SUBOPTIMAL_SEQ: u32 = 5;
+
+pub struct ViewportData {
+    pub camera: EntityId,
+    pub window: WindowId,
+    pub size: PhysicalSize<u32>,
+    pub scale_factor: f64,
+}
+
+pub struct Viewports {
+    array: Vec<ViewportData>,
+}
+
+impl Viewports {
+    const fn new() -> Self {
+        Viewports { array: Vec::new() }
+    }
+
+    pub fn get(&self, window: WindowId) -> Option<&ViewportData> {
+        self.array.iter().find(|data| data.window == window)
+    }
+
+    pub fn get_by_camera(&self, camera: EntityId) -> Option<&ViewportData> {
+        self.array.iter().find(|data| data.camera == camera)
+    }
+
+    fn get_mut(&mut self, window: WindowId) -> Option<&mut ViewportData> {
+        self.array.iter_mut().find(|data| data.window == window)
+    }
 }
 
 impl Viewport {
     /// Returns new viewport instance attached to specified camera.
-    pub fn new(camera: EntityId, window: &Window, graphics: &Graphics) -> eyre::Result<Self> {
+    pub fn new(
+        camera: EntityId,
+        window: &Window,
+        res: &mut Res,
+        graphics: &Graphics,
+    ) -> eyre::Result<Self> {
         let mut surface = graphics.create_surface(window)?;
         let mut swapchain = graphics.create_swapchain(&mut surface)?;
         swapchain.configure(
@@ -43,6 +78,14 @@ impl Viewport {
         )?;
 
         let size = window.inner_size();
+        let scale_factor = window.scale_factor();
+
+        res.with(Viewports::new).array.push(ViewportData {
+            camera,
+            window: window.id(),
+            size,
+            scale_factor,
+        });
 
         Ok(Viewport {
             camera,
@@ -52,6 +95,8 @@ impl Viewport {
             needs_redraw: true,
             focused: true,
             size,
+            scale_factor,
+            swapchain_suboptimal_counter: 0,
         })
     }
 
@@ -77,14 +122,26 @@ impl Viewport {
         self.size
     }
 
-    pub fn acquire_image(&mut self) -> Result<SwapchainImage, SurfaceError> {
-        let image = self.swapchain.acquire_image()?;
-        self.needs_redraw = false;
-        Ok(image)
+    pub fn scale_factor(&self) -> f64 {
+        self.scale_factor
     }
 
-    pub fn update_swapchain(&mut self) -> Result<(), SurfaceError> {
-        self.swapchain.update()
+    pub fn acquire_image(&mut self) -> Result<SwapchainImage, SurfaceError> {
+        if self.swapchain_suboptimal_counter > MAX_SUBOPTIMAL_SEQ {
+            self.swapchain.update()?;
+            self.swapchain_suboptimal_counter = 0;
+        }
+
+        let image = self.swapchain.acquire_image()?;
+        self.needs_redraw = false;
+
+        if image.is_optimal() {
+            self.swapchain_suboptimal_counter = 0;
+        } else {
+            self.swapchain_suboptimal_counter += 1;
+        }
+
+        Ok(image)
     }
 }
 
@@ -95,9 +152,7 @@ impl Funnel<Event> for Viewport {
         match event {
             Event::RedrawRequested(id) if id == self.window => {
                 self.needs_redraw = true;
-                None
             }
-
             Event::WindowEvent {
                 event: WindowEvent::Resized(size),
                 window_id,
@@ -117,24 +172,33 @@ impl Funnel<Event> for Viewport {
                     camera.set_aspect(aspect);
                 }
 
-                #[cfg(feature = "sigils")]
-                if let Some(ui) = res.get_mut::<Ui>() {
-                    ui.set_extent(sigils::Vector2 {
-                        x: size.width as f32,
-                        y: size.height as f32,
-                    });
-                }
+                res.get_mut::<Viewports>()
+                    .unwrap()
+                    .get_mut(self.window)
+                    .unwrap()
+                    .size = size;
+            }
+            Event::WindowEvent {
+                event: WindowEvent::ScaleFactorChanged { scale_factor, .. },
+                window_id,
+            } if window_id == self.window => {
+                self.scale_factor = scale_factor;
 
-                Some(event)
+                res.get_mut::<Viewports>()
+                    .unwrap()
+                    .get_mut(self.window)
+                    .unwrap()
+                    .scale_factor = scale_factor;
             }
             Event::WindowEvent {
                 event: WindowEvent::Focused(focused),
                 window_id,
             } if window_id == self.window => {
                 self.focused = focused;
-                None
             }
-            event => Some(event),
+            _ => {}
         }
+
+        Some(event)
     }
 }

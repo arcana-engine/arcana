@@ -32,13 +32,20 @@ pub mod task;
 pub mod unfold;
 
 // Reexport crates used in public API.
-pub use {bincode, eyre, edict, na, palette, scoped_arena, tracing};
+pub use {bincode, edict, eyre, na, palette, scoped_arena, tracing};
+
+cfg_if::cfg_if! {
+    if #[cfg(all(feature = "with-egui", feature = "graphics"))] {
+        pub mod egui;
+    }
+}
 
 cfg_if::cfg_if! {
     if #[cfg(feature = "visible")] {
         pub mod event;
         pub mod control;
         pub mod funnel;
+        pub use winit;
     }
 }
 

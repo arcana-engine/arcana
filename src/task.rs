@@ -9,7 +9,16 @@ use std::{
 
 use crate::{assets::Assets, resources::Res, system::SystemContext};
 use edict::world::World;
+use futures::task::noop_waker_ref;
 use scoped_arena::Scope;
+
+#[cfg(feature = "client")]
+use evoke::client::ClientSystem;
+
+#[cfg(feature = "server")]
+use evoke::server::ServerSystem;
+
+use tokio::task::LocalSet;
 
 #[cfg(feature = "visible")]
 use crate::control::Control;
@@ -45,6 +54,12 @@ pub struct TaskContext<'a> {
     #[cfg(not(feature = "graphics"))]
     #[doc(hidden)]
     pub graphics: &'a mut (),
+
+    #[cfg(feature = "client")]
+    pub client: &'a mut Option<ClientSystem>,
+
+    #[cfg(feature = "server")]
+    pub server: &'a mut Option<ServerSystem>,
 }
 
 impl<'a> From<SystemContext<'a>> for TaskContext<'a> {
@@ -59,6 +74,12 @@ impl<'a> From<SystemContext<'a>> for TaskContext<'a> {
             control: cx.control,
 
             graphics: cx.graphics,
+
+            #[cfg(feature = "client")]
+            client: cx.client,
+
+            #[cfg(feature = "server")]
+            server: cx.server,
         }
     }
 }
@@ -82,6 +103,12 @@ impl<'a> TaskContext<'a> {
             control: self.control,
 
             graphics: self.graphics,
+
+            #[cfg(feature = "client")]
+            client: self.client,
+
+            #[cfg(feature = "server")]
+            server: self.server,
         }
     }
 }
@@ -127,67 +154,46 @@ where
 
 /// Task spawner.
 pub struct Spawner {
-    new_tasks: Vec<Pin<Box<dyn Future<Output = eyre::Result<()>>>>>,
+    local_set: Option<LocalSet>,
 }
 
 impl Spawner {
     pub(crate) fn new() -> Self {
         Spawner {
-            new_tasks: Vec::new(),
+            local_set: Some(LocalSet::new()),
         }
     }
 
     pub fn spawn<Fut>(&mut self, fut: Fut)
     where
-        Fut: Future<Output = eyre::Result<()>> + Send + 'static,
+        Fut: Future<Output = ()> + 'static,
     {
-        self.new_tasks.push(Box::pin(fut));
+        match &mut self.local_set {
+            Some(local_set) => local_set.spawn_local(fut),
+            None => tokio::task::spawn_local(fut),
+        };
     }
 }
 
-pub struct Executor {
-    tasks: Vec<Pin<Box<dyn Future<Output = eyre::Result<()>>>>>,
-}
+impl Spawner {
+    pub(crate) fn run_once(mut tcx: TaskContext<'_>) {
+        let mut local_set = tcx.spawner.local_set.take().unwrap();
 
-impl Executor {
-    pub fn new() -> Self {
-        Executor { tasks: Vec::new() }
-    }
+        {
+            TASK_CONTEXT.with(|cell| unsafe {
+                *cell.get() = Some(RawTaskContext::into_raw(tcx.reborrow()));
+            });
+            let _unset = UnsetTaskContext;
 
-    pub fn append(&mut self, spawner: &mut Spawner) {
-        self.tasks.append(&mut spawner.new_tasks);
-    }
-
-    pub fn run_once(&mut self, tcx: TaskContext<'_>) -> eyre::Result<()> {
-        TASK_CONTEXT.with(|cell| unsafe {
-            *cell.get() = Some(RawTaskContext::into_raw(tcx));
-        });
-        let _unset = UnsetTaskContext;
-
-        let mut cx = Context::from_waker(futures::task::noop_waker_ref());
-
-        let mut i = 0;
-        while i < self.tasks.len() {
-            let task = self.tasks[i].as_mut();
-            match task.poll(&mut cx) {
-                Poll::Pending => i += 1,
-                Poll::Ready(Ok(())) => {
-                    self.tasks.swap_remove(i);
-                }
-                Poll::Ready(Err(err)) => {
-                    self.tasks.swap_remove(i);
-                    return Err(err);
-                }
-            }
+            let _ = Pin::new(&mut local_set).poll(&mut Context::from_waker(noop_waker_ref()));
         }
-
-        Ok(())
+        tcx.spawner.local_set = Some(local_set);
     }
 
-    pub async fn teardown(&mut self, tcx: TaskContext<'_>, timeout: Duration) {
+    pub(crate) async fn teardown(mut tcx: TaskContext<'_>, timeout: Duration) {
         struct Teardown<'a> {
             tcx: TaskContext<'a>,
-            tasks: Vec<Pin<Box<dyn Future<Output = eyre::Result<()>>>>>,
+            local_set: &'a mut LocalSet,
             deadline: Instant,
         }
 
@@ -205,37 +211,20 @@ impl Executor {
                     *cell.get() = Some(RawTaskContext::into_raw(me.tcx.reborrow()));
                 });
                 let _unset = UnsetTaskContext;
-
-                let mut i = 0;
-                while i < me.tasks.len() {
-                    let task = me.tasks[i].as_mut();
-                    match task.poll(cx) {
-                        Poll::Pending => i += 1,
-                        Poll::Ready(Ok(())) => {
-                            me.tasks.swap_remove(i);
-                        }
-                        Poll::Ready(Err(err)) => {
-                            me.tasks.swap_remove(i);
-                            tracing::error!("Task finished with error on teardown: {:#}", err)
-                        }
-                    }
-                }
-
-                if me.tasks.is_empty() {
-                    Poll::Ready(())
-                } else {
-                    Poll::Pending
-                }
+                Pin::new(&mut *me.local_set).poll(cx)
             }
         }
 
-        let mut teardown = Teardown {
-            tcx,
-            tasks: Vec::new(),
+        let mut local_set = tcx.spawner.local_set.take().unwrap();
+
+        Teardown {
+            tcx: tcx.reborrow(),
+            local_set: &mut local_set,
             deadline: Instant::now() + timeout,
-        };
-        teardown.tasks.append(&mut self.tasks);
-        teardown.await
+        }
+        .await;
+
+        tcx.spawner.local_set = Some(local_set);
     }
 }
 
@@ -260,6 +249,12 @@ struct RawTaskContext {
 
     #[cfg(feature = "graphics")]
     pub graphics: NonNull<Graphics>,
+
+    #[cfg(feature = "client")]
+    pub client: NonNull<Option<ClientSystem>>,
+
+    #[cfg(feature = "server")]
+    pub server: NonNull<Option<ServerSystem>>,
 }
 
 impl RawTaskContext {
@@ -275,6 +270,12 @@ impl RawTaskContext {
 
             #[cfg(feature = "graphics")]
             graphics: NonNull::from(cx.graphics),
+
+            #[cfg(feature = "client")]
+            client: NonNull::from(cx.client),
+
+            #[cfg(feature = "server")]
+            server: NonNull::from(cx.server),
         }
     }
 
@@ -293,6 +294,12 @@ impl RawTaskContext {
 
             #[cfg(not(feature = "graphics"))]
             graphics: Box::leak(Box::new(())),
+
+            #[cfg(feature = "client")]
+            client: &mut *self.client.as_ptr(),
+
+            #[cfg(feature = "server")]
+            server: &mut *self.server.as_ptr(),
         }
     }
 }

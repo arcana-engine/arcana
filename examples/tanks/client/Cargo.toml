@@ -8,8 +8,9 @@ publish = false
 
 [dependencies]
 tanks = { path = "..", features = ["client", "graphics"] }
-arcana = { path = "../../..", features = ["physics2d", "client", "graphics", "treasury"], default-features = false }
+arcana = { path = "../../..", features = ["physics2d", "client", "graphics", "treasury", "with-egui"], default-features = false }
 eyre = "0.6"
 serde = "1.0"
 tracing = "0.1"
 tokio = { version = "1.0", features = ["net"] }
+

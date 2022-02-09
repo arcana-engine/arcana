@@ -291,6 +291,79 @@ impl Graphics {
     }
 
     #[tracing::instrument(skip(self, data))]
+    pub fn upload_image_with<'a, T>(
+        &self,
+        image: &Image,
+        layout: Layout,
+        access: AccessFlags,
+        row_length: u32,
+        image_height: u32,
+        subresource: SubresourceLayers,
+        offset: Offset3d,
+        extent: Extent3d,
+        data: &[T],
+        encoder: &mut Encoder<'a>,
+    ) -> Result<(), MapError>
+    where
+        T: Pod,
+    {
+        let staging = self.device.create_buffer_static(
+            BufferInfo {
+                align: 15,
+                size: u64::try_from(size_of_val(data)).map_err(|_| OutOfMemory)?,
+                usage: BufferUsage::TRANSFER_SRC,
+            },
+            data,
+        )?;
+
+        let scope = encoder.scope();
+
+        encoder.image_barriers(
+            PipelineStageFlags::TOP_OF_PIPE,
+            PipelineStageFlags::TRANSFER,
+            scope.to_scope([ImageMemoryBarrier {
+                image: scope.to_scope(image.clone()),
+                old_layout: None,
+                new_layout: Layout::TransferDstOptimal,
+                old_access: AccessFlags::empty(),
+                new_access: AccessFlags::TRANSFER_WRITE,
+                family_transfer: None,
+                range: SubresourceRange::whole(image.info()),
+            }]),
+        );
+
+        encoder.copy_buffer_to_image(
+            scope.to_scope(staging),
+            scope.to_scope(image.clone()),
+            Layout::TransferDstOptimal,
+            scope.to_scope([BufferImageCopy {
+                buffer_offset: 0,
+                buffer_row_length: row_length,
+                buffer_image_height: image_height,
+                image_subresource: subresource,
+                image_offset: offset,
+                image_extent: extent,
+            }]),
+        );
+
+        encoder.image_barriers(
+            PipelineStageFlags::TRANSFER,
+            PipelineStageFlags::ALL_COMMANDS,
+            scope.to_scope([ImageMemoryBarrier {
+                image: scope.to_scope(image.clone()),
+                old_layout: Some(Layout::TransferDstOptimal),
+                new_layout: layout,
+                old_access: AccessFlags::TRANSFER_WRITE,
+                new_access: access,
+                family_transfer: None,
+                range: SubresourceRange::whole(image.info()),
+            }]),
+        );
+
+        Ok(())
+    }
+
+    #[tracing::instrument(skip(self, data))]
     pub fn create_fast_buffer_static<T>(
         &mut self,
         info: BufferInfo,

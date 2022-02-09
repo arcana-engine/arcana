@@ -5,7 +5,7 @@ use crate::{
     lifespan::LifeSpanSystem,
     resources::Res,
     system::{Scheduler, SystemContext},
-    task::{Executor, Spawner, TaskContext},
+    task::{Spawner, TaskContext},
 };
 use edict::world::World;
 use eyre::WrapErr;
@@ -120,6 +120,9 @@ pub struct Game {
     #[cfg(feature = "visible")]
     pub control: Control,
 
+    #[cfg(feature = "visible")]
+    pub funnel: Option<Box<dyn Funnel<Event>>>,
+
     #[cfg(feature = "graphics")]
     pub graphics: Graphics,
 
@@ -150,11 +153,15 @@ impl Game {
             graphics: &mut self.graphics,
             #[cfg(not(feature = "graphics"))]
             graphics: Box::leak(Box::new(())),
+            #[cfg(feature = "client")]
+            client: &mut self.client,
+            #[cfg(feature = "server")]
+            server: &mut self.server,
         }
     }
 }
 
-#[cfg(all(feature = "2d", feature = "graphics"))]
+#[cfg(all(feature = "visible", feature = "graphics", feature = "2d"))]
 pub fn game2<F, Fut>(f: F)
 where
     F: FnOnce(Game) -> Fut + 'static,
@@ -166,7 +173,7 @@ where
     })
 }
 
-#[cfg(all(feature = "3d", feature = "graphics"))]
+#[cfg(all(feature = "visible", feature = "graphics", feature = "3d"))]
 pub fn game3<F, Fut>(f: F)
 where
     F: FnOnce(Game) -> Fut + 'static,
@@ -178,7 +185,7 @@ where
     })
 }
 
-#[cfg(feature = "graphics")]
+#[cfg(all(feature = "visible", feature = "graphics"))]
 pub fn game<F, Fut, R, C>(f: F, r: R)
 where
     F: FnOnce(Game) -> Fut + 'static,
@@ -227,13 +234,15 @@ where
         // Initialize graphics system.
         let graphics = Graphics::new().wrap_err_with(|| "Failed to initialize graphics")?;
 
+        let mut res = Res::new();
+
         // Attach viewport to window and camera.
-        let viewport = Viewport::new(camera, &window, &graphics)
+        let viewport = Viewport::new(camera, &window, &mut res, &graphics)
             .wrap_err_with(|| "Failed to initialize main viewport")?;
 
-        let spawner = Spawner::new();
-        let mut res = Res::new();
         res.insert(window);
+
+        let spawner = Spawner::new();
 
         // Configure game with closure.
         let game = f(Game {
@@ -241,6 +250,7 @@ where
             world,
             scheduler: Scheduler::with_tick_span(cfg.main_step),
             control: Control::new(),
+            funnel: None,
             graphics,
             renderer: None,
             viewport,
@@ -262,6 +272,7 @@ where
             mut world,
             mut scheduler,
             mut control,
+            mut funnel,
             mut graphics,
             renderer,
             mut viewport,
@@ -302,69 +313,75 @@ where
             TimeSpan::SECOND,
         );
 
-        let mut executor = Executor::new();
-
         let main_step = cfg.main_step;
         let mut step_ns = 0;
 
         // Begin game loop.
         loop {
             loop {
+                let event = event_loop.next_event(TimeSpan::MILLISECOND).await;
+
                 // Loop through new  events.
                 let mut funnel = GameFunnel {
                     viewport: &mut viewport,
+                    custom: match &mut funnel {
+                        None => None,
+                        Some(funnel) => Some(&mut **funnel),
+                    },
                     control: &mut control,
                 };
-
-                let event = event_loop.next_event(TimeSpan::MILLISECOND).await;
 
                 // Filter event
                 let event = funnel.filter(&mut res, &mut world, event);
 
                 match event {
                     Some(Event::Loop) => break, // No new events. Continue game loop
-                    None => {
-                        executor
-                            .run_once(TaskContext {
-                                world: &mut world,
-                                res: &mut res,
-                                spawner: &mut spawner,
-                                assets: &mut assets,
-                                scope: &mut scope,
-
-                                #[cfg(feature = "visible")]
-                                control: &mut control,
-
-                                #[cfg(feature = "visible")]
-                                graphics: &mut graphics,
-                            })
-                            .wrap_err_with(|| "Task returned error")?;
-                    }
                     _ => {}
                 }
             }
 
             if res.get::<Exit>().is_some() {
                 // Try to finish outstanding async tasks.
-                executor
-                    .teardown(
-                        TaskContext {
-                            world: &mut world,
-                            res: &mut res,
-                            spawner: &mut spawner,
-                            assets: &mut assets,
-                            scope: &mut scope,
-                            control: &mut control,
-                            graphics: &mut graphics,
-                        },
-                        cfg.teardown_timeout.into(),
-                    )
-                    .await;
+                Spawner::teardown(
+                    TaskContext {
+                        world: &mut world,
+                        res: &mut res,
+                        spawner: &mut spawner,
+                        assets: &mut assets,
+                        scope: &mut scope,
+                        control: &mut control,
+                        graphics: &mut graphics,
+
+                        #[cfg(feature = "client")]
+                        client: &mut client,
+
+                        #[cfg(feature = "server")]
+                        server: &mut server,
+                    },
+                    cfg.teardown_timeout.into(),
+                )
+                .await;
 
                 drop(renderer);
                 drop(world);
                 return Ok(());
             }
+
+            Spawner::run_once(TaskContext {
+                world: &mut world,
+                res: &mut res,
+                control: &mut control,
+                spawner: &mut spawner,
+                graphics: &mut graphics,
+                assets: &mut assets,
+                scope: &mut scope,
+
+                #[cfg(feature = "client")]
+                client: &mut client,
+
+                #[cfg(feature = "server")]
+                server: &mut server,
+            });
 
             let clock = clocks.advance();
             let mut cx = SystemContext {
@@ -376,19 +393,24 @@ where
                 assets: &mut assets,
                 scope: &mut scope,
                 clock,
+
+                #[cfg(feature = "client")]
+                client: &mut client,
+
+                #[cfg(feature = "server")]
+                server: &mut server,
             };
 
             scheduler.run(cx.reborrow());
 
             step_ns += clock.delta.as_nanos();
-
             if step_ns > main_step.as_nanos() {
-                step_ns -= main_step.as_nanos();
+                step_ns %= main_step.as_nanos();
 
                 #[cfg(feature = "client")]
                 if let Some(client) = &mut client {
                     client
-                        .run(cx.world, cx.scope)
+                        .run(&mut world, &scope)
                         .await
                         .wrap_err("Client system run failed")?;
                 }
@@ -396,24 +418,11 @@ where
                 #[cfg(feature = "server")]
                 if let Some(server) = &mut server {
                     server
-                        .run(cx.world, cx.scope)
+                        .run(&mut world, &scope)
                         .await
                         .wrap_err("Server system run failed")?;
                 }
             }
-
-            executor.append(&mut spawner);
-            executor
-                .run_once(TaskContext {
-                    world: &mut world,
-                    res: &mut res,
-                    control: &mut control,
-                    spawner: &mut spawner,
-                    graphics: &mut graphics,
-                    assets: &mut assets,
-                    scope: &mut scope,
-                })
-                .wrap_err_with(|| "Task returned error")?;
 
             graphics
                 .flush_uploads(&scope)
@@ -428,6 +437,7 @@ where
                     RendererContext {
                         world: &mut world,
                         res: &mut res,
+                        assets: &mut assets,
                         scope: &scope,
                         clock,
                         graphics: &mut graphics,
@@ -528,29 +538,47 @@ where
 
             scheduler.add_ticking_system(LifeSpanSystem);
 
-            let mut executor = Executor::new();
-
             loop {
                 if res.get::<Exit>().is_some() {
                     // Try to finish outstanding async tasks.
-                    executor
-                        .teardown(
-                            TaskContext {
-                                world: &mut world,
-                                res: &mut res,
-                                spawner: &mut spawner,
-                                assets: &mut assets,
-                                scope: &mut scope,
-                                graphics: &mut (),
-                            },
-                            teardown_timeout.into(),
-                        )
-                        .await;
+                    Spawner::teardown(
+                        TaskContext {
+                            world: &mut world,
+                            res: &mut res,
+                            spawner: &mut spawner,
+                            assets: &mut assets,
+                            scope: &mut scope,
+                            graphics: &mut (),
+
+                            #[cfg(feature = "client")]
+                            client: &mut client,
+
+                            #[cfg(feature = "server")]
+                            server: &mut server,
+                        },
+                        teardown_timeout.into(),
+                    )
+                    .await;
 
                     drop(world);
 
                     return Ok::<(), eyre::Report>(());
                 }
+
+                Spawner::run_once(TaskContext {
+                    world: &mut world,
+                    res: &mut res,
+                    spawner: &mut spawner,
+                    assets: &mut assets,
+                    scope: &mut scope,
+                    graphics: &mut (),
+
+                    #[cfg(feature = "client")]
+                    client: &mut client,
+
+                    #[cfg(feature = "server")]
+                    server: &mut server,
+                });
 
                 let clock = clocks.advance();
 
@@ -562,6 +590,12 @@ where
                     scope: &mut scope,
                     clock,
                     graphics: &mut (),
+
+                    #[cfg(feature = "client")]
+                    client: &mut client,
+
+                    #[cfg(feature = "server")]
+                    server: &mut server,
                 };
 
                 scheduler.run(cx.reborrow());
@@ -569,7 +603,7 @@ where
                 #[cfg(feature = "client")]
                 if let Some(client) = &mut client {
                     client
-                        .run(cx.world, cx.scope)
+                        .run(&mut world, &scope)
                         .await
                         .wrap_err("Client system run failed")?;
                 }
@@ -577,22 +611,10 @@ where
                 #[cfg(feature = "server")]
                 if let Some(server) = &mut server {
                     server
-                        .run(cx.world, cx.scope)
+                        .run(&mut world, &scope)
                         .await
                         .wrap_err("Server system run failed")?;
                 }
-
-                executor.append(&mut spawner);
-                executor
-                    .run_once(TaskContext {
-                        world: &mut world,
-                        res: &mut res,
-                        spawner: &mut spawner,
-                        assets: &mut assets,
-                        scope: &mut scope,
-                        graphics: &mut (),
-                    })
-                    .wrap_err_with(|| "Task returned error")?;
 
                 scope.reset();
 
@@ -609,25 +631,25 @@ where
         .unwrap()
 }
 
-#[cfg(feature = "graphics")]
+#[cfg(all(feature = "visible", feature = "graphics"))]
 struct GameFunnel<'a> {
     viewport: &'a mut Viewport,
+    custom: Option<&'a mut dyn Funnel<Event>>,
     control: &'a mut Control,
 }
 
-#[cfg(feature = "graphics")]
+#[cfg(all(feature = "visible", feature = "graphics"))]
 impl Funnel<Event> for GameFunnel<'_> {
     fn filter(&mut self, res: &mut Res, world: &mut World, event: Event) -> Option<Event> {
-        match Funnel::filter(&mut MainWindowFunnel, res, world, event) {
-            None => None,
-            Some(event) => match Funnel::filter(&mut *self.viewport, res, world, event) {
-                None => None,
-                Some(event) if self.viewport.focused() => {
-                    Funnel::filter(&mut *self.control, res, world, event)
-                }
-                Some(event) => Some(event),
-            },
+        let mut event = MainWindowFunnel.filter(res, world, event)?;
+        event = self.viewport.filter(res, world, event)?;
+        if self.viewport.focused() {
+            if let Some(custom) = self.custom.as_deref_mut() {
+                event = custom.filter(res, world, event)?;
+            }
+            event = self.control.filter(res, world, event)?;
         }
+        Some(event)
     }
 }
 

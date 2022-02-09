@@ -51,27 +51,6 @@ impl Res {
     }
 
     /// Returns mutable reference to value in the map.
-    /// Returns `None` if value of requested type was not added into map before.
-    pub fn get_two_mut<T: 'static, U: 'static>(&mut self) -> Option<(&mut T, &mut U)> {
-        assert_ne!(TypeId::of::<T>(), TypeId::of::<U>());
-
-        let t: *mut T = self
-            .map
-            .get_mut(&TypeId::of::<T>())
-            .map(|b| b.downcast_mut().unwrap())?;
-
-        let u: *mut U = self
-            .map
-            .get_mut(&TypeId::of::<U>())
-            .map(|b| b.downcast_mut().unwrap())?;
-
-        Some(unsafe {
-            // Safety: Values are taken from different keys. HashMap is borrowed mutably.
-            (&mut *t, &mut *u)
-        })
-    }
-
-    /// Returns mutable reference to value in the map.
     /// Executes provided closure and adds one into map if vale of requested
     /// type was not added into map before.
     pub fn with<T: Send + Sync + 'static>(&mut self, f: impl FnOnce() -> T) -> &mut T {
@@ -107,4 +86,140 @@ impl Res {
             .remove(&TypeId::of::<T>())
             .map(|b| b.downcast().unwrap())
     }
+
+    /// Query multiple resources at once.
+    /// Items queried are expected in the `Resources`.
+    /// To query optionally, wrap reference in `Option`.
+    pub fn query<'a, Q>(&'a mut self) -> Q::Item
+    where
+        Q: Query<'a>,
+    {
+        Q::get(self)
+    }
 }
+
+pub trait Query<'a> {
+    type Item;
+    fn get(res: &'a mut Res) -> Self::Item;
+}
+
+pub unsafe trait Fetch<'a>: Sized {
+    fn ty() -> TypeId;
+    fn mutable() -> bool;
+    unsafe fn get(res: *mut Res) -> Self;
+}
+
+unsafe impl<'a, T: 'static> Fetch<'a> for &'a T {
+    fn ty() -> TypeId {
+        TypeId::of::<T>()
+    }
+    fn mutable() -> bool {
+        false
+    }
+    unsafe fn get(res: *mut Res) -> &'a T {
+        let r = (&*res)
+            .map
+            .get(&TypeId::of::<T>())
+            .expect("Resource expected");
+        r.downcast_ref().unwrap()
+    }
+}
+
+unsafe impl<'a, T: 'static> Fetch<'a> for &'a mut T {
+    fn ty() -> TypeId {
+        TypeId::of::<T>()
+    }
+    fn mutable() -> bool {
+        true
+    }
+    unsafe fn get(res: *mut Res) -> &'a mut T {
+        let r = (&mut *res)
+            .map
+            .get_mut(&TypeId::of::<T>())
+            .expect("Resource expected");
+        r.downcast_mut().unwrap()
+    }
+}
+
+unsafe impl<'a, T: 'static> Fetch<'a> for Option<&'a T> {
+    fn ty() -> TypeId {
+        TypeId::of::<T>()
+    }
+    fn mutable() -> bool {
+        false
+    }
+    unsafe fn get(res: *mut Res) -> Option<&'a T> {
+        let r = (&*res).map.get(&TypeId::of::<T>())?;
+        Some(r.downcast_ref().unwrap())
+    }
+}
+
+unsafe impl<'a, T: 'static> Fetch<'a> for Option<&'a mut T> {
+    fn ty() -> TypeId {
+        TypeId::of::<T>()
+    }
+    fn mutable() -> bool {
+        true
+    }
+    unsafe fn get(res: *mut Res) -> Option<&'a mut T> {
+        let r = (&mut *res).map.get_mut(&TypeId::of::<T>())?;
+        Some(r.downcast_mut().unwrap())
+    }
+}
+
+unsafe trait QueryValid<'a> {
+    fn is_valid() -> bool;
+}
+
+macro_rules! for_tuple {
+    () => {
+        for_tuple!(for A B C D E F G H I J K L M N O P);
+    };
+
+    (for) => {
+        for_tuple!(impl);
+    };
+
+    (for $head:ident $($tail:ident)*) => {
+        for_tuple!(for $($tail)*);
+        for_tuple!(impl $head $($tail)*);
+    };
+
+    (impl) => {
+        impl<'a> Query<'a> for () {
+            type Item = ();
+            fn get(_res: &'a mut Res) {}
+        }
+    };
+
+    (impl $($a:ident)+) => {
+        unsafe impl<'a, $($a),+> QueryValid<'a> for ($($a,)+) where $($a: Fetch<'a>,)+ {
+            #[inline]
+            fn is_valid() -> bool {
+                let mut pairs: &[_] = &[$(($a::ty(), $a::mutable(),),)+];
+                while let [(ty, mutable), rest @ ..] = pairs {
+                    let mut rest = rest;
+                    if let [(head_ty, head_mutable), tail @ ..] = rest {
+                        if (*mutable || *head_mutable) && (ty == head_ty) {
+                            return false;
+                        }
+                        rest = tail;
+                    }
+                    pairs = rest;
+                }
+                true
+            }
+        }
+
+        impl<'a, $($a),+> Query<'a> for ($($a,)+) where $($a: Fetch<'a>,)+ {
+            type Item = ($($a,)+);
+
+            fn get(res: &'a mut Res) -> ($($a,)+) {
+                assert!(<Self as QueryValid>::is_valid());
+                unsafe { ($( $a::get(res), )+) }
+            }
+        }
+    };
+}
+
+for_tuple!();

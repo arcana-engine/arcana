@@ -123,13 +123,7 @@ where
             &*cx.scope,
         );
 
-        let optimal = swapchain_image.is_optimal();
-
         cx.graphics.present(swapchain_image)?;
-
-        if !optimal {
-            viewport.update_swapchain()?;
-        }
 
         Ok(())
     }

@@ -8,6 +8,12 @@ use {
     scoped_arena::Scope,
 };
 
+#[cfg(feature = "client")]
+use evoke::client::ClientSystem;
+
+#[cfg(feature = "server")]
+use evoke::server::ServerSystem;
+
 use crate::assets::Assets;
 #[cfg(feature = "visible")]
 use crate::control::Control;
@@ -55,6 +61,12 @@ pub struct SystemContext<'a> {
     #[cfg(not(feature = "graphics"))]
     #[doc(hidden)]
     pub graphics: &'a mut (),
+
+    #[cfg(feature = "client")]
+    pub client: &'a mut Option<ClientSystem>,
+
+    #[cfg(feature = "server")]
+    pub server: &'a mut Option<ServerSystem>,
 }
 
 impl<'a> SystemContext<'a> {
@@ -71,23 +83,18 @@ impl<'a> SystemContext<'a> {
             control: self.control,
 
             graphics: self.graphics,
+
+            #[cfg(feature = "client")]
+            client: self.client,
+
+            #[cfg(feature = "server")]
+            server: self.server,
         }
     }
 
     /// Reborrow as task context.
     pub fn task(&mut self) -> TaskContext<'_> {
-        TaskContext {
-            world: self.world,
-            res: self.res,
-            spawner: self.spawner,
-            assets: self.assets,
-            scope: &self.scope,
-
-            #[cfg(feature = "visible")]
-            control: self.control,
-
-            graphics: self.graphics,
-        }
+        TaskContext::from(self)
     }
 }
 

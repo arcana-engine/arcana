@@ -37,6 +37,8 @@ server = ["evoke/server"]
 # Enables treasury in goods asset loader
 treasury = ["goods/treasury"]
 
+with-egui = ["egui", "egui-winit"]
+
 # By default arcana enables windowing, input and rendering.
 #default = ["visible", "graphics"]
 
@@ -57,12 +59,14 @@ sierra = { version = "0.4", features = ["serde-1"], optional = true }
 
 # Gui
 sigils = { path = "../sigils", optional = true }
+egui = { version = "0.16", features = ["convert_bytemuck"], optional = true }
+egui-winit = { version = "*", optional = true }
 
 # Colors
 palette = { version = "0.6", features = ["bytemuck", "serializing"] }
 
 # Ecs
-edict = { version = "0.1" }
+edict = { version = "0.1.1" }
 
 # Logging
 tracing = "0.1"
@@ -127,4 +131,3 @@ dunce = "1.0"
 
 [workspace]
 members = ["import", "examples/blocks", "examples/tanks/client", "examples/tanks/server", "examples/bunnymark", "examples/gltf-test", "examples/sponza", "examples/unfold"]
-

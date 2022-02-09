@@ -1,7 +1,8 @@
 use arcana::{
+    edict,
     game::game2,
     graphics::{self, Texture},
-    edict, na,
+    na,
     rect::Rect,
     scene::Global2,
     sprite::Sprite,
@@ -50,7 +51,6 @@ impl Bunny {
 
                 let _ = cx.world.insert_one(entity, material);
             });
-            Ok(())
         });
 
         entity
