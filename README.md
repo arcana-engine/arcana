@@ -23,7 +23,7 @@ Then start writing prefab implementations and input controls, implement custom r
 ### Tanks
 Playable example can be found in `examples/tanks`.
 
-![Tanks example](images/tanks.gif)
+![Tanks example](images/tanks-latest.gif)
 
 ## License
 
