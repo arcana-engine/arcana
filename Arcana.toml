@@ -1,5 +1,7 @@
 # path to treasury root relative to this file
-treasury = "examples/assets"
+[treasury]
+base = "examples/assets"
+importers = ["target/release/arcana_import.dll"]
 
 # Step for ticking systems
 main_step = "20ms"

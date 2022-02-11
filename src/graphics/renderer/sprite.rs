@@ -245,7 +245,7 @@ impl DrawNode for SpriteDraw {
                             top: j as f32 * map.cell_size - hc,
                             bottom: j as f32 * map.cell_size + hc,
                         },
-                        uv: Rect::ONE_QUAD,
+                        uv: tile.uv,
                         layer: self.layer_range.end,
                         albedo,
                         albedo_factor: LinSrgba::new(1.0, 1.0, 1.0, 1.0),

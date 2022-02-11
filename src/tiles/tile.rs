@@ -1,3 +1,5 @@
+use crate::rect::Rect;
+
 cfg_if::cfg_if! {
     if #[cfg(feature = "graphics")] {
         use goods::AssetField;
@@ -50,4 +52,8 @@ pub struct Tile {
     #[cfg(feature = "graphics")]
     #[asset(container)]
     pub texture: Option<Texture>,
+
+    #[cfg(feature = "graphics")]
+    #[serde(default)]
+    pub uv: Rect,
 }

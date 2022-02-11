@@ -34,10 +34,9 @@ client = ["evoke/client"]
 # Enables server side of the netcode
 server = ["evoke/server"]
 
-# Enables treasury in goods asset loader
-treasury = ["goods/treasury"]
-
 with-egui = ["egui", "egui-winit"]
+
+treasury = ["treasury-store", "treasury-id"]
 
 # By default arcana enables windowing, input and rendering.
 #default = ["visible", "graphics"]
@@ -58,7 +57,7 @@ raw-window-handle = { version = "0.4", optional = true }
 sierra = { version = "0.4", features = ["serde-1"], optional = true }
 
 # Gui
-sigils = { path = "../sigils", optional = true }
+# sigils = { path = "../sigils", optional = true }
 egui = { version = "0.16", features = ["convert_bytemuck"], optional = true }
 egui-winit = { version = "*", optional = true }
 
@@ -108,8 +107,10 @@ alkahest = { version = "0.1", features = ["nightly"] }
 toml = "0.5"
 
 # Asset processing
-rapid-qoi = "0.5"
+rapid-qoi = "0.6"
 goods = { version = "0.12" }
+treasury-id = { version = "0.1.0", optional = true }
+treasury-store = { version = "0.2.1", optional = true }
 
 # Text processing
 fontdue = "0.6"

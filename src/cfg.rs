@@ -4,12 +4,27 @@ use arcana_time::TimeSpan;
 
 const CONFIG_DEFAULT_NAME: &'static str = "Arcana.toml";
 
+#[derive(serde::Deserialize)]
+#[cfg(feature = "treasury")]
+pub struct TreasuryConfig {
+    pub base: Box<Path>,
+
+    #[serde(skip_serializing_if = "Option::is_none", default)]
+    pub artifacts: Option<PathBuf>,
+    #[serde(skip_serializing_if = "Option::is_none", default)]
+    pub external: Option<PathBuf>,
+    #[serde(skip_serializing_if = "Option::is_none", default)]
+    pub temp: Option<PathBuf>,
+    #[serde(skip_serializing_if = "Vec::is_empty", default)]
+    pub importers: Vec<PathBuf>,
+}
+
 #[allow(unused)]
 #[derive(serde::Deserialize)]
 pub struct Config {
     #[cfg(feature = "treasury")]
     #[serde(default)]
-    pub treasury: Option<Box<Path>>,
+    pub treasury: Option<TreasuryConfig>,
 
     #[serde(default = "default_teardown_timeout")]
     pub teardown_timeout: TimeSpan,

@@ -11,7 +11,10 @@ use edict::world::World;
 use eyre::WrapErr;
 use goods::Loader;
 use scoped_arena::Scope;
-use std::future::Future;
+use std::{
+    future::Future,
+    path::{Path, PathBuf},
+};
 
 #[cfg(any(feature = "2d", feature = "3d"))]
 use crate::scene::SceneSystem;
@@ -162,7 +165,7 @@ impl Game {
 }
 
 #[cfg(all(feature = "visible", feature = "graphics", feature = "2d"))]
-pub fn game2<F, Fut>(f: F)
+pub fn game2<F, Fut>(f: F) -> !
 where
     F: FnOnce(Game) -> Fut + 'static,
     Fut: Future<Output = eyre::Result<Game>>,
@@ -174,7 +177,7 @@ where
 }
 
 #[cfg(all(feature = "visible", feature = "graphics", feature = "3d"))]
-pub fn game3<F, Fut>(f: F)
+pub fn game3<F, Fut>(f: F) -> !
 where
     F: FnOnce(Game) -> Fut + 'static,
     Fut: Future<Output = eyre::Result<Game>>,
@@ -186,7 +189,7 @@ where
 }
 
 #[cfg(all(feature = "visible", feature = "graphics"))]
-pub fn game<F, Fut, R, C>(f: F, r: R)
+pub fn game<F, Fut, R, C>(f: F, r: R) -> !
 where
     F: FnOnce(Game) -> Fut + 'static,
     Fut: Future<Output = eyre::Result<Game>>,
@@ -198,10 +201,10 @@ where
 
     Loop::run(|event_loop| async move {
         // Load config.
-        let cfg = Config::load_default();
+        let mut cfg = Config::load_default();
 
         // Initialize asset loader.
-        let loader = configure_loader(&cfg).await?;
+        let loader = configure_loader(&mut cfg).await?;
 
         let assets = Assets::new(loader);
 
@@ -477,7 +480,7 @@ where
         .expect("Failed to build tokio runtime");
 
     // Load config.
-    let cfg = Config::load_default();
+    let mut cfg = Config::load_default();
 
     let teardown_timeout = cfg.teardown_timeout;
     let main_step = cfg.main_step;
@@ -491,7 +494,7 @@ where
     runtime
         .block_on(async move {
             // Initialize asset loader.
-            let loader = configure_loader(&cfg).await?;
+            let loader = configure_loader(&mut cfg).await?;
             let assets = Assets::new(loader);
 
             // Configure game with closure.
@@ -659,16 +662,62 @@ async fn configure_loader(cfg: &Config) -> eyre::Result<Loader> {
     let mut loader_builder = Loader::builder();
 
     #[cfg(feature = "treasury")]
-    if let Some(path) = &cfg.treasury {
-        let path = cfg.root.join(path);
-
-        match goods::source::treasury::TreasurySource::open_local(&path).await {
+    if let Some(treasury) = &cfg.treasury {
+        match init_treasury(&cfg.root, &treasury) {
             Err(err) => tracing::error!("Failed to initialize treasury loader. {:#}", err),
             Ok(treasury) => {
+                tracing::info!("Treasury source configured");
                 loader_builder.add(treasury);
             }
         }
     }
 
     Ok(loader_builder.build())
+}
+
+#[cfg(feature = "treasury")]
+fn init_treasury(
+    root: &Path,
+    cfg: &crate::cfg::TreasuryConfig,
+) -> eyre::Result<crate::assets::treasury::TreasurySource> {
+    let base = root.join(&cfg.base);
+    let source = crate::assets::treasury::TreasurySource::new(
+        &base,
+        treasury_store::TreasuryInfo {
+            artifacts: cfg
+                .artifacts
+                .as_ref()
+                .map(|path| change_base(root, &base, path))
+                .transpose()?,
+            external: cfg
+                .external
+                .as_ref()
+                .map(|path| change_base(root, &base, path))
+                .transpose()?,
+            temp: cfg
+                .temp
+                .as_ref()
+                .map(|path| change_base(root, &base, path))
+                .transpose()?,
+            importers: cfg
+                .importers
+                .iter()
+                .map(|path| change_base(root, &base, path))
+                .collect::<Result<Vec<_>, _>>()?,
+        },
+    )?;
+    Ok(source)
+}
+
+fn change_base(root: &Path, base: &Path, path: &Path) -> eyre::Result<PathBuf> {
+    let path = if path.is_relative() {
+        root.join(path)
+    } else {
+        path.to_owned()
+    };
+
+    match path.strip_prefix(base) {
+        Ok(path) => Ok(path.to_owned()),
+        Err(_) => Ok(path),
+    }
 }

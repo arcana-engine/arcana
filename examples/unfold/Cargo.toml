@@ -7,6 +7,6 @@ license = "MIT OR Apache-2.0"
 publish = false
 
 [dependencies]
-arcana = { path = "../..", features = ["2d", "visible", "graphics", "treasury"] }
+arcana = { path = "../..", features = ["2d", "visible", "graphics", "treasury-store"] }
 tracing = "0.1"
 goods = { version = "0.12" }

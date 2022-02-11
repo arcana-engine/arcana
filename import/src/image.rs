@@ -103,7 +103,7 @@ impl Importer for ImageImporter {
         };
 
         match image.color() {
-            image::ColorType::Rgba8 | image::ColorType::Rgba16 | image::ColorType::Bgra8 => {
+            image::ColorType::Rgba8 | image::ColorType::Rgba16 => {
                 let image = image.into_rgba8();
 
                 let qoi = rapid_qoi::Qoi {

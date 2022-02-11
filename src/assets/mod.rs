@@ -2,6 +2,9 @@
 
 mod cache;
 
+#[cfg(feature = "treasury")]
+pub mod treasury;
+
 // #[cfg(all(feature = "visible", feature = "3d"))]
 // mod object;
 // #[cfg(feature = "visible")]
@@ -195,6 +198,16 @@ impl Assets {
         K: Into<Key<'a>>,
     {
         self.loader.load::<A, K>(key)
+    }
+
+    pub async fn get_async<'a, A, K>(&mut self, key: K) -> Result<A, Error>
+    where
+        A: TrivialAsset,
+        K: Into<Key<'a>>,
+    {
+        let handle = self.loader.load::<A, K>(key);
+        let mut result = handle.await;
+        Ok(result.get()?.clone())
     }
 
     pub async fn build_async<'a, A, B, K>(&mut self, key: K, builder: &mut B) -> Result<A, Error>
