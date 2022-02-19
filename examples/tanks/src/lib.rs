@@ -3,7 +3,6 @@
 use arcana::{
     assets::{Asset, AssetId},
     edict::bundle::Bundle,
-    lifespan::LifeSpan,
     na,
     physics2::{prelude::*, *},
     prelude::*,
@@ -14,6 +13,7 @@ use arcana::{
 use arcana::{
     assets::WithId,
     graphics::{Material, Texture},
+    lifespan::LifeSpan,
     rect::Rect,
     sprite::*,
 };
@@ -193,7 +193,7 @@ fn unfold_tank(
         },
         #[cfg(feature = "graphics")]
         Material {
-            albedo_coverage: Some(sprite_sheet.texture.clone()),
+            albedo: Some(sprite_sheet.texture.clone()),
             albedo_factor: [color[0], color[1], color[2], 1.0],
             ..Default::default()
         },

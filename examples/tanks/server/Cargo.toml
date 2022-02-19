@@ -10,7 +10,7 @@ publish = false
 
 [dependencies]
 tanks = { path = "..", features = ["server"] }
-arcana = { path = "../../..", features = ["physics2d", "server", "treasury"], default-features = false }
+arcana = { path = "../../../engine", features = ["physics2d", "server", "asset-pipeline"], default-features = false }
 eyre = "0.6"
 rand = "0.8"
 tracing = "0.1"

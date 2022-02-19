@@ -7,7 +7,7 @@ license = "MIT OR Apache-2.0"
 publish = false
 
 [dependencies]
-arcana = { path = "../..", features = ["2d", "treasury-store"] }
+arcana = { path = "../../engine", features = ["2d", "asset-pipeline"] }
 color-eyre = "0.6"
 eyre = "0.6"
 futures = "0.3"

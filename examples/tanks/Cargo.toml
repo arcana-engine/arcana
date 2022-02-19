@@ -13,7 +13,7 @@ server = []
 
 [dependencies]
 alkahest = { version = "0.1", features = ["nightly"] }
-arcana = { path = "../..", features = ["physics2d"], default-features = false }
-goods = { version = "0.12" }
+arcana = { path = "../../engine", features = ["physics2d"], default-features = false }
+goods = { version = "0.13", git = "https://github.com/arcana-engine/goods" }
 eyre = "0.6"
 serde = "1.0"

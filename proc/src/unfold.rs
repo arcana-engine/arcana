@@ -211,7 +211,7 @@ pub fn derive_unfold(item: TokenStream) -> syn::Result<TokenStream> {
                     fn run(&mut self, cx: ::arcana::system::SystemContext<'_>) {
                         use core::{any::type_name, borrow::Borrow, clone::Clone, option::Option::{self, None, Some}};
                         use std::vec::Vec;
-                        use arcana::{assets::{AssetId, TypedAssetIdExt}, edict::entity::{EntityId, EntityBuilder}};
+                        use arcana::{assets::{AssetId, TypedAssetIdExt}, edict::{entity::EntityId, bundle::EntityBuilder}};
 
                         let cleanup_query = cx.world.query_mut::<()>().with::<#unfolded_ident>().without::<#ident>();
 

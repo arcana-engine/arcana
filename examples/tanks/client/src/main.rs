@@ -196,16 +196,16 @@ impl evoke::client::LocalPlayer for LocalTankPlayer {
     }
 }
 
-struct TankConnectionUi {
+struct TankConnectionUI {
     error: Option<String>,
     name: String,
     connecting: bool,
     hint_name_nonempty: bool,
 }
 
-impl TankConnectionUi {
+impl TankConnectionUI {
     pub fn new() -> Self {
-        TankConnectionUi {
+        TankConnectionUI {
             error: None,
             name: String::new(),
             connecting: false,
@@ -213,6 +213,21 @@ impl TankConnectionUi {
         }
     }
 }
+
+// struct BulletUI {
+//     rgb: [u8; 3],
+// }
+
+// impl BulletUI {
+//     pub fn new() -> Self {
+//         BulletUI {
+//             error: None,
+//             name: String::new(),
+//             connecting: false,
+//             hint_name_nonempty: false,
+//         }
+//     }
+// }
 
 struct RemoteControl {
     entity: Option<EntityId>,
@@ -297,14 +312,14 @@ fn main() {
             .expect("Window must be created");
         let egui = EguiResource::new(window);
         game.res.insert(egui);
-        game.res.insert(TankConnectionUi::new());
+        game.res.insert(TankConnectionUI::new());
 
         // Add GUI system
         game.scheduler.add_system(move |cx: SystemContext<'_>| {
             let (egui, window, model) = cx.res.query::<(
                 &mut EguiResource,
                 &MainWindow,
-                Option<&mut TankConnectionUi>,
+                Option<&mut TankConnectionUI>,
             )>();
 
             egui.run(window, |ctx| {
@@ -357,11 +372,11 @@ fn main() {
                                             Ok((client, pid)) => {
                                                 cx.res.insert(RemoteControl { entity: None, pid });
                                                 *cx.client = Some(client);
-                                                cx.res.remove::<TankConnectionUi>();
+                                                cx.res.remove::<TankConnectionUI>();
                                             }
                                             Err(err) => {
                                                 if let Some(model) =
-                                                    cx.res.get_mut::<TankConnectionUi>()
+                                                    cx.res.get_mut::<TankConnectionUI>()
                                                 {
                                                     model.connecting = false;
                                                     model.error = Some(err.to_string());

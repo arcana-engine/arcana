@@ -1,0 +1,133 @@
+[package]
+name = "arcana"
+version = "0.1.0"
+edition = "2018"
+authors = ["Zakarum <zakarumych@ya.ru>"]
+license = "MIT OR Apache-2.0"
+documentation = "https://docs.rs/arcana"
+homepage = "https://github.com/arcana-engine/arcana"
+repository = "https://github.com/arcana-engine/arcana"
+
+[features]
+# Enables 2d utility features including 2d scene, sprites etc
+2d = []
+
+# Enables 3d utility features including 3d scene
+3d = []
+
+# Enables rapier physics of specific dementionality
+physics2d = ["2d", "rapier2d", "parry2d"]
+physics3d = ["3d", "rapier3d", "parry3d"]
+
+# Enables windowing and user input
+visible = ["winit", "raw-window-handle"]
+
+# Enable graphics out-of-the-box
+graphics = ["sierra", "visible"]
+
+# Enables client side of the netcode
+client = ["evoke/client"]
+
+# Enables server side of the netcode
+server = ["evoke/server"]
+
+# Enables EGUI integration
+with-egui = ["egui", "egui-winit"]
+
+# Enables asset pipeline
+asset-pipeline = ["treasury-store", "treasury-id", "treasury-import"]
+
+# By default arcana enables windowing, input and rendering.
+default = ["graphics", "asset-pipeline"]
+
+[dependencies]
+arcana-time = { version = "0.1", path = "../time", features = ["serde"] }
+arcana-proc = { version = "0.1", path = "../proc" }
+
+# Animation
+skelly = { version = "0.5", features = ["serde-1"], git = "https://github.com/arcana-engine/skelly.git" }
+
+# Windowing
+winit = { version = "0.26", features = ["serde"], optional = true }
+raw-window-handle = { version = "0.4", optional = true }
+
+# Graphics
+sierra = { version = "0.4", features = ["serde-1"], optional = true }
+
+# Gui
+# sigils = { path = "../sigils", optional = true }
+egui = { version = "0.16", features = ["convert_bytemuck"], optional = true }
+egui-winit = { version = "*", optional = true }
+
+# Colors
+palette = { version = "0.6", features = ["bytemuck", "serializing"] }
+
+# Ecs
+edict = { version = "0.1.1" }
+
+# Logging
+tracing = "0.1"
+tracing-error = "0.2"
+tracing-subscriber = { version = "0.3", features = ["env-filter"] }
+
+# Async and networking
+futures = "0.3"
+flume = "0.10"
+tokio = { version = "1.0", features = ["rt", "time"] }
+#tokio = { version = "1.0", features = ["rt", "net", "io-util", "time"] }
+evoke = { version = "0.4", features = ["tcp"], optional = true }
+
+# Math
+na = { package = "nalgebra", version = "0.29", features = ["serde-serialize"] }
+approx = "0.5"
+genmesh = { version = "0.6", optional = true }
+
+# Physics
+parry2d = { version = "0.7", optional = true }
+parry3d = { version = "0.7", optional = true }
+rapier2d = { version = "0.11", optional = true }
+rapier3d = { version = "0.11", optional = true }
+
+# Error Handling
+eyre = "0.6"
+color-eyre = "0.6"
+thiserror = "1.0"
+
+# Serialization
+percent-encoding = "2.1"
+base64 = "0.13"
+serde = { version = "1.0", features = ["derive", "rc"] }
+serde_json = "1.0"
+serde_bytes = "0.11"
+ron = "0.7"
+bincode = "1.3"
+alkahest = { version = "0.1", features = ["nightly"] }
+toml = "0.5"
+
+# Asset processing
+rapid-qoi = "0.6.1"
+goods = { version = "0.13", git = "https://github.com/arcana-engine/goods" }
+treasury-id = { version = "0.1.0", optional = true, git = "https://github.com/arcana-engine/treasury" }
+treasury-store = { version = "0.3.0", optional = true,  git = "https://github.com/arcana-engine/treasury" }
+treasury-import = { version = "0.3.0", optional = true,  git = "https://github.com/arcana-engine/treasury" }
+image = "0.24"
+gltf = "1.0"
+
+# Text processing
+fontdue = "0.6"
+
+# Utility
+parking_lot = "0.12"
+ahash = { version = "0.7", features = ["compile-time-rng"] }
+hashbrown = { version = "0.12", features = ["nightly", "serde"] }
+scoped-arena = { version = "0.4", features = ["allocator_api"] }
+num_cpus = "1.0"
+ordered-float = "2.1"
+bytemuck = { version = "1.0", features = ["derive"] }
+lazy_static = "1.0"
+slab = "0.4"
+cfg-if = "1.0"
+bitsetium = { version = "0.0.2" }
+pin-project = "1.0"
+dunce = "1.0"
+byteorder = "1.4"

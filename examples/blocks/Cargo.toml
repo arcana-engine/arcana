@@ -7,6 +7,6 @@ license = "MIT OR Apache-2.0"
 publish = false
 
 [dependencies]
-arcana = { path = "../..", features = ["physics2d"] }
+arcana = { path = "../../engine", features = ["physics2d", "graphics"], default-features = false }
 rand = "0.8"
 tracing = "0.1"

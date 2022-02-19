@@ -1,5 +1,5 @@
 use arcana::{
-    edict,
+    edict::entity::EntityId,
     game::game2,
     graphics::{self, Texture},
     na,
@@ -15,7 +15,7 @@ use arcana::{
 struct Bunny;
 
 impl Bunny {
-    fn spawn(self, cx: TaskContext<'_>) -> edict::EntityId {
+    fn spawn(self, cx: TaskContext<'_>) -> EntityId {
         let cat = cx.assets.load::<Texture, _>("bunny.png");
 
         let entity = cx.world.spawn((
@@ -45,11 +45,11 @@ impl Bunny {
                 let cat = cat.build(cx.graphics).unwrap().clone();
 
                 let material = graphics::Material {
-                    albedo_coverage: Some(cat),
+                    albedo: Some(cat),
                     ..Default::default()
                 };
 
-                let _ = cx.world.insert_one(entity, material);
+                let _ = cx.world.try_insert(&entity, material);
             });
         });
 

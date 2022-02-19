@@ -1,6 +1,6 @@
 use arcana::{
     game::game2,
-    graphics, edict, na,
+    graphics, na,
     physics2::{
         dynamics::RigidBodyBuilder,
         geometry::{Collider, ColliderBuilder},
@@ -10,7 +10,6 @@ use arcana::{
     scene::Global2,
     sprite::Sprite,
     system::SystemContext,
-    task::TaskContext,
     TimeSpan,
 };
 
@@ -46,17 +45,11 @@ impl Block {
                 .build(),
         );
 
-        let collider =
-            physical_data
-                .colliders
-                .insert_with_parent(cuboid, body, &mut physical_data.bodies);
+        physical_data
+            .colliders
+            .insert_with_parent(cuboid, body, &mut physical_data.bodies);
 
-        let sampler = cx
-            .graphics
-            .create_sampler(graphics::SamplerInfo::default())
-            .unwrap();
-
-        let entity = cx.world.spawn((
+        cx.world.spawn((
             Block,
             Sprite {
                 world: Rect {

@@ -1,17 +1,15 @@
-use arcana::*;
+use arcana::{assets, camera, game::game3};
 
 fn main() {
     game3(|mut game| async move {
-        game.scheduler.add_system(camera3::FreeCameraSystem);
+        game.scheduler.add_system(camera::FreeCamera3System);
 
-        let mut object = game
-            .loader
-            .load::<assets::object::Object>(
-                &"9054d348-31ad-428c-9a58-7bbc8a5907da".parse().unwrap(),
-            )
-            .await;
-
-        dbg!(object.get(&mut game.graphics));
+        let model = game
+            .assets
+            .load::<assets::model::Model3d, _>("")
+            .await
+            .build(&mut game.graphics)?
+            .clone();
 
         Ok(game)
     })
