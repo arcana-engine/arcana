@@ -6,7 +6,6 @@ struct VertexOutput {
     [[builtin(position)]] pos: vec4<f32>;
 };
 
-[[block]]
 struct Uniforms {
     albedo_factor: vec4<f32>;
     camera_view: mat4x4<f32>;
@@ -15,7 +14,7 @@ struct Uniforms {
 };
 
 [[group(0), binding(2)]]
-var uniform: Uniforms;
+var<uniform> uniforms: Uniforms;
 
 [[stage(vertex)]]
 fn vs_main(
@@ -23,7 +22,7 @@ fn vs_main(
 ) -> VertexOutput {
     var out: VertexOutput;
 
-    out.pos = uniform.camera_proj * uniform.camera_view * uniform.transform * vec4<f32>(in.pos, 1.0);
+    out.pos = uniforms.camera_proj * uniforms.camera_view * uniforms.transform * vec4<f32>(in.pos, 1.0);
 
     return out;
 }

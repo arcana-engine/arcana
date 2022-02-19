@@ -14,7 +14,6 @@ struct Joint {
     value: mat4x4<f32>;
 };
 
-[[block]]
 struct Uniforms {
     albedo_factor: vec4<f32>;
     camera_view: mat4x4<f32>;
@@ -24,7 +23,7 @@ struct Uniforms {
 };
 
 [[group(0), binding(0)]]
-var uniform: Uniforms;
+var<uniform> uniforms: Uniforms;
 
 [[stage(vertex)]]
 fn vs_main(
@@ -32,10 +31,10 @@ fn vs_main(
 ) -> VertexOutput {
     var out: VertexOutput;
 
-    const skin_x = uniform.joints[in.joints.x].value;
-    const skin_y = uniform.joints[in.joints.y].value;
-    const skin_z = uniform.joints[in.joints.z].value;
-    const skin_w = uniform.joints[in.joints.w].value;
+    const skin_x = uniforms.joints[in.joints.x].value;
+    const skin_y = uniforms.joints[in.joints.y].value;
+    const skin_z = uniforms.joints[in.joints.z].value;
+    const skin_w = uniforms.joints[in.joints.w].value;
 
     const pos_x = skin_x * vec4<f32>(in.pos, 1.0);
     const pos_y = skin_y * vec4<f32>(in.pos, 1.0);
@@ -47,7 +46,7 @@ fn vs_main(
         pos_z * in.weights.z +
         pos_w * in.weights.w;
 
-    out.pos = uniform.camera_proj * uniform.camera_view * uniform.transform * pos;
+    out.pos = uniforms.camera_proj * uniforms.camera_view * uniforms.transform * pos;
     out.color = vec4<f32>(in.normal * 0.5 + vec3<f32>(0.5, 0.5, 0.5), 1.0);
 
     return out;

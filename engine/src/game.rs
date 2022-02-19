@@ -712,13 +712,15 @@ fn init_treasury(
 
     store.register_importer(ImageImporter);
 
-    // #[cfg(all(feature = "asset-pipeline", feature = "2d"))]
-    // store.register_importer(SpriteSheetImporter);
-    // store.register_importer(TileMapImporter);
-    // store.register_importer(TileSetImporter);
+    #[cfg(all(feature = "asset-pipeline", feature = "2d"))]
+    {
+        store.register_importer(SpriteSheetImporter);
+        store.register_importer(TileMapImporter);
+        store.register_importer(TileSetImporter);
+    }
 
-    // #[cfg(all(feature = "asset-pipeline", feature = "3d"))]
-    // store.register_importer(GltfModelImporter);
+    #[cfg(all(feature = "asset-pipeline", feature = "3d"))]
+    store.register_importer(GltfModelImporter);
 
     Ok(crate::assets::treasury::TreasurySource::new(store))
 }

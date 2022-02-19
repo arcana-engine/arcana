@@ -154,10 +154,7 @@ impl DrawNode for BasicDraw {
 
                 let mesh = cx.scope.to_scope(mesh.clone());
                 let drawn = mesh.draw(0..1, &[Position3::layout()], render_pass);
-
-                if drawn {
-                    tracing::info!("Mesh drawn");
-                } else {
+                if !drawn {
                     tracing::warn!("Mesh is not drawn");
                 }
             }

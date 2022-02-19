@@ -106,22 +106,6 @@ impl Importer for GltfModelImporter {
         for buffer in gltf.buffers() {
             match buffer.source() {
                 gltf::buffer::Source::Bin => {}
-                // gltf::buffer::Source::Uri(uri) if uri.starts_with("data:") => {
-                //     match uri.strip_prefix("data:application/octet-stream;base64,") {
-                //         None => {
-                //             return Err(ImportError::Other {
-                //                 reason: "Only base64 octet-stream data URLs are supported"
-                //                     .to_owned(),
-                //             })
-                //         }
-                //         Some(data) => {
-                //             if missing_sources.is_empty() {
-                //                 let data = base64::decode(data).expect("Valid base64 expected");
-                //                 buffers.insert(buffer.index(), data.into_boxed_slice());
-                //             }
-                //         }
-                //     }
-                // }
                 gltf::buffer::Source::Uri(uri) => {
                     let source_path = sources
                         .get_or_append(uri, &mut missing_sources)

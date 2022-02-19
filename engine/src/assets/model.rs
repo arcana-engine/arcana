@@ -82,7 +82,7 @@ pub enum ModelDecodeError {
     #[error("Failed to verify magic number")]
     MagicError,
 
-    #[error("Failed to deserialize magic file header")]
+    #[error("Failed to deserialize model file header")]
     HeaderError { source: bincode::Error },
 
     #[error("Failed to build material")]

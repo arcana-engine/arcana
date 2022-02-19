@@ -1,7 +1,7 @@
 use arcana::{
+    assets::{material::Material, texture::Texture},
     edict::entity::EntityId,
     game::game2,
-    graphics::{self, Texture},
     na,
     rect::Rect,
     scene::Global2,
@@ -44,7 +44,7 @@ impl Bunny {
             with_async_task_context(|cx| {
                 let cat = cat.build(cx.graphics).unwrap().clone();
 
-                let material = graphics::Material {
+                let material = Material {
                     albedo: Some(cat),
                     ..Default::default()
                 };

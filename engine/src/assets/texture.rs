@@ -94,7 +94,7 @@ impl serde::Serialize for TextureInfo {
     where
         S: serde::Serializer,
     {
-        if is_default(&self.sampler) {
+        if serializer.is_human_readable() && is_default(&self.sampler) {
             self.image.serialize(serializer)
         } else {
             let mut serializer = serializer.serialize_struct("TextureInfo", 2)?;
@@ -182,8 +182,11 @@ impl<'de> serde::Deserialize<'de> for TextureInfo {
                 })
             }
         }
-
-        deserializer.deserialize_any(Visitor)
+        if deserializer.is_human_readable() {
+            deserializer.deserialize_any(Visitor)
+        } else {
+            deserializer.deserialize_struct("TextureInfo", &["image", "sampler"], Visitor)
+        }
     }
 }
 
