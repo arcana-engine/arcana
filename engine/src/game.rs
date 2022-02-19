@@ -1,7 +1,7 @@
 use std::future::Future;
 
 #[cfg(feature = "asset-pipeline")]
-use std::path::{Path, PathBuf};
+use std::path::Path;
 
 use edict::world::World;
 use eyre::WrapErr;
@@ -685,27 +685,12 @@ fn init_treasury(
     use crate::assets::import::*;
 
     let base = root.join(&cfg.base);
+
     let info = treasury_store::TreasuryInfo {
-        artifacts: cfg
-            .artifacts
-            .as_ref()
-            .map(|path| change_base(root, &base, path))
-            .transpose()?,
-        external: cfg
-            .external
-            .as_ref()
-            .map(|path| change_base(root, &base, path))
-            .transpose()?,
-        temp: cfg
-            .temp
-            .as_ref()
-            .map(|path| change_base(root, &base, path))
-            .transpose()?,
-        importers: cfg
-            .importers
-            .iter()
-            .map(|path| change_base(root, &base, path))
-            .collect::<Result<Vec<_>, _>>()?,
+        artifacts: cfg.artifacts.as_ref().map(|path| root.join(path)),
+        external: cfg.external.as_ref().map(|path| root.join(path)),
+        temp: cfg.temp.as_ref().map(|path| root.join(path)),
+        importers: cfg.importers.iter().map(|path| root.join(path)).collect(),
     };
 
     let mut store = treasury_store::Treasury::new(&base, info)?;
@@ -723,18 +708,4 @@ fn init_treasury(
     store.register_importer(GltfModelImporter);
 
     Ok(crate::assets::treasury::TreasurySource::new(store))
-}
-
-#[cfg(feature = "asset-pipeline")]
-fn change_base(root: &Path, base: &Path, path: &Path) -> eyre::Result<PathBuf> {
-    let path = if path.is_relative() {
-        root.join(path)
-    } else {
-        path.to_owned()
-    };
-
-    match path.strip_prefix(base) {
-        Ok(path) => Ok(path.to_owned()),
-        Err(_) => Ok(path),
-    }
 }

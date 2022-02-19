@@ -52,14 +52,12 @@ impl Source for TreasurySource {
         Box::pin(async move {
             match self.store.find_asset(&path, &asset).await {
                 Ok(Some((id, _path))) => Some(AssetId(id.value())),
-                Ok(None) => None,
+                Ok(None) => {
+                    tracing::debug!("Asset '{}@{}' was not found", asset, path);
+                    None
+                }
                 Err(err) => {
-                    tracing::error!(
-                        "Failed to fetch asset {}@{} from treasury. {:#}",
-                        asset,
-                        path,
-                        err
-                    );
+                    tracing::error!("Asset '{}@{}' search failed. {:#}", asset, path, err);
                     None
                 }
             }
@@ -69,7 +67,10 @@ impl Source for TreasurySource {
     fn load(&self, id: AssetId) -> BoxFuture<Result<Option<AssetData>, TreasuryError>> {
         Box::pin(async move {
             match self.store.fetch(id.0.into()).await {
-                None => Ok(None),
+                None => {
+                    tracing::debug!("Asset '{}' was not found", id);
+                    Ok(None)
+                }
                 Some(path) => match std::fs::read(&path) {
                     Err(error) => Err(TreasuryError::File { path, error }),
                     Ok(data) => Ok(Some(AssetData {
