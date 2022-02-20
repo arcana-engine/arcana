@@ -46,7 +46,7 @@ enum Kind {
 #[cfg(feature = "3d")]
 impl Default for Camera3 {
     fn default() -> Self {
-        Camera3::perspective(1.0, std::f32::consts::FRAC_PI_4, 0.1, 1000.0)
+        Camera3::perspective(1.0, std::f32::consts::FRAC_PI_4, 0.001, 100.0)
     }
 }
 

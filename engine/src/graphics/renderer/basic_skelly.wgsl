@@ -22,7 +22,7 @@ struct Uniforms {
     joints: [[stride(64)]] array<Joint, 128>;
 };
 
-[[group(0), binding(0)]]
+[[group(0), binding(2)]]
 var<uniform> uniforms: Uniforms;
 
 [[stage(vertex)]]

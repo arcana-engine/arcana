@@ -12,7 +12,7 @@ use crate::{
     camera::Camera3,
     graphics::{
         mesh::Mesh,
-        vertex::{Position3, VertexType as _},
+        vertex::{Normal3, Position3, VertexType as _, UV},
         Graphics, Scale,
     },
     scene::Global3,
@@ -153,7 +153,11 @@ impl DrawNode for BasicDraw {
                 render_pass.bind_graphics_descriptors(&self.pipeline_layout, updated);
 
                 let mesh = cx.scope.to_scope(mesh.clone());
-                let drawn = mesh.draw(0..1, &[Position3::layout()], render_pass);
+                let drawn = mesh.draw(
+                    0..1,
+                    &[Position3::layout(), Normal3::layout(), UV::layout()],
+                    render_pass,
+                );
                 if !drawn {
                     tracing::warn!("Mesh is not drawn");
                 }
