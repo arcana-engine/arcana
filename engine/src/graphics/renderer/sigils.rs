@@ -144,7 +144,7 @@ impl DrawNode for SigilsDraw {
     fn draw<'a, 'b: 'a>(
         &'b mut self,
         cx: RendererContext<'a, 'b>,
-        fence_index: usize,
+
         encoder: &mut Encoder<'a>,
         render_pass: &mut RenderPassEncoder<'_, 'b>,
         _camera: EntityId,

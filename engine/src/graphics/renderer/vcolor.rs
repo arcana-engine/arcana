@@ -151,7 +151,6 @@ impl VcolorRenderer {
 
             let updated = renderable.descriptors.update(
                 &VcolorDescriptors { uniforms },
-                self.fence_index,
                 cx.graphics,
                 &mut writes,
                 &mut encoder,

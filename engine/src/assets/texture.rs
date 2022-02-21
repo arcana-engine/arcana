@@ -26,7 +26,15 @@ pub fn texture_view_from_qoi_image(
     pixels: &[u8],
     graphics: &mut Graphics,
 ) -> Result<ImageView, CreateImageError> {
-    use sierra::Format;
+    use rapid_qoi::Colors::*;
+    use sierra::Format::*;
+
+    let (data_format, image_format) = match qoi.colors {
+        Rgb => (RGB8Unorm, RGBA8Unorm),
+        Rgba => (RGBA8Unorm, RGBA8Unorm),
+        Srgb => (RGB8Srgb, RGBA8Srgb),
+        SrgbLinA => (RGBA8Srgb, RGBA8Srgb),
+    };
 
     let image = graphics.create_image_static(
         ImageInfo {
@@ -34,16 +42,17 @@ pub fn texture_view_from_qoi_image(
                 width: qoi.width,
                 height: qoi.height,
             },
-            format: Format::RGBA8Srgb,
+            format: image_format,
             levels: 1,
             layers: 1,
             samples: Samples1,
             usage: ImageUsage::SAMPLED,
         },
         Layout::ShaderReadOnlyOptimal,
-        0,
-        0,
         pixels,
+        data_format,
+        0,
+        0,
     )?;
 
     let view = graphics.create_image_view(ImageViewInfo::new(image))?;

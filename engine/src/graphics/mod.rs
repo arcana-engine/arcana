@@ -89,6 +89,7 @@ mod format;
 pub mod node;
 pub mod renderer;
 mod scale;
+mod upload;
 mod vertex;
 
 #[cfg(feature = "3d")]
@@ -96,9 +97,7 @@ mod mesh;
 
 use std::{
     collections::hash_map::{Entry, HashMap},
-    convert::TryFrom as _,
     hash::Hash,
-    mem::size_of_val,
     ops::Deref,
 };
 
@@ -107,13 +106,13 @@ use bytemuck::Pod;
 use raw_window_handle::HasRawWindowHandle;
 use scoped_arena::Scope;
 use sierra::{
-    AccessFlags, Buffer, BufferCopy, BufferImageCopy, BufferInfo, BufferUsage, CommandBuffer,
-    CreateImageError, CreateSurfaceError, Device, Encoder, Extent3d, Fence, Image, ImageInfo,
-    ImageMemoryBarrier, ImageUsage, Layout, MapError, Offset3d, OutOfMemory, PipelineStageFlags,
-    PresentOk, Queue, Semaphore, SingleQueueQuery, SubresourceLayers, SubresourceRange, Surface,
-    SwapchainImage,
+    AccessFlags, Buffer, BufferInfo, CommandBuffer, CreateImageError, CreateSurfaceError, Device,
+    Encoder, Extent3d, Fence, Format, Image, ImageInfo, ImageUsage, Layout, MapError, Offset3d,
+    OutOfMemory, PipelineStageFlags, PresentOk, Queue, Semaphore, SingleQueueQuery,
+    SubresourceLayers, Surface, SwapchainImage,
 };
 
+use self::upload::Uploader;
 pub use self::{format::*, renderer::*, scale::*, vertex::*};
 
 #[cfg(feature = "3d")]
@@ -125,8 +124,7 @@ pub use self::mesh::*;
 pub struct Graphics {
     device: Device,
     queue: Queue,
-    buffer_uploads: Vec<BufferUpload>,
-    image_uploads: Vec<ImageUpload>,
+    uploader: Uploader,
 }
 
 impl Graphics {
@@ -152,10 +150,9 @@ impl Graphics {
         )?;
 
         Ok(Graphics {
+            uploader: Uploader::new(&device)?,
             device,
             queue,
-            buffer_uploads: Vec::new(),
-            image_uploads: Vec::new(),
         })
     }
 }
@@ -170,6 +167,7 @@ impl Graphics {
         self.device.graphics().create_surface(window)
     }
 
+    #[inline]
     #[tracing::instrument(skip(self, data))]
     pub fn upload_buffer<T>(
         &mut self,
@@ -180,29 +178,11 @@ impl Graphics {
     where
         T: Pod,
     {
-        if data.is_empty() {
-            return Ok(());
-        }
-
-        let staging = self.device.create_buffer_static(
-            BufferInfo {
-                align: 15,
-                size: size_of_val(data) as u64,
-                usage: BufferUsage::TRANSFER_SRC,
-            },
-            data,
-        )?;
-
-        self.buffer_uploads.push(BufferUpload {
-            staging,
-            buffer: buffer.clone(),
-            offset,
-            access: AccessFlags::all(),
-        });
-
-        Ok(())
+        self.uploader
+            .upload_buffer(&self.device, buffer, offset, data)
     }
 
+    #[inline]
     #[tracing::instrument(skip(self, data))]
     pub fn upload_buffer_with<'a, T>(
         &self,
@@ -214,156 +194,79 @@ impl Graphics {
     where
         T: Pod,
     {
-        const UPDATE_LIMIT: usize = 16384;
-
-        assert_eq!(
-            size_of_val(data) & 3,
-            0,
-            "Buffer uploading data size must be a multiple of 4"
-        );
-
-        if data.is_empty() {
-            return Ok(());
-        }
-
-        if size_of_val(data) <= UPDATE_LIMIT {
-            encoder.update_buffer(buffer, offset, data);
-        } else {
-            let staging = self.device.create_buffer_static(
-                BufferInfo {
-                    align: 15,
-                    size: size_of_val(data) as u64,
-                    usage: BufferUsage::TRANSFER_SRC,
-                },
-                data,
-            )?;
-
-            let staging = encoder.scope().to_scope(staging);
-
-            encoder.copy_buffer(
-                &*staging,
-                buffer,
-                encoder.scope().to_scope([BufferCopy {
-                    src_offset: 0,
-                    dst_offset: offset,
-                    size: size_of_val(data) as u64,
-                }]),
-            );
-        }
-
-        Ok(())
+        self.uploader
+            .upload_buffer_with(&self.device, buffer, offset, data, encoder)
     }
 
+    #[inline]
     #[tracing::instrument(skip(self, data))]
     pub fn upload_image<T>(
         &mut self,
         image: &Image,
-        layout: Layout,
+        layers: SubresourceLayers,
+        old_layout: Option<Layout>,
+        new_layout: Layout,
+        old_access: AccessFlags,
+        new_access: AccessFlags,
+        data: &[T],
+        format: Format,
         row_length: u32,
         image_height: u32,
-        subresource: SubresourceLayers,
-        offset: Offset3d,
-        extent: Extent3d,
-        data: &[T],
     ) -> Result<(), OutOfMemory>
     where
         T: Pod,
     {
-        let staging = self.device.create_buffer_static(
-            BufferInfo {
-                align: 15,
-                size: u64::try_from(size_of_val(data)).map_err(|_| OutOfMemory)?,
-                usage: BufferUsage::TRANSFER_SRC,
-            },
+        self.uploader.upload_image(
+            &self.device,
+            image,
+            layers,
+            old_layout,
+            new_layout,
+            old_access,
+            new_access,
             data,
-        )?;
-
-        self.image_uploads.push(ImageUpload {
-            staging,
-            image: image.clone(),
-            access: AccessFlags::all(),
-            layout,
+            format,
             row_length,
             image_height,
-            subresource,
-            offset,
-            extent,
-        });
-
-        Ok(())
+        )
     }
 
     #[tracing::instrument(skip(self, data))]
     pub fn upload_image_with<'a, T>(
         &self,
         image: &Image,
-        layout: Layout,
-        access: AccessFlags,
-        row_length: u32,
-        image_height: u32,
-        subresource: SubresourceLayers,
+        layers: SubresourceLayers,
+        old_layout: Option<Layout>,
+        new_layout: Layout,
+        old_access: AccessFlags,
+        new_access: AccessFlags,
         offset: Offset3d,
         extent: Extent3d,
         data: &[T],
+        format: Format,
+        row_length: u32,
+        image_height: u32,
         encoder: &mut Encoder<'a>,
     ) -> Result<(), MapError>
     where
         T: Pod,
     {
-        let staging = self.device.create_buffer_static(
-            BufferInfo {
-                align: 15,
-                size: u64::try_from(size_of_val(data)).map_err(|_| OutOfMemory)?,
-                usage: BufferUsage::TRANSFER_SRC,
-            },
+        self.uploader.upload_image_with(
+            &self.device,
+            image,
+            layers,
+            old_layout,
+            new_layout,
+            old_access,
+            new_access,
+            offset,
+            extent,
             data,
-        )?;
-
-        let scope = encoder.scope();
-
-        encoder.image_barriers(
-            PipelineStageFlags::TOP_OF_PIPE,
-            PipelineStageFlags::TRANSFER,
-            scope.to_scope([ImageMemoryBarrier {
-                image: scope.to_scope(image.clone()),
-                old_layout: None,
-                new_layout: Layout::TransferDstOptimal,
-                old_access: AccessFlags::empty(),
-                new_access: AccessFlags::TRANSFER_WRITE,
-                family_transfer: None,
-                range: SubresourceRange::whole(image.info()),
-            }]),
-        );
-
-        encoder.copy_buffer_to_image(
-            scope.to_scope(staging),
-            scope.to_scope(image.clone()),
-            Layout::TransferDstOptimal,
-            scope.to_scope([BufferImageCopy {
-                buffer_offset: 0,
-                buffer_row_length: row_length,
-                buffer_image_height: image_height,
-                image_subresource: subresource,
-                image_offset: offset,
-                image_extent: extent,
-            }]),
-        );
-
-        encoder.image_barriers(
-            PipelineStageFlags::TRANSFER,
-            PipelineStageFlags::ALL_COMMANDS,
-            scope.to_scope([ImageMemoryBarrier {
-                image: scope.to_scope(image.clone()),
-                old_layout: Some(Layout::TransferDstOptimal),
-                new_layout: layout,
-                old_access: AccessFlags::TRANSFER_WRITE,
-                new_access: access,
-                family_transfer: None,
-                range: SubresourceRange::whole(image.info()),
-            }]),
-        );
-
-        Ok(())
+            format,
+            row_length,
+            image_height,
+            encoder,
+        )
     }
 
     #[tracing::instrument(skip(self, data))]
@@ -388,9 +291,10 @@ impl Graphics {
         &mut self,
         mut info: ImageInfo,
         layout: Layout,
+        data: &[T],
+        format: Format,
         row_length: u32,
         image_height: u32,
-        data: &[T],
     ) -> Result<Image, CreateImageError>
     where
         T: Pod,
@@ -400,121 +304,17 @@ impl Graphics {
         let image = self.device.create_image(info)?;
         self.upload_image(
             &image,
+            subresource,
+            None,
             layout,
+            AccessFlags::empty(),
+            AccessFlags::all(),
+            data,
+            format,
             row_length,
             image_height,
-            subresource,
-            Offset3d::ZERO,
-            info.extent.into_3d(),
-            data,
         )?;
         Ok(image)
-    }
-
-    pub fn flush_uploads(&mut self, scope: &Scope<'_>) -> eyre::Result<()> {
-        if self.buffer_uploads.is_empty() && self.image_uploads.is_empty() {
-            return Ok(());
-        }
-
-        let mut encoder = self.queue.create_encoder(scope)?;
-
-        if !self.buffer_uploads.is_empty() {
-            tracing::debug!("Uploading buffers");
-
-            let mut dst_acc = AccessFlags::empty();
-
-            for upload in &self.buffer_uploads {
-                encoder.copy_buffer(
-                    &upload.staging,
-                    &upload.buffer,
-                    scope.to_scope([BufferCopy {
-                        src_offset: 0,
-                        dst_offset: upload.offset,
-                        size: upload.staging.info().size,
-                    }]),
-                );
-
-                dst_acc |= upload.access;
-            }
-
-            if !dst_acc.is_empty() {
-                encoder.memory_barrier(
-                    PipelineStageFlags::TRANSFER,
-                    AccessFlags::TRANSFER_WRITE,
-                    PipelineStageFlags::ALL_COMMANDS,
-                    dst_acc,
-                );
-            }
-        }
-
-        if !self.image_uploads.is_empty() {
-            tracing::debug!("Uploading images");
-
-            let mut images = Vec::with_capacity_in(self.image_uploads.len(), scope);
-
-            for upload in &self.image_uploads {
-                images.push(ImageMemoryBarrier {
-                    image: scope.to_scope(upload.image.clone()),
-                    old_layout: None,
-                    new_layout: Layout::TransferDstOptimal,
-                    old_access: AccessFlags::empty(),
-                    new_access: AccessFlags::TRANSFER_WRITE,
-                    family_transfer: None,
-                    range: SubresourceRange::whole(upload.image.info()),
-                });
-            }
-
-            let images_len = images.len();
-
-            encoder.image_barriers(
-                PipelineStageFlags::TOP_OF_PIPE,
-                PipelineStageFlags::TRANSFER,
-                images.leak(),
-            );
-
-            for upload in &self.image_uploads {
-                encoder.copy_buffer_to_image(
-                    &upload.staging,
-                    &upload.image,
-                    Layout::TransferDstOptimal,
-                    scope.to_scope([BufferImageCopy {
-                        buffer_offset: 0,
-                        buffer_row_length: upload.row_length,
-                        buffer_image_height: upload.image_height,
-                        image_subresource: upload.subresource,
-                        image_offset: upload.offset,
-                        image_extent: upload.extent,
-                    }]),
-                )
-            }
-
-            let mut images = Vec::with_capacity_in(images_len, scope);
-
-            for upload in &self.image_uploads {
-                images.push(ImageMemoryBarrier {
-                    image: scope.to_scope(upload.image.clone()),
-                    old_layout: Some(Layout::TransferDstOptimal),
-                    new_layout: upload.layout,
-                    old_access: AccessFlags::TRANSFER_WRITE,
-                    new_access: upload.access,
-                    family_transfer: None,
-                    range: SubresourceRange::whole(upload.image.info()),
-                });
-            }
-
-            encoder.image_barriers(
-                PipelineStageFlags::TRANSFER,
-                PipelineStageFlags::ALL_COMMANDS,
-                images.leak(),
-            );
-        }
-
-        self.queue
-            .submit(&mut [], Some(encoder.finish()), &mut [], None, scope);
-
-        self.buffer_uploads.clear();
-        self.image_uploads.clear();
-        Ok(())
     }
 
     pub fn create_encoder<'a>(&mut self, scope: &'a Scope<'a>) -> Result<Encoder<'a>, OutOfMemory> {
@@ -528,12 +328,19 @@ impl Graphics {
         signal: &mut [&mut Semaphore],
         fence: Option<&mut Fence>,
         scope: &Scope<'_>,
-    ) {
-        self.queue.submit(wait, cbufs, signal, fence, scope)
+    ) -> Result<(), OutOfMemory> {
+        self.flush_uploads(scope)?;
+        self.queue.submit(wait, cbufs, signal, fence, scope);
+        Ok(())
     }
 
     pub fn present(&mut self, image: SwapchainImage) -> Result<PresentOk, OutOfMemory> {
         self.queue.present(image)
+    }
+
+    fn flush_uploads(&mut self, scope: &Scope<'_>) -> Result<(), OutOfMemory> {
+        self.uploader
+            .flush_uploads(&self.device, &mut self.queue, scope)
     }
 }
 
@@ -552,25 +359,6 @@ impl Deref for Graphics {
     fn deref(&self) -> &Device {
         &self.device
     }
-}
-
-struct BufferUpload {
-    staging: Buffer,
-    buffer: Buffer,
-    offset: u64,
-    access: AccessFlags,
-}
-
-struct ImageUpload {
-    staging: Buffer,
-    image: Image,
-    access: AccessFlags,
-    layout: Layout,
-    row_length: u32,
-    image_height: u32,
-    subresource: SubresourceLayers,
-    offset: Offset3d,
-    extent: Extent3d,
 }
 
 pub struct SparseDescriptors<T> {

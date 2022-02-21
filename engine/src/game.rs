@@ -429,10 +429,6 @@ where
                 }
             }
 
-            graphics
-                .flush_uploads(&scope)
-                .wrap_err_with(|| "Uploads failed")?;
-
             res.get_mut::<FpsMeter>()
                 .unwrap()
                 .add_frame_time(clock.delta);

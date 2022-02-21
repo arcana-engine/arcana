@@ -53,7 +53,7 @@ struct SpriteDescriptors {
     #[stages(Fragment)]
     sampler: Sampler,
 
-    #[sampled_image]
+    #[image(sampled)]
     #[stages(Fragment)]
     textures: [ImageView; 128],
 
@@ -117,9 +117,10 @@ impl SpriteDraw {
                 usage: sierra::ImageUsage::SAMPLED,
             },
             Layout::ShaderReadOnlyOptimal,
+            &[255u8, 255, 255, 255],
+            sierra::Format::RGBA8Unorm,
             4,
             1,
-            &[255u8, 255, 255, 255],
         )?;
 
         let dummy = graphics.create_image_view(sierra::ImageViewInfo::new(dummy))?;
@@ -167,7 +168,7 @@ impl DrawNode for SpriteDraw {
     fn draw<'a, 'b: 'a>(
         &'b mut self,
         cx: RendererContext<'a, 'b>,
-        fence_index: usize,
+
         encoder: &mut Encoder<'a>,
         render_pass: &mut RenderPassEncoder<'_, 'b>,
         camera: EntityId,
@@ -183,7 +184,7 @@ impl DrawNode for SpriteDraw {
         render_pass.bind_dynamic_graphics_pipeline(&mut self.pipeline, cx.graphics)?;
 
         let mut sprites = Vec::with_capacity_in(1024, &*cx.scope);
-        let mut writes = Vec::with_capacity_in(128, &*cx.scope);
+
         for (_, (sprite, mat, global)) in cx.world.query_mut::<(&Sprite, &Material, &Global2)>() {
             let albedo = match &mat.albedo {
                 Some(texture) => {
@@ -260,15 +261,8 @@ impl DrawNode for SpriteDraw {
 
         tracing::debug!("Rendering {} sprites", sprites.len());
 
-        let updated = self.set.update(
-            &self.descriptors,
-            fence_index,
-            cx.graphics,
-            &mut writes,
-            encoder,
-        )?;
+        let updated = self.set.update(&self.descriptors, cx.graphics, encoder)?;
 
-        cx.graphics.update_descriptor_sets(&writes, &[]);
         render_pass.bind_graphics_descriptors(&self.pipeline_layout, updated);
 
         let sprite_count = sprites.len() as u32;

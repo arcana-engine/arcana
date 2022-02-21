@@ -38,7 +38,7 @@ struct EguiDescriptors {
     #[stages(Fragment)]
     sampler: Sampler,
 
-    #[sampled_image]
+    #[image(sampled)]
     #[stages(Fragment)]
     font_image: ImageView,
 
@@ -89,9 +89,10 @@ impl EguiDraw {
                 usage: sierra::ImageUsage::SAMPLED,
             },
             Layout::ShaderReadOnlyOptimal,
+            &[255u8, 255, 255, 255],
+            sierra::Format::RGBA8Unorm,
             4,
             1,
-            &[255u8, 255, 255, 255],
         )?;
 
         let dummy_texture = graphics.create_image_view(sierra::ImageViewInfo::new(dummy))?;
@@ -138,7 +139,6 @@ impl DrawNode for EguiDraw {
     fn draw<'a, 'b: 'a>(
         &'b mut self,
         cx: RendererContext<'a, 'b>,
-        fence_index: usize,
         encoder: &mut Encoder<'a>,
         render_pass: &mut RenderPassEncoder<'_, 'b>,
         _camera: EntityId,
@@ -164,6 +164,9 @@ impl DrawNode for EguiDraw {
 
             let font_image_info = self.descriptors.font_image.info().image.info();
             let font_image_info_extent = font_image_info.extent.into_2d();
+
+            let mut old_layout = Some(sierra::Layout::ShaderReadOnlyOptimal);
+
             if font_image_info_extent.width != font_image.width as u32
                 || font_image_info_extent.height != font_image.height as u32
             {
@@ -191,15 +194,16 @@ impl DrawNode for EguiDraw {
                 })?;
 
                 self.descriptors.font_image = new_font_image_view;
+                old_layout = None;
             }
 
             cx.graphics.upload_image_with(
                 &self.descriptors.font_image.info().image,
+                sierra::SubresourceLayers::color(0, 0..1),
+                old_layout,
                 sierra::Layout::ShaderReadOnlyOptimal,
                 sierra::AccessFlags::SHADER_READ,
-                0,
-                0,
-                sierra::SubresourceLayers::color(0, 0..1),
+                sierra::AccessFlags::SHADER_READ,
                 Offset3d::ZERO,
                 Extent2d {
                     width: font_image.width as u32,
@@ -207,17 +211,16 @@ impl DrawNode for EguiDraw {
                 }
                 .into_3d(),
                 &font_image.pixels[..],
+                sierra::Format::R8Unorm,
+                0,
+                0,
                 encoder,
             )?;
         }
 
-        let updated = self.set.update(
-            &self.descriptors,
-            fence_index,
-            cx.graphics,
-            &mut writes,
-            encoder,
-        )?;
+        let updated = self
+            .set
+            .update(&self.descriptors, cx.graphics, &mut writes, encoder)?;
 
         cx.graphics.update_descriptor_sets(&writes, &[]);
 

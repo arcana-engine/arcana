@@ -95,7 +95,6 @@ where
             let mut encoder = cx.graphics.create_encoder(&*cx.scope)?;
             node.draw(
                 cx.reborrow(),
-                self.fence_index,
                 &mut encoder,
                 &mut render_pass,
                 camera,
@@ -121,7 +120,7 @@ where
             &mut [signal],
             Some(fence),
             &*cx.scope,
-        );
+        )?;
 
         cx.graphics.present(swapchain_image)?;
 

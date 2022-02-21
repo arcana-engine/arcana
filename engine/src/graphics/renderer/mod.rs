@@ -83,7 +83,6 @@ pub trait RenderNode: for<'a> RenderNodeInputs<'a> + 'static {
     fn render<'a>(
         &'a mut self,
         cx: RendererContext<'a, 'a>,
-        fence_index: usize,
         inputs: <Self as RenderNodeInputs<'a>>::Inputs,
     ) -> eyre::Result<Self::Outputs>;
 }
@@ -93,7 +92,6 @@ pub trait DrawNode: 'static {
     fn draw<'a, 'b: 'a>(
         &'b mut self,
         cx: RendererContext<'a, 'b>,
-        fence_index: usize,
         encoder: &mut Encoder<'a>,
         render_pass: &mut RenderPassEncoder<'_, 'b>,
         camera: EntityId,
@@ -108,13 +106,13 @@ where
     fn draw<'a, 'b: 'a>(
         &'b mut self,
         cx: RendererContext<'a, 'b>,
-        fence_index: usize,
+
         encoder: &mut Encoder<'a>,
         render_pass: &mut RenderPassEncoder<'_, 'b>,
         camera: EntityId,
         viewport: Extent2d,
     ) -> eyre::Result<()> {
-        (&mut **self).draw(cx, fence_index, encoder, render_pass, camera, viewport)
+        (&mut **self).draw(cx, encoder, render_pass, camera, viewport)
     }
 }
 
@@ -142,12 +140,11 @@ where
     fn render<'a>(
         &'a mut self,
         cx: RendererContext<'a, 'a>,
-        fence_index: usize,
+
         mut inputs: DrawNodeInputs<'a>,
     ) -> eyre::Result<()> {
         self.draw(
             cx,
-            fence_index,
             inputs.encoder,
             &mut inputs.render_pass,
             inputs.camera,

@@ -50,7 +50,7 @@ struct BasicDescriptors {
     #[stages(Fragment)]
     sampler: Sampler,
 
-    #[sampled_image]
+    #[image(sampled)]
     #[stages(Fragment)]
     albedo: ImageView,
 
@@ -73,7 +73,6 @@ impl DrawNode for BasicDraw {
     fn draw<'a, 'b: 'a>(
         &'b mut self,
         cx: RendererContext<'a, 'b>,
-        fence_index: usize,
         encoder: &mut Encoder<'a>,
         render_pass: &mut RenderPassEncoder<'_, 'b>,
         camera: EntityId,
@@ -144,9 +143,7 @@ impl DrawNode for BasicDraw {
                         albedo: albedo.image,
                         uniforms,
                     },
-                    fence_index,
                     &*cx.graphics,
-                    &mut writes,
                     &mut *encoder,
                 )?;
 
@@ -163,8 +160,6 @@ impl DrawNode for BasicDraw {
                 }
             }
         }
-
-        cx.graphics.update_descriptor_sets(&writes, &[]);
 
         Ok(())
     }

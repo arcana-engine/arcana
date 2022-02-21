@@ -23,7 +23,7 @@ physics3d = ["3d", "rapier3d", "parry3d"]
 visible = ["winit", "raw-window-handle"]
 
 # Enable graphics out-of-the-box
-graphics = ["sierra", "visible"]
+graphics = ["sierra", "visible", "naga"]
 
 # Enables client side of the netcode
 client = ["evoke/client"]
@@ -52,7 +52,9 @@ winit = { version = "0.26", features = ["serde"], optional = true }
 raw-window-handle = { version = "0.4", optional = true }
 
 # Graphics
-sierra = { version = "0.4", features = ["serde-1"], optional = true }
+# sierra = { version = "0.4", features = ["serde-1"], optional = true }
+sierra = { version = "0.4", features = ["serde-1"], optional = true, path = "../../sierra" }
+naga = { version = "0.8.5", features = ["validate"], optional = true }
 
 # Gui
 # sigils = { path = "../sigils", optional = true }
