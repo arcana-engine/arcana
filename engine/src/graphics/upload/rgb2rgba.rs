@@ -1,29 +1,25 @@
+use parking_lot::Mutex;
 use sierra::{
     descriptors, ivec2, pipeline, AccessFlags, AspectFlags, Buffer, BufferView, BufferViewInfo,
-    ComputePipeline, ComputePipelineInfo, ComputeShader, CreateImageError, DescriptorSetInfo,
-    DescriptorSetWrite, DescriptorsAllocationError, Device, Encoder, Extent3d, Format, Image,
-    ImageCopy, ImageInfo, ImageMemoryBarrier, ImageUsage, ImageViewDescriptor, ImageViewInfo,
-    Layout, Offset3d, OutOfMemory, PipelineStageFlags, Samples::Samples1, ShaderModuleInfo,
-    Subresource, UpdateDescriptorSet,
+    ComputePipeline, ComputePipelineInfo, ComputeShader, CreateImageError,
+    DescriptorsAllocationError, Device, Encoder, Extent3d, Format, Image, ImageCopy, ImageInfo,
+    ImageMemoryBarrier, ImageUsage, Layout, Offset3d, OutOfMemory, PipelineStageFlags,
+    Samples::Samples1, ShaderModuleInfo, Subresource,
 };
 
-#[derive(Clone, Copy)]
-#[allow(dead_code)]
-struct PushConstants {
+#[sierra::shader_repr(std140)]
+struct OffsetStride {
     offset: ivec2,
     stride: u32,
 }
 
-unsafe impl bytemuck::Zeroable for PushConstants {}
-unsafe impl bytemuck::Pod for PushConstants {}
-
-#[descriptors]
+#[descriptors(capacity = 32)]
 struct Rgb2RgbaDescriptors {
     #[buffer(texel, uniform)]
     #[stages(Compute)]
     pixels: BufferView,
 
-    #[image(storage)]
+    #[image(storage, layout = const Layout::General)]
     #[stages(Compute)]
     image: Image,
 }
@@ -32,11 +28,22 @@ struct Rgb2RgbaDescriptors {
 struct Rgb2RgbaPipeline {
     #[set]
     set: Rgb2RgbaDescriptors,
+
+    #[push]
+    #[stages(Compute)]
+    offset_stride: OffsetStride,
 }
 
 pub(super) struct Rgb2RgbaUploader {
     layout: Rgb2RgbaPipelineLayout,
+    descriptors: Mutex<Rgb2RgbaDescriptorsInstance>,
     pipeline: ComputePipeline,
+}
+
+impl Drop for Rgb2RgbaUploader {
+    fn drop(&mut self) {
+        self.descriptors.get_mut().clear();
+    }
 }
 
 impl Rgb2RgbaUploader {
@@ -67,13 +74,19 @@ impl Rgb2RgbaUploader {
             layout: layout.raw().clone(),
         })?;
 
-        Ok(Rgb2RgbaUploader { layout, pipeline })
+        let descriptors = layout.set.instance();
+
+        Ok(Rgb2RgbaUploader {
+            layout,
+            pipeline,
+            descriptors: Mutex::new(descriptors),
+        })
     }
 
     pub fn upload_synchronized<'a>(
         &self,
         device: &Device,
-        image: &'a Image,
+        image: &Image,
         offset: Offset3d,
         extent: Extent3d,
         buffer: Buffer,
@@ -88,17 +101,6 @@ impl Rgb2RgbaUploader {
             "Dispatch RGB->RGBA upload. Image extent: '{extent:?}', offset '{offset:?}'. Buffer size: '{}', stride: '{row_length}'",
             buffer.info().size
         );
-
-        let scope = encoder.scope();
-
-        let mut set = device
-            .create_descriptor_set(DescriptorSetInfo {
-                layout: self.layout.set.raw().clone(),
-            })
-            .map_err(|err| match err {
-                DescriptorsAllocationError::Fragmentation => unreachable!(),
-                DescriptorsAllocationError::OutOfMemory { source } => source,
-            })?;
 
         let buffer_view = device.create_buffer_view(BufferViewInfo {
             format: Format::R8Unorm,
@@ -121,53 +123,11 @@ impl Rgb2RgbaUploader {
                 _ => unreachable!(),
             })?;
 
-        let staging_image = &*scope.to_scope(staging_image);
-
-        let image_view = device.create_image_view(ImageViewInfo::new(staging_image.clone()))?;
-
-        let mut writes = Vec::new_in(scope);
-        writes.push(DescriptorSetWrite {
-            binding: 0,
-            element: 0,
-            descriptors: sierra::Descriptors::UniformTexelBuffer(scope.to_scope([buffer_view])),
-        });
-        writes.push(DescriptorSetWrite {
-            binding: 1,
-            element: 0,
-            descriptors: sierra::Descriptors::StorageImage(scope.to_scope([ImageViewDescriptor {
-                view: image_view,
-                layout: sierra::Layout::General,
-            }])),
-        });
-
-        device.update_descriptor_sets(&mut [UpdateDescriptorSet {
-            set: &mut set,
-            writes: writes.leak(),
-            copies: &[],
-        }]);
-
-        let pipeline = &*scope.to_scope(self.pipeline.clone());
-        let layout = &*scope.to_scope(self.layout.raw().clone());
-        let set = &*scope.to_scope(set.share());
-
-        encoder.bind_compute_pipeline(pipeline);
-        encoder.bind_compute_descriptor_sets(&layout, 0, scope.to_scope([set]), &[]);
-
-        // encoder.push_constants(
-        //     layout,
-        //     sierra::ShaderStageFlags::COMPUTE,
-        //     0,
-        //     scope.to_scope([PushConstants {
-        //         offset: ivec2::from([offset.x, offset.y]),
-        //         stride: row_length,
-        //     }]),
-        // );
-
         encoder.image_barriers(
             PipelineStageFlags::TOP_OF_PIPE,
             PipelineStageFlags::COMPUTE_SHADER,
-            scope.to_scope([ImageMemoryBarrier {
-                image: staging_image,
+            &[ImageMemoryBarrier {
+                image: &staging_image,
                 old_layout: None,
                 new_layout: Layout::General,
                 old_access: AccessFlags::empty(),
@@ -179,7 +139,39 @@ impl Rgb2RgbaUploader {
                     layer: 0,
                 }
                 .into(),
-            }]),
+            }],
+        );
+
+        encoder.bind_compute_pipeline(&self.pipeline);
+
+        {
+            let mut descriptors = self.descriptors.lock();
+            let updated = descriptors
+                .update(
+                    &Rgb2RgbaDescriptors {
+                        pixels: buffer_view,
+                        image: staging_image.clone(),
+                    },
+                    device,
+                    encoder,
+                )
+                .map_err(|err| match err {
+                    DescriptorsAllocationError::OutOfMemory { source } => source,
+                    _ => {
+                        tracing::error!("Unexpected error: {}", err);
+                        OutOfMemory
+                    }
+                })?;
+
+            encoder.bind_compute_descriptors(&self.layout, updated);
+        }
+
+        encoder.push_constants(
+            &self.layout,
+            &OffsetStride {
+                offset: ivec2::from([offset.x, offset.y]),
+                stride: row_length,
+            },
         );
         encoder.dispatch(extent.width, extent.height, extent.depth);
 
@@ -192,29 +184,29 @@ impl Rgb2RgbaUploader {
         encoder.image_barriers(
             PipelineStageFlags::COMPUTE_SHADER,
             PipelineStageFlags::TRANSFER,
-            scope.to_scope([ImageMemoryBarrier {
-                image: staging_image,
+            &[ImageMemoryBarrier {
+                image: &staging_image,
                 old_layout: Some(Layout::General),
                 new_layout: Layout::TransferSrcOptimal,
                 old_access: AccessFlags::SHADER_WRITE,
                 new_access: AccessFlags::TRANSFER_READ,
                 family_transfer: None,
                 range: subresource.into(),
-            }]),
+            }],
         );
 
         encoder.copy_image(
-            staging_image,
+            &staging_image,
             Layout::TransferSrcOptimal,
             image,
             Layout::TransferDstOptimal,
-            scope.to_scope([ImageCopy {
+            &[ImageCopy {
                 src_subresource: subresource.into(),
                 src_offset: Offset3d::ZERO,
                 dst_subresource: subresource.into(),
                 dst_offset: Offset3d::ZERO,
                 extent,
-            }]),
+            }],
         );
 
         Ok(())

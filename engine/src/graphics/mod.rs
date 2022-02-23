@@ -122,9 +122,9 @@ pub use self::mesh::*;
 /// Combines device and single queue.
 /// Suitable for not too complex graphics tasks.
 pub struct Graphics {
-    device: Device,
-    queue: Queue,
     uploader: Uploader,
+    queue: Queue,
+    device: Device,
 }
 
 impl Graphics {

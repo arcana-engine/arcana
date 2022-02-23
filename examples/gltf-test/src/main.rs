@@ -1,10 +1,5 @@
 use arcana::{
-    assets::{self, model::Model},
-    camera,
-    control::EntityController,
-    game::game3,
-    na,
-    prelude::Global3,
+    assets::model::Model, camera, control::EntityController, game::game3, na, prelude::Global3,
 };
 
 fn main() {

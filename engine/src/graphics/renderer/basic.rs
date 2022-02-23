@@ -113,8 +113,6 @@ impl DrawNode for BasicDraw {
 
         render_pass.bind_dynamic_graphics_pipeline(&mut self.pipeline, cx.graphics)?;
 
-        let mut writes = Vec::new_in(&*cx.scope);
-
         let query = cx.world.query_mut::<(
             &Mesh,
             &Material,
@@ -149,7 +147,6 @@ impl DrawNode for BasicDraw {
 
                 render_pass.bind_graphics_descriptors(&self.pipeline_layout, updated);
 
-                let mesh = cx.scope.to_scope(mesh.clone());
                 let drawn = mesh.draw(
                     0..1,
                     &[Position3::layout(), Normal3::layout(), UV::layout()],

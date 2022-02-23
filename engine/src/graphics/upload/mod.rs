@@ -96,16 +96,14 @@ impl Uploader {
                 data,
             )?;
 
-            let staging = encoder.scope().to_scope(staging);
-
             encoder.copy_buffer(
-                &*staging,
+                &staging,
                 buffer,
-                encoder.scope().to_scope([BufferCopy {
+                &[BufferCopy {
                     src_offset: 0,
                     dst_offset: offset,
                     size: size_of_val(data) as u64,
-                }]),
+                }],
             );
         }
 
@@ -195,14 +193,10 @@ impl Uploader {
             data,
         )?;
 
-        let scope = encoder.scope();
-
-        let image = &*scope.to_scope(image.clone());
-
         encoder.image_barriers(
             PipelineStageFlags::TOP_OF_PIPE,
             PipelineStageFlags::TRANSFER,
-            scope.to_scope([ImageMemoryBarrier {
+            &[ImageMemoryBarrier {
                 image,
                 old_layout,
                 new_layout: Layout::TransferDstOptimal,
@@ -210,41 +204,41 @@ impl Uploader {
                 new_access: AccessFlags::TRANSFER_WRITE,
                 family_transfer: None,
                 range: layers.into(),
-            }]),
+            }],
         );
 
         // encoder.copy_buffer_to_image(
-        //     scope.to_scope(staging),
-        //     scope.to_scope(image.clone()),
+        //     &staging,
+        //     image,
         //     Layout::TransferDstOptimal,
-        //     scope.to_scope([BufferImageCopy {
+        //     &[BufferImageCopy {
         //         buffer_offset: 0,
         //         buffer_row_length: row_length,
         //         buffer_image_height: image_height,
         //         image_subresource: layers,
         //         image_offset: offset,
         //         image_extent: extent,
-        //     }]),
+        //     }],
         // );
 
         match (format, image.info().format) {
             (from, to) if from == to => encoder.copy_buffer_to_image(
-                scope.to_scope(staging),
-                scope.to_scope(image.clone()),
+                &staging,
+                image,
                 Layout::TransferDstOptimal,
-                scope.to_scope([BufferImageCopy {
+                &[BufferImageCopy {
                     buffer_offset: 0,
                     buffer_row_length: row_length,
                     buffer_image_height: image_height,
                     image_subresource: layers,
                     image_offset: offset,
                     image_extent: extent,
-                }]),
+                }],
             ),
             (Format::RGB8Unorm, Format::RGBA8Unorm) => {
                 self.rgb2rgba.upload_synchronized(
                     device,
-                    scope.to_scope(image.clone()),
+                    image,
                     offset,
                     extent,
                     staging.clone(),
@@ -256,7 +250,7 @@ impl Uploader {
             (Format::RGB8Srgb, Format::RGBA8Srgb) => {
                 self.rgb2rgba.upload_synchronized(
                     device,
-                    scope.to_scope(image.clone()),
+                    image,
                     offset,
                     extent,
                     staging.clone(),
@@ -273,7 +267,7 @@ impl Uploader {
         encoder.image_barriers(
             PipelineStageFlags::TRANSFER,
             PipelineStageFlags::ALL_COMMANDS,
-            scope.to_scope([ImageMemoryBarrier {
+            &[ImageMemoryBarrier {
                 image,
                 old_layout: Some(Layout::TransferDstOptimal),
                 new_layout,
@@ -281,7 +275,7 @@ impl Uploader {
                 new_access,
                 family_transfer: None,
                 range: layers.into(),
-            }]),
+            }],
         );
 
         Ok(())
@@ -321,11 +315,11 @@ impl Uploader {
                 encoder.copy_buffer(
                     &upload.staging,
                     &upload.buffer,
-                    scope.to_scope([BufferCopy {
+                    &[BufferCopy {
                         src_offset: 0,
                         dst_offset: upload.offset,
                         size: upload.staging.info().size,
-                    }]),
+                    }],
                 );
             }
 
@@ -344,7 +338,7 @@ impl Uploader {
 
             for upload in &self.image_uploads {
                 images.push(ImageMemoryBarrier {
-                    image: scope.to_scope(upload.image.clone()),
+                    image: &upload.image,
                     old_layout: upload.old_layout,
                     new_layout: Layout::TransferDstOptimal,
                     old_access: upload.old_access,
@@ -368,14 +362,14 @@ impl Uploader {
                         &upload.staging,
                         &upload.image,
                         Layout::TransferDstOptimal,
-                        scope.to_scope([BufferImageCopy {
+                        &[BufferImageCopy {
                             buffer_offset: 0,
                             buffer_row_length: upload.row_length,
                             buffer_image_height: upload.image_height,
                             image_subresource: upload.layers,
                             image_offset: Offset3d::ZERO,
                             image_extent: upload.image.info().extent.into_3d(),
-                        }]),
+                        }],
                     ),
                     (Format::RGB8Unorm, Format::RGBA8Unorm) => {
                         self.rgb2rgba.upload_synchronized(
@@ -411,7 +405,7 @@ impl Uploader {
 
             for upload in &self.image_uploads {
                 images.push(ImageMemoryBarrier {
-                    image: scope.to_scope(upload.image.clone()),
+                    image: &upload.image,
                     old_layout: Some(Layout::TransferDstOptimal),
                     new_layout: upload.new_layout,
                     old_access: AccessFlags::TRANSFER_WRITE,

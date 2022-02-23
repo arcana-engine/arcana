@@ -151,8 +151,6 @@ impl DrawNode for EguiDraw {
 
         let scale_factor = res.scale_factor();
 
-        let mut writes = Vec::new_in(&*cx.scope);
-
         self.descriptors.uniforms.inv_dimensions = vec2::from([
             2.0 * scale_factor / viewport.width as f32,
             -2.0 * scale_factor / viewport.height as f32,
@@ -218,17 +216,12 @@ impl DrawNode for EguiDraw {
             )?;
         }
 
-        let updated = self
-            .set
-            .update(&self.descriptors, cx.graphics, &mut writes, encoder)?;
-
-        cx.graphics.update_descriptor_sets(&writes, &[]);
+        let updated = self.set.update(&self.descriptors, cx.graphics, encoder)?;
 
         render_pass.bind_dynamic_graphics_pipeline(&mut self.pipeline, cx.graphics)?;
         render_pass.bind_graphics_descriptors(&self.pipeline_layout, updated);
 
         let mut buffer_offset = 0;
-        let mut meshes_buffer = &*cx.scope.to_scope(self.meshes.clone()); // Put to scope once here.
 
         for ClippedMesh(rect, mesh) in res.meshes() {
             render_pass.set_scissor(Rect2d {
@@ -247,11 +240,11 @@ impl DrawNode for EguiDraw {
             let mut vertices_offset = align_up(3, indices_offset + indices_size).unwrap();
             let vertices_size = mem::size_of_val(&*mesh.vertices) as u64;
 
-            if vertices_offset + vertices_size > meshes_buffer.info().size {
+            if vertices_offset + vertices_size > self.meshes.info().size {
                 // Doesn't fit.
                 // Make new buffer.
 
-                let new_size = (vertices_offset + vertices_size).max(meshes_buffer.info().size * 2);
+                let new_size = (vertices_offset + vertices_size).max(self.meshes.info().size * 2);
 
                 self.meshes = cx.graphics.create_buffer(sierra::BufferInfo {
                     align: 255,
@@ -268,42 +261,39 @@ impl DrawNode for EguiDraw {
                     encoder.buffer_barriers(
                         PipelineStageFlags::TRANSFER,
                         PipelineStageFlags::VERTEX_INPUT,
-                        cx.scope.to_scope([BufferMemoryBarrier {
-                            buffer: meshes_buffer,
+                        &[BufferMemoryBarrier {
+                            buffer: &self.meshes,
                             offset: 0,
                             size: buffer_offset,
                             old_access: AccessFlags::TRANSFER_WRITE,
                             new_access: AccessFlags::INDEX_READ
                                 | AccessFlags::VERTEX_ATTRIBUTE_READ,
                             family_transfer: None,
-                        }]),
+                        }],
                     );
                 }
-
-                meshes_buffer = cx.scope.to_scope(self.meshes.clone());
             }
             buffer_offset = vertices_offset + vertices_size;
 
-            encoder.update_buffer(meshes_buffer, indices_offset, &*mesh.indices);
-            encoder.update_buffer(meshes_buffer, vertices_offset, &*mesh.vertices);
+            encoder.update_buffer(&self.meshes, indices_offset, &*mesh.indices);
+            encoder.update_buffer(&self.meshes, vertices_offset, &*mesh.vertices);
 
-            render_pass.bind_index_buffer(meshes_buffer, indices_offset, IndexType::U32);
-            render_pass
-                .bind_vertex_buffers(0, cx.scope.to_scope([(meshes_buffer, vertices_offset)]));
+            render_pass.bind_index_buffer(&self.meshes, indices_offset, IndexType::U32);
+            render_pass.bind_vertex_buffers(0, &[(&self.meshes, vertices_offset)]);
             render_pass.draw_indexed(0..mesh.indices.len() as u32, 0, 0..1);
         }
 
         encoder.buffer_barriers(
             PipelineStageFlags::TRANSFER,
             PipelineStageFlags::VERTEX_INPUT,
-            cx.scope.to_scope([BufferMemoryBarrier {
-                buffer: meshes_buffer,
+            &[BufferMemoryBarrier {
+                buffer: &self.meshes,
                 offset: 0,
                 size: buffer_offset,
                 old_access: AccessFlags::TRANSFER_WRITE,
                 new_access: AccessFlags::INDEX_READ | AccessFlags::VERTEX_ATTRIBUTE_READ,
                 family_transfer: None,
-            }]),
+            }],
         );
 
         Ok(())

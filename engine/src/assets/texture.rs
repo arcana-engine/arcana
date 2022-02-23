@@ -51,8 +51,8 @@ pub fn texture_view_from_qoi_image(
         Layout::ShaderReadOnlyOptimal,
         pixels,
         data_format,
-        0,
-        0,
+        qoi.width,
+        qoi.height,
     )?;
 
     let view = graphics.create_image_view(ImageViewInfo::new(image))?;

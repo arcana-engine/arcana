@@ -242,11 +242,11 @@ impl Mesh {
     }
 
     #[inline]
-    pub fn draw<'a>(
-        &'a self,
+    pub fn draw(
+        &self,
         instances: Range<u32>,
         layouts: &[VertexLayout],
-        encoder: &mut RenderPassEncoder<'_, 'a>,
+        encoder: &mut RenderPassEncoder,
     ) -> bool {
         let mut to_bind = Vec::with_capacity_in(self.bindings.len(), encoder.scope());
 
@@ -907,9 +907,11 @@ fn build_triangles_blas<'a>(
 
     let blas_scratch_address = device.get_buffer_device_address(&blas_scratch).unwrap();
 
-    let geometries = encoder
-        .scope()
-        .to_scope([AccelerationStructureGeometry::Triangles {
+    encoder.build_acceleration_structure(&[AccelerationStructureBuildGeometryInfo {
+        src: None,
+        dst: &blas.clone(),
+        flags: AccelerationStructureBuildFlags::PREFER_FAST_TRACE,
+        geometries: &[AccelerationStructureGeometry::Triangles {
             flags: GeometryFlags::empty(),
             vertex_format: Format::RGB32Sfloat,
             vertex_data: pos_range,
@@ -930,17 +932,9 @@ fn build_triangles_blas<'a>(
                 }
             }),
             transform_data: None,
-        }]);
-
-    encoder.build_acceleration_structure(encoder.scope().to_scope([
-        AccelerationStructureBuildGeometryInfo {
-            src: None,
-            dst: encoder.scope().to_scope(blas.clone()),
-            flags: AccelerationStructureBuildFlags::PREFER_FAST_TRACE,
-            geometries,
-            scratch: blas_scratch_address,
-        },
-    ]));
+        }],
+        scratch: blas_scratch_address,
+    }]);
 
     Ok(blas)
 }

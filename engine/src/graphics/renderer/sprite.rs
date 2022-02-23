@@ -286,8 +286,7 @@ impl DrawNode for SpriteDraw {
             AccessFlags::VERTEX_ATTRIBUTE_READ,
         );
 
-        let buffers = render_pass.scope().to_scope([(&self.sprites, 0)]);
-        render_pass.bind_vertex_buffers(0, buffers);
+        render_pass.bind_vertex_buffers(0, &[(&self.sprites, 0)]);
         render_pass.draw(0..6, 0..sprite_count);
 
         Ok(())
