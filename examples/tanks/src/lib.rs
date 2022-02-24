@@ -12,10 +12,11 @@ use arcana::{
 #[cfg(feature = "graphics")]
 use arcana::{
     assets::WithId,
-    graphics::{Material, Texture},
+    graphics::Material,
     lifespan::LifeSpan,
     rect::Rect,
-    sprite::*,
+    sprite::{AnimTransitionRule, CurrentAnimInfo},
+    sprite::{Sprite, SpriteGraphAnimation, SpriteGraphAnimationSystem, SpriteSheet},
 };
 
 pub struct Bullet;
@@ -53,7 +54,7 @@ impl AnimTransitionRule<TankState> for TankAnimTransitionRule {
 }
 
 #[cfg(feature = "graphics")]
-fn tank_graph_animation(sheet: &SpriteSheetMeta) -> SpriteGraphAnimation<TankAnimTransitionRule> {
+fn tank_graph_animation(sheet: &SpriteSheet) -> SpriteGraphAnimation<TankAnimTransitionRule> {
     SpriteGraphAnimation::new(
         0,
         sheet,
@@ -146,7 +147,7 @@ pub struct Tank {
     pub size: na::Vector2<f32>,
     pub color: [f32; 3],
 
-    #[cfg_attr(feature = "graphics", unfold(asset: SpriteSheet<Texture>))]
+    #[cfg_attr(feature = "graphics", unfold(asset: SpriteSheet))]
     pub sprite_sheet: AssetId,
 }
 
@@ -154,7 +155,7 @@ pub struct Tank {
 fn unfold_tank(
     size: &na::Vector2<f32>,
     color: &[f32; 3],
-    #[cfg(feature = "graphics")] sprite_sheet: &WithId<SpriteSheet<Texture>>,
+    #[cfg(feature = "graphics")] sprite_sheet: &WithId<SpriteSheet>,
     #[cfg(not(feature = "graphics"))] _sprite_sheet: &AssetId,
     res: &mut Res,
 ) -> UnfoldResult<impl Bundle> {

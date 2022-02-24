@@ -8,7 +8,7 @@ pub mod basic;
 #[cfg(feature = "2d")]
 pub mod sprite;
 
-#[cfg(feature = "egui")]
+#[cfg(feature = "with-egui")]
 pub mod egui;
 
 pub mod simple;

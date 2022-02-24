@@ -2,6 +2,9 @@ mod anim;
 // mod character;
 mod graph;
 
+#[cfg(feature = "graphics")]
+pub use crate::graphics::{renderer::sprite::*, sprite_sheet::*};
+
 pub use self::{anim::*, graph::*};
 
 use bytemuck::{Pod, Zeroable};

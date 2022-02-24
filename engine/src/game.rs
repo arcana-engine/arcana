@@ -42,7 +42,10 @@ use crate::{
 
 #[cfg(feature = "graphics")]
 use crate::{
-    graphics::{Graphics, Renderer, RendererContext},
+    graphics::{
+        renderer::{Renderer, RendererContext},
+        Graphics,
+    },
     viewport::Viewport,
 };
 
@@ -693,15 +696,20 @@ fn init_treasury(
 
     store.register_importer(ImageImporter);
 
-    #[cfg(all(feature = "asset-pipeline", feature = "2d"))]
+    #[cfg(feature = "asset-pipeline")]
     {
-        store.register_importer(SpriteSheetImporter);
-        store.register_importer(TileMapImporter);
-        store.register_importer(TileSetImporter);
-    }
+        #[cfg(feature = "2d")]
+        {
+            #[cfg(feature = "graphics")]
+            store.register_importer(SpriteSheetImporter);
 
-    #[cfg(all(feature = "asset-pipeline", feature = "3d"))]
-    store.register_importer(GltfModelImporter);
+            store.register_importer(TileMapImporter);
+            store.register_importer(TileSetImporter);
+        }
+
+        #[cfg(all(feature = "graphics", feature = "3d"))]
+        store.register_importer(GltfModelImporter);
+    }
 
     Ok(crate::assets::treasury::TreasurySource::new(store))
 }

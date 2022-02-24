@@ -1,14 +1,13 @@
 use std::{marker::PhantomData, sync::Arc};
 
 use crate::{
-    assets::sprite_sheet::{SpriteFrame, SpriteSheet, SpriteSize},
+    graphics::sprite_sheet::{SpriteFrame, SpriteSheet, SpriteSize},
     rect::Rect,
-    sprite::graph::Transition,
     system::{System, SystemContext},
 };
 
 use super::{
-    graph::{AnimGraph, AnimGraphState, AnimNode, AnimTransitionRule},
+    graph::{AnimGraph, AnimGraphState, AnimNode, AnimTransitionRule, Transition},
     Sprite,
 };
 

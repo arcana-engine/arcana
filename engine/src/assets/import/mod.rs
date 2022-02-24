@@ -1,21 +1,21 @@
 mod image;
 
-#[cfg(feature = "2d")]
+#[cfg(all(feature = "graphics", feature = "2d"))]
 mod aseprite;
 
 #[cfg(feature = "2d")]
 mod tiles;
 
-#[cfg(feature = "3d")]
+#[cfg(all(feature = "graphics", feature = "3d"))]
 mod gltf;
 
 pub use self::image::ImageImporter;
 
-#[cfg(feature = "2d")]
-pub use self::{
-    aseprite::SpriteSheetImporter,
-    tiles::{TileMapImporter, TileSetImporter},
-};
+#[cfg(all(feature = "graphics", feature = "2d"))]
+pub use self::aseprite::SpriteSheetImporter;
 
-#[cfg(feature = "3d")]
+#[cfg(feature = "2d")]
+pub use self::tiles::{TileMapImporter, TileSetImporter};
+
+#[cfg(all(feature = "graphics", feature = "3d"))]
 pub use self::gltf::GltfModelImporter;

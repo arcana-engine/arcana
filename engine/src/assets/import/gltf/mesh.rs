@@ -2,7 +2,7 @@ use std::collections::HashMap;
 
 use gltf::Gltf;
 
-use crate::assets::model::{Collider, PrimitiveInfo};
+use crate::model::{Collider, PrimitiveInfo};
 
 use super::{
     collider::{load_collider, ColliderKind},

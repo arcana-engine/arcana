@@ -1,5 +1,5 @@
-use crate::assets::{
-    mesh::{BindingFileHeader, IndicesFileHeader, VertexLayout},
+use crate::{
+    graphics::{BindingFileHeader, IndicesFileHeader, MeshFileVertexLayout},
     model::PrimitiveInfo,
 };
 
@@ -63,48 +63,48 @@ pub(super) fn load_primitive(
 
     bindings.push(BindingFileHeader {
         offset: vertices.positions.start,
-        layout: VertexLayout::Position3,
+        layout: MeshFileVertexLayout::Position3,
     });
 
     if let Some(normals) = vertices.normals {
         bindings.push(BindingFileHeader {
             offset: normals.start,
-            layout: VertexLayout::Normal3,
+            layout: MeshFileVertexLayout::Normal3,
         });
     }
 
     if let Some(tangents) = vertices.tangents {
         bindings.push(BindingFileHeader {
             offset: tangents.start,
-            layout: VertexLayout::Tangent3,
+            layout: MeshFileVertexLayout::Tangent3,
         });
     }
 
     if let Some(uvs) = vertices.uvs {
         bindings.push(BindingFileHeader {
             offset: uvs.start,
-            layout: VertexLayout::UV,
+            layout: MeshFileVertexLayout::UV,
         });
     }
 
     if let Some(colors) = vertices.colors {
         bindings.push(BindingFileHeader {
             offset: colors.start,
-            layout: VertexLayout::ColorSrgba,
+            layout: MeshFileVertexLayout::ColorSrgba,
         });
     }
 
     if let Some(joints) = vertices.joints {
         bindings.push(BindingFileHeader {
             offset: joints.start,
-            layout: VertexLayout::Joints,
+            layout: MeshFileVertexLayout::Joints,
         });
     }
 
     if let Some(weights) = vertices.weights {
         bindings.push(BindingFileHeader {
             offset: weights.start,
-            layout: VertexLayout::Weights,
+            layout: MeshFileVertexLayout::Weights,
         });
     }
 

@@ -1,6 +1,4 @@
-use arcana::{
-    assets::model::Model, camera, control::EntityController, game::game3, na, prelude::Global3,
-};
+use arcana::{camera, control::EntityController, game::game3, model::Model, na, prelude::Global3};
 
 fn main() {
     game3(|mut game| async move {

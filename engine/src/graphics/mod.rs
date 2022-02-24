@@ -85,10 +85,16 @@ macro_rules! define_vertex_type {
     )*};
 }
 
-mod format;
 pub mod node;
 pub mod renderer;
+
+#[cfg(feature = "2d")]
+pub mod sprite_sheet;
+
+mod format;
+mod material;
 mod scale;
+mod texture;
 mod upload;
 mod vertex;
 
@@ -113,7 +119,7 @@ use sierra::{
 };
 
 use self::upload::Uploader;
-pub use self::{format::*, renderer::*, scale::*, vertex::*};
+pub use self::{format::*, material::*, scale::*, texture::*, vertex::*};
 
 #[cfg(feature = "3d")]
 pub use self::mesh::*;

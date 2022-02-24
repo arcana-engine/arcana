@@ -6,14 +6,13 @@ use std::{
 };
 
 use arcana::{
-    assets::{image::QoiImage, AssetId},
+    assets::AssetId,
     edict::{entity::EntityId, world::World},
     evoke, na,
     palette::*,
     physics2::{ContactQueue2, Physics2, PhysicsData2},
     prelude::*,
     rapier2d::prelude::{RigidBodyBuilder, RigidBodyHandle},
-    sprite::SpriteSheet,
     tiles::{TileMap, TileSet},
 };
 use eyre::WrapErr;
@@ -47,12 +46,6 @@ impl evoke::server::RemotePlayer for RemoteTankPlayer {
     where
         Self: Sized,
     {
-        let (_, &sprite_sheet) = world
-            .query::<&TankSpriteSheetId>()
-            .into_iter()
-            .next()
-            .unwrap();
-
         let pos = random_spawn_location(world);
         let entity = world.spawn((
             evoke::server::ServerOwned,
@@ -61,7 +54,7 @@ impl evoke::server::RemotePlayer for RemoteTankPlayer {
             Tank {
                 size: na::Vector2::new(1.0, 1.0),
                 color: random_color(),
-                sprite_sheet: sprite_sheet.0,
+                sprite_sheet: AssetId::new(0x6cb0764306b4130d).unwrap(),
             },
             TankState::new(),
             TankStateInternal::new(),
@@ -255,18 +248,8 @@ impl System for TankSystem {
     }
 }
 
-#[derive(Clone, Copy)]
-struct TankSpriteSheetId(AssetId);
-
 fn main() {
     headless(|mut game| async move {
-        let tank_asset_id = game
-            .assets
-            .lookup::<SpriteSheet<QoiImage>>("tank.json")
-            .await?;
-
-        game.world.spawn((TankSpriteSheetId(tank_asset_id),));
-
         let maps = [
             game.assets
                 .load::<TileMap, _>("tanks-map1.json")

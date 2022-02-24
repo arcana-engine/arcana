@@ -1,63 +1,74 @@
 #![feature(allocator_api)]
 
 use arcana::{
-    assets::WithId, edict::bundle::Bundle, graphics::Texture, prelude::*, sprite::SpriteSheet,
-    unfold::UnfoldResult,
+    assets::WithId,
+    edict::bundle::Bundle,
+    game::{game2, Exit},
+    graphics::Texture,
+    resources::Res,
+    sprite::SpriteSheet,
+    system::SystemContext,
+    unfold::{Unfold, UnfoldResult},
 };
 
 use goods::*;
 
 fn main() {
-    // game2(|mut game| async move {
-    //     Foo::schedule_unfold_system(&mut game.scheduler);
-    //     Bar::schedule_unfold_system(&mut game.scheduler);
+    game2(|mut game| async move {
+        Foo::schedule_unfold_system(&mut game.scheduler);
+        Bar::schedule_unfold_system(&mut game.scheduler);
 
-    //     game.world.spawn((Foo {
-    //         a: AssetId::new(0x5321e2914afca30d).unwrap(),
-    //         b: TypedAssetId::new(0x61cd051a6c24030d).unwrap(),
-    //     },));
+        game.world.spawn((Foo {
+            a: AssetId::new(0x5321e2914afca30d).unwrap(),
+            b: TypedAssetId::new(0x61cd051a6c24030d).unwrap(),
+        },));
 
-    //     game.world.spawn((Bar {
-    //         a: AssetId::new(0x5321e2914afca30d).unwrap(),
-    //         b: TypedAssetId::new(0x61cd051a6c24030d).unwrap(),
-    //     },));
+        game.world.spawn((Bar {
+            a: AssetId::new(0x5321e2914afca30d).unwrap(),
+            b: TypedAssetId::new(0x61cd051a6c24030d).unwrap(),
+        },));
 
-    //     let mut foo_loaded = false;
-    //     let mut bar_loaded = false;
+        let mut foo_loaded = false;
+        let mut bar_loaded = false;
 
-    //     game.scheduler.add_system(move |cx: SystemContext<'_>| {
-    //         if !foo_loaded {
-    //             let mut q = cx.world.query::<&FooUnfoldSpawned>();
-    //             for (e, spawned) in q.iter() {
-    //                 let e = cx.world.entity(e).unwrap();
-    //                 assert!(spawned.a.is_none() || e.has::<Texture>());
-    //                 assert!(spawned.b.is_none() || e.has::<SpriteSheet<Texture>>());
-    //                 if spawned.a.is_some() && spawned.b.is_some() {
-    //                     tracing::error!("FOO LOADED");
-    //                     foo_loaded = true;
-    //                 }
-    //             }
-    //         }
+        game.scheduler.add_system(move |cx: SystemContext<'_>| {
+            if !foo_loaded {
+                let q = cx.world.query::<&FooUnfoldSpawned>();
+                for (e, spawned) in q.iter() {
+                    assert!(matches!(cx.world.has_component::<Texture>(&e), Ok(true)));
+                    assert!(matches!(
+                        cx.world.has_component::<SpriteSheet>(&e),
+                        Ok(true)
+                    ));
+                    if spawned.a.is_some() && spawned.b.is_some() {
+                        tracing::error!("FOO LOADED");
+                        foo_loaded = true;
+                    }
+                }
+            }
 
-    //         if !bar_loaded {
-    //             let mut q = cx.world.query::<&BarUnfoldSpawned>();
-    //             for (e, spawned) in q.iter() {
-    //                 let e = cx.world.entity(e).unwrap();
-    //                 if spawned.a.is_some() && spawned.b.is_some() {
-    //                     assert!(e.has::<Texture>() && e.has::<SpriteSheet<Texture>>());
-    //                     tracing::error!("BAR LOADED");
-    //                     bar_loaded = true;
-    //                 }
-    //             }
-    //         }
+            if !bar_loaded {
+                let q = cx.world.query::<&BarUnfoldSpawned>();
+                for (e, spawned) in q.iter() {
+                    if spawned.a.is_some() && spawned.b.is_some() {
+                        assert!(matches!(cx.world.has_component::<Texture>(&e), Ok(true)));
+                        assert!(matches!(
+                            cx.world.has_component::<SpriteSheet>(&e),
+                            Ok(true)
+                        ));
+                        tracing::error!("BAR LOADED");
+                        bar_loaded = true;
+                    }
+                }
+            }
 
-    //         if foo_loaded && bar_loaded {
-    //             cx.res.insert(Exit);
-    //         }
-    //     });
+            if foo_loaded && bar_loaded {
+                cx.res.insert(Exit);
+            }
+        });
 
-    //     Ok(game)
-    // });
+        Ok(game)
+    });
 }
 
 #[derive(Unfold)]
@@ -66,7 +77,7 @@ pub struct Foo {
     a: AssetId,
 
     #[unfold(asset)]
-    b: TypedAssetId<SpriteSheet<Texture>>,
+    b: TypedAssetId<SpriteSheet>,
 }
 
 #[derive(Clone, Unfold)]
@@ -76,12 +87,12 @@ pub struct Bar {
     a: AssetId,
 
     #[unfold(asset)]
-    b: TypedAssetId<SpriteSheet<Texture>>,
+    b: TypedAssetId<SpriteSheet>,
 }
 
 fn unfold_bar(
     texture: &WithId<Texture>,
-    sprite_sheet: &WithId<SpriteSheet<Texture>>,
+    sprite_sheet: &WithId<SpriteSheet>,
     _: &mut Res,
 ) -> UnfoldResult<impl Bundle> {
     tracing::error!("UNFOLDING BAR");

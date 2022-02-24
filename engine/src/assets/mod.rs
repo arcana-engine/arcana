@@ -9,22 +9,7 @@ pub mod treasury;
 pub mod import;
 
 #[cfg(feature = "graphics")]
-pub mod texture;
-
-#[cfg(feature = "graphics")]
-pub mod material;
-
-#[cfg(feature = "graphics")]
 pub mod image;
-
-#[cfg(all(feature = "graphics", feature = "3d"))]
-pub mod mesh;
-
-#[cfg(all(feature = "graphics", feature = "3d"))]
-pub mod model;
-
-#[cfg(all(feature = "graphics", feature = "2d"))]
-pub mod sprite_sheet;
 
 use std::{
     any::TypeId,

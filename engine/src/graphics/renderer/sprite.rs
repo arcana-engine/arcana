@@ -11,11 +11,10 @@ use sierra::{
 
 use super::{mat3_na_to_sierra, DrawNode, RendererContext};
 use crate::{
-    assets::material::Material,
     camera::Camera2,
     graphics::{
-        vertex_layouts_for_pipeline, Graphics, SparseDescriptors, Transformation2, VertexLocation,
-        VertexType,
+        material::Material, vertex_layouts_for_pipeline, Graphics, SparseDescriptors,
+        Transformation2, VertexLocation, VertexType,
     },
     rect::Rect,
     scene::Global2,

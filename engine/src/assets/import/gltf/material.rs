@@ -1,4 +1,4 @@
-use crate::assets::{material::MaterialInfo, texture::TextureInfo};
+use crate::graphics::{MaterialInfo, TextureInfo};
 
 pub fn load_material(material: gltf::Material, textures: &[TextureInfo]) -> MaterialInfo {
     let pbr = material.pbr_metallic_roughness();

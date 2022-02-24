@@ -2,7 +2,7 @@ use std::collections::HashMap;
 
 use gltf::Gltf;
 
-use crate::assets::model::Collider;
+use crate::model::Collider;
 
 use super::Error;
 

@@ -1,7 +1,7 @@
 use arcana::{
-    assets::{material::Material, texture::Texture},
     edict::entity::EntityId,
     game::game2,
+    graphics::{Material, Texture},
     na,
     rect::Rect,
     scene::Global2,

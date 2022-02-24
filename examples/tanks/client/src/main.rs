@@ -1,13 +1,16 @@
 #![feature(allocator_api, future_poll_fn)]
 // #![cfg_attr(windows, windows_subsystem = "windows")]
 
-use std::{mem, net::Ipv4Addr};
+use std::net::Ipv4Addr;
 
 use arcana::{
     edict::entity::EntityId,
     egui::{self, EguiDraw, EguiFunnel, EguiResource},
     evoke,
-    graphics::{simple::SimpleRenderer, sprite::SpriteDraw, DrawNode, Material},
+    graphics::{
+        renderer::{simple::SimpleRenderer, sprite::SpriteDraw, DrawNode},
+        Material,
+    },
     na,
     physics2::*,
     prelude::*,
@@ -16,8 +19,6 @@ use arcana::{
     scoped_arena::Scope,
     sprite::Sprite,
     tiles::TileMap,
-    viewport::Viewports,
-    winit::window::Window,
 };
 
 use tanks::*;

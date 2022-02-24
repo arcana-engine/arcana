@@ -1,8 +1,8 @@
 cfg_if::cfg_if! {
     if #[cfg(feature = "graphics")] {
-        use crate::rect::Rect;
         use goods::AssetField;
-        use crate::assets::texture::Texture;
+        use crate::rect::Rect;
+        use crate::graphics::Texture;
     }
 }
 
@@ -16,8 +16,7 @@ cfg_if::cfg_if! {
 }
 
 #[cfg(feature = "physics2d")]
-#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash, serde::Deserialize)]
-#[cfg_attr(feature = "server", derive(serde::Serialize))]
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash, serde::Serialize, serde::Deserialize)]
 #[serde(rename_all = "snake_case")]
 pub enum ColliderKind {
     Wall,
@@ -42,7 +41,10 @@ impl ColliderKind {
 
 #[derive(Clone, Debug)]
 #[cfg_attr(feature = "graphics", derive(AssetField))]
-#[cfg_attr(not(feature = "graphics"), derive(serde::Deserialize))]
+#[cfg_attr(
+    not(feature = "graphics"),
+    derive(serde::Serialize, serde::Deserialize)
+)]
 pub struct Tile {
     #[cfg(feature = "physics2d")]
     #[serde(default)]

@@ -1,3 +1,7 @@
+mod asset;
+
+pub use self::asset::*;
+
 use std::{borrow::Cow, convert::TryFrom as _, mem::size_of_val, ops::Range, sync::Arc};
 
 #[cfg(feature = "genmesh")]

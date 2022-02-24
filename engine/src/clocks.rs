@@ -81,7 +81,7 @@ impl Clocks {
     ///
     /// # Example
     /// ```
-    /// # use arcana::Clocks;
+    /// # use arcana::clocks::Clocks;
     /// let mut clocks = Clocks::new();
     /// let mut last = clocks.advance();
     /// for _ in 0 .. 10 {

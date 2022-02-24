@@ -17,10 +17,10 @@ use gltf::{
 use sierra::SamplerInfo;
 use treasury_import::{Dependencies, Dependency, ImportError, Importer, Sources};
 
-use crate::assets::{
-    import::gltf::{material::load_material, mesh::load_mesh, skin::load_skin},
+use crate::{
+    assets::import::gltf::{material::load_material, mesh::load_mesh, skin::load_skin},
+    graphics::TextureInfo,
     model::ModelFileHeader,
-    texture::TextureInfo,
 };
 
 use self::sampler::load_sampler;

@@ -8,12 +8,12 @@ use goods::{Asset, AssetBuild, Loader};
 use sierra::{BufferInfo, BufferUsage, IndexType, OutOfMemory, PrimitiveTopology};
 
 use crate::graphics::{
-    Binding, Graphics, Indices, Joints, Mesh, Normal3, Position3, Tangent3, VertexType, Weights,
-    UV, V2, V3, V4,
+    Binding, Graphics, Indices, Joints, Mesh, Normal3, Position3, Tangent3, VertexLayout,
+    VertexType, Weights, UV, V2, V3, V4,
 };
 
 #[derive(Clone, Copy, Debug, serde::Serialize, serde::Deserialize)]
-pub enum VertexLayout {
+pub enum MeshFileVertexLayout {
     Position3,
     Normal3,
     Tangent3,
@@ -30,10 +30,34 @@ pub enum VertexLayout {
     Skin,
 }
 
+impl MeshFileVertexLayout {
+    /// Returns vertex layout for predefined mesh vertex layout.
+    pub fn into_vertex_layout(&self) -> VertexLayout {
+        match self {
+            Self::Position3 => Position3::layout(),
+            Self::Normal3 => Normal3::layout(),
+            Self::Tangent3 => Tangent3::layout(),
+            Self::UV => UV::layout(),
+            Self::ColorSrgba => palette::Srgba::<u8>::layout(),
+            Self::PositionNormal3 => V2::<Position3, Normal3>::layout(),
+            Self::PositionNormal3UV => V3::<Position3, Normal3, UV>::layout(),
+            Self::PositionNormal3Color => V3::<Position3, Normal3, palette::Srgba<u8>>::layout(),
+            Self::PositionNormalTangent3 => V3::<Position3, Normal3, Tangent3>::layout(),
+            Self::PositionNormalTangent3UV => V4::<Position3, Normal3, Tangent3, UV>::layout(),
+            Self::PositionNormalTangent3Color => {
+                V4::<Position3, Normal3, Tangent3, palette::Srgba<u8>>::layout()
+            }
+            Self::Joints => Joints::layout(),
+            Self::Weights => Weights::layout(),
+            Self::Skin => V2::<Joints, Weights>::layout(),
+        }
+    }
+}
+
 #[derive(Clone, Debug, serde::Serialize, serde::Deserialize)]
 pub struct BindingFileHeader {
     pub offset: usize,
-    pub layout: VertexLayout,
+    pub layout: MeshFileVertexLayout,
 }
 
 #[derive(Clone, Copy, Debug, serde::Serialize, serde::Deserialize)]
@@ -70,30 +94,7 @@ impl Mesh {
         let bindings = bindings
             .iter()
             .map(|binding| -> Result<_, OutOfMemory> {
-                let layout = match binding.layout {
-                    VertexLayout::Position3 => Position3::layout(),
-                    VertexLayout::Normal3 => Normal3::layout(),
-                    VertexLayout::Tangent3 => Tangent3::layout(),
-                    VertexLayout::UV => UV::layout(),
-                    VertexLayout::ColorSrgba => palette::Srgba::<u8>::layout(),
-                    VertexLayout::PositionNormal3 => V2::<Position3, Normal3>::layout(),
-                    VertexLayout::PositionNormal3UV => V3::<Position3, Normal3, UV>::layout(),
-                    VertexLayout::PositionNormal3Color => {
-                        V3::<Position3, Normal3, palette::Srgba<u8>>::layout()
-                    }
-                    VertexLayout::PositionNormalTangent3 => {
-                        V3::<Position3, Normal3, Tangent3>::layout()
-                    }
-                    VertexLayout::PositionNormalTangent3UV => {
-                        V4::<Position3, Normal3, Tangent3, UV>::layout()
-                    }
-                    VertexLayout::PositionNormalTangent3Color => {
-                        V4::<Position3, Normal3, Tangent3, palette::Srgba<u8>>::layout()
-                    }
-                    VertexLayout::Joints => Joints::layout(),
-                    VertexLayout::Weights => Weights::layout(),
-                    VertexLayout::Skin => V2::<Joints, Weights>::layout(),
-                };
+                let layout = binding.layout.into_vertex_layout();
 
                 let size = u64::from(layout.stride) * u64::from(vertex_count);
                 let size_usize = usize::try_from(size).map_err(|_| OutOfMemory)?;

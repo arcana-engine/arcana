@@ -4,7 +4,7 @@ use byteorder::{ByteOrder, LittleEndian};
 use gltf::{accessor::Dimensions, Gltf};
 use skelly::Skelly;
 
-use crate::assets::model::Skin;
+use crate::model::Skin;
 
 use super::{read_accessor, Error};
 

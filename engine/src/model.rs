@@ -3,16 +3,19 @@ use std::{borrow::BorrowMut, sync::Arc};
 use futures::future::BoxFuture;
 use goods::{Asset, AssetBuild, AssetField, AssetFieldBuild, Container, Loader};
 
+#[cfg(feature = "graphics")]
 use sierra::{OutOfMemory, PrimitiveTopology};
+
+#[cfg(feature = "graphics")]
 use skelly::Skelly;
 
-use crate::graphics::{Graphics, Mesh};
-
-use super::{
-    material::{Material, MaterialBuildError, MaterialDecodeError, MaterialDecoded, MaterialInfo},
-    mesh::{BindingFileHeader, IndicesFileHeader},
+#[cfg(feature = "graphics")]
+use crate::graphics::{
+    BindingFileHeader, Graphics, IndicesFileHeader, Material, MaterialBuildError,
+    MaterialDecodeError, MaterialDecoded, MaterialInfo, Mesh,
 };
 
+#[cfg(feature = "graphics")]
 #[derive(Clone, Debug, serde::Serialize, serde::Deserialize)]
 pub struct PrimitiveInfo {
     pub vertex_count: u32,
@@ -36,6 +39,7 @@ pub enum Collider {
     },
 }
 
+#[cfg(feature = "graphics")]
 #[derive(Clone, Debug, serde::Serialize, serde::Deserialize)]
 pub struct Skin {
     pub inverse_binding_matrices: Option<Vec<na::Matrix4<f32>>>,
@@ -45,17 +49,24 @@ pub struct Skin {
 #[derive(serde::Serialize, serde::Deserialize)]
 pub struct ModelFileHeader {
     pub magic: u32,
-    pub primitives: Vec<PrimitiveInfo>,
     pub colliders: Vec<Collider>,
+    #[cfg(feature = "graphics")]
+    pub primitives: Vec<PrimitiveInfo>,
+    #[cfg(feature = "graphics")]
     pub skin: Option<Skin>,
+    #[cfg(feature = "graphics")]
     pub materials: Vec<MaterialInfo>,
 }
 
 pub struct ModelFileDecoded {
-    primitives: Vec<PrimitiveInfo>,
     colliders: Vec<Collider>,
+    #[cfg(feature = "graphics")]
+    primitives: Vec<PrimitiveInfo>,
+    #[cfg(feature = "graphics")]
     skin: Option<Skin>,
+    #[cfg(feature = "graphics")]
     materials: Vec<MaterialDecoded>,
+    #[cfg(feature = "graphics")]
     bytes: Box<[u8]>,
 }
 
@@ -140,17 +151,30 @@ impl Asset for Model {
                 let loader = loader.clone();
 
                 Box::pin(async move {
+                    #[cfg(feature = "graphics")]
                     let mut materials = Vec::new();
-                    for material in header.materials {
-                        let decoded = Material::decode(material, &loader).await?;
-                        materials.push(decoded);
+
+                    #[cfg(feature = "graphics")]
+                    {
+                        for material in header.materials {
+                            let decoded = Material::decode(material, &loader).await?;
+                            materials.push(decoded);
+                        }
                     }
 
                     Ok(ModelFileDecoded {
-                        primitives: header.primitives,
                         colliders: header.colliders,
+
+                        #[cfg(feature = "graphics")]
+                        primitives: header.primitives,
+
+                        #[cfg(feature = "graphics")]
                         skin: header.skin,
+
+                        #[cfg(feature = "graphics")]
                         materials,
+
+                        #[cfg(feature = "graphics")]
                         bytes,
                     })
                 })
@@ -165,43 +189,57 @@ where
     B: BorrowMut<Graphics>,
 {
     fn build(decoded: ModelFileDecoded, builder: &mut B) -> Result<Self, ModelBuildError> {
+        #[cfg(feature = "graphics")]
         let mut primitives = Vec::new();
-        for primitive in decoded.primitives {
-            let result = Mesh::build_from_file_data(
-                primitive.vertex_count,
-                &primitive.bindings,
-                primitive.indices.as_ref(),
-                primitive.topology,
-                &decoded.bytes,
-                builder.borrow_mut(),
-            );
 
-            match result {
-                Ok(mesh) => {
-                    primitives.push(Primitive {
-                        mesh,
-                        material: primitive.material,
-                    });
-                }
+        #[cfg(feature = "graphics")]
+        {
+            for primitive in decoded.primitives {
+                let result = Mesh::build_from_file_data(
+                    primitive.vertex_count,
+                    &primitive.bindings,
+                    primitive.indices.as_ref(),
+                    primitive.topology,
+                    &decoded.bytes,
+                    builder.borrow_mut(),
+                );
 
-                Err(OutOfMemory) => {
-                    return Err(ModelBuildError::Mesh {
-                        source: OutOfMemory,
-                    })
+                match result {
+                    Ok(mesh) => {
+                        primitives.push(Primitive {
+                            mesh,
+                            material: primitive.material,
+                        });
+                    }
+
+                    Err(OutOfMemory) => {
+                        return Err(ModelBuildError::Mesh {
+                            source: OutOfMemory,
+                        })
+                    }
                 }
             }
         }
 
+        #[cfg(feature = "graphics")]
         let mut materials = Vec::new();
-        for material in decoded.materials {
-            let material = <Material as AssetFieldBuild<Container, B>>::build(material, builder)?;
-            materials.push(material);
+
+        #[cfg(feature = "graphics")]
+        {
+            for material in decoded.materials {
+                let material =
+                    <Material as AssetFieldBuild<Container, B>>::build(material, builder)?;
+                materials.push(material);
+            }
         }
 
         Ok(Model {
-            primitives: primitives.into(),
             colliders: decoded.colliders.into(),
+            #[cfg(feature = "graphics")]
+            primitives: primitives.into(),
+            #[cfg(feature = "graphics")]
             skin: decoded.skin,
+            #[cfg(feature = "graphics")]
             materials: materials.into(),
         })
     }

@@ -17,9 +17,7 @@ use sierra::{
     Sampler, SamplerInfo, Samples::Samples1,
 };
 
-use crate::{graphics::Graphics, is_default};
-
-use super::image::QoiImage;
+use crate::{assets::image::QoiImage, graphics::Graphics, is_default};
 
 pub fn texture_view_from_qoi_image(
     qoi: &rapid_qoi::Qoi,

@@ -8,9 +8,9 @@ use sierra::{
 
 use super::{mat4_na_to_sierra, DrawNode, RendererContext};
 use crate::{
-    assets::material::Material,
     camera::Camera3,
     graphics::{
+        material::Material,
         mesh::Mesh,
         vertex::{Normal3, Position3, VertexType as _, UV},
         Graphics, Scale,

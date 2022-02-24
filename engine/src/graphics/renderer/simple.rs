@@ -2,9 +2,9 @@
 
 use sierra::{pass, ClearColor, ClearDepth, Fence, Format, Image, Layout, PipelineStageFlags};
 
-use crate::{graphics::Renderer, viewport::Viewport};
+use crate::viewport::Viewport;
 
-use super::{DrawNode, RendererContext};
+use super::{DrawNode, Renderer, RendererContext};
 
 #[pass]
 #[subpass(color = color, depth = depth)]
