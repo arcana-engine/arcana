@@ -136,6 +136,12 @@ pub struct Scheduler {
     next_tick: TimeStamp,
 }
 
+impl Default for Scheduler {
+    fn default() -> Self {
+        Scheduler::new()
+    }
+}
+
 impl Scheduler {
     /// Creates new scheduler instance with default tick step: [`DEFAULT_TICK_SPAN`].
     pub fn new() -> Self {

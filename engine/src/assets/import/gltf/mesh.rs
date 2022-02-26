@@ -62,7 +62,7 @@ fn purpose(mesh: &gltf::Mesh) -> MeshPurpose {
                     },
                     "aabb" => MeshPurpose {
                         render: false,
-                        collider: Some(ColliderKind::AABB),
+                        collider: Some(ColliderKind::Aabb),
                     },
                     "convex" => MeshPurpose {
                         render: false,
@@ -74,7 +74,7 @@ fn purpose(mesh: &gltf::Mesh) -> MeshPurpose {
                     },
                     "draw+aabb" => MeshPurpose {
                         render: true,
-                        collider: Some(ColliderKind::AABB),
+                        collider: Some(ColliderKind::Aabb),
                     },
                     "draw+convex" => MeshPurpose {
                         render: true,

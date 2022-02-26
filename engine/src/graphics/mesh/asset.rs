@@ -100,16 +100,14 @@ impl Mesh {
                 let size_usize = usize::try_from(size).map_err(|_| OutOfMemory)?;
 
                 Ok(Binding {
-                    buffer: graphics
-                        .create_buffer_static(
-                            BufferInfo {
-                                align: 255,
-                                size,
-                                usage: BufferUsage::VERTEX,
-                            },
-                            &data[binding.offset..][..size_usize],
-                        )?
-                        .into(),
+                    buffer: graphics.create_buffer_static(
+                        BufferInfo {
+                            align: 255,
+                            size,
+                            usage: BufferUsage::VERTEX,
+                        },
+                        &data[binding.offset..][..size_usize],
+                    )?,
                     offset: 0,
                     layout,
                 })
@@ -132,16 +130,14 @@ impl Mesh {
                 let size_usize = usize::try_from(size).map_err(|_| OutOfMemory)?;
 
                 Ok(Indices {
-                    buffer: graphics
-                        .create_buffer_static(
-                            BufferInfo {
-                                align: 255,
-                                size,
-                                usage: BufferUsage::INDEX,
-                            },
-                            &data[indices.offset..][..size_usize],
-                        )?
-                        .into(),
+                    buffer: graphics.create_buffer_static(
+                        BufferInfo {
+                            align: 255,
+                            size,
+                            usage: BufferUsage::INDEX,
+                        },
+                        &data[indices.offset..][..size_usize],
+                    )?,
                     offset: 0,
                     index_type: match indices.index_type {
                         IndexType::U16 => IndexType::U16,

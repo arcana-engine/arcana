@@ -83,7 +83,15 @@ pub struct PhysicsData2 {
     pub gravity: na::Vector2<f32>,
 }
 
+impl Default for PhysicsData2 {
+    #[inline]
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
 impl PhysicsData2 {
+    #[inline]
     pub fn new() -> Self {
         PhysicsData2 {
             bodies: RigidBodySet::new(),
@@ -95,17 +103,20 @@ impl PhysicsData2 {
     }
 }
 
-impl Default for PhysicsData2 {
+impl Default for Physics2 {
+    #[inline]
     fn default() -> Self {
-        Self::new()
+        Physics2::new()
     }
 }
 
 impl Physics2 {
+    #[inline]
     pub fn new() -> Self {
         Physics2::with_tick_span(DEFAULT_TICK_SPAN)
     }
 
+    #[inline]
     pub fn with_tick_span(tick_span: TimeSpan) -> Self {
         Physics2 {
             pipeline: PhysicsPipeline::new(),
@@ -121,6 +132,7 @@ impl Physics2 {
 }
 
 impl System for Physics2 {
+    #[inline]
     fn name(&self) -> &str {
         "Physics"
     }

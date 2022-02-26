@@ -206,10 +206,10 @@ where
 
     Loop::run(|event_loop| async move {
         // Load config.
-        let mut cfg = Config::load_default();
+        let cfg = Config::load_default();
 
         // Initialize asset loader.
-        let loader = configure_loader(&mut cfg).await?;
+        let loader = configure_loader(&cfg).await?;
 
         let assets = Assets::new(loader);
 
@@ -342,9 +342,8 @@ where
                 // Filter event
                 let event = funnel.filter(&mut res, &mut world, event);
 
-                match event {
-                    Some(Event::Loop) => break, // No new events. Continue game loop
-                    _ => {}
+                if let Some(Event::Loop) = event {
+                    break; // No new events. Continue game loop
                 }
             }
 
@@ -481,7 +480,7 @@ where
         .expect("Failed to build tokio runtime");
 
     // Load config.
-    let mut cfg = Config::load_default();
+    let cfg = Config::load_default();
 
     let teardown_timeout = cfg.teardown_timeout;
     let main_step = cfg.main_step;
@@ -495,7 +494,7 @@ where
     runtime
         .block_on(async move {
             // Initialize asset loader.
-            let loader = configure_loader(&mut cfg).await?;
+            let loader = configure_loader(&cfg).await?;
             let assets = Assets::new(loader);
 
             // Configure game with closure.
@@ -648,7 +647,7 @@ impl Funnel<Event> for GameFunnel<'_> {
         let mut event = MainWindowFunnel.filter(res, world, event)?;
         event = self.viewport.filter(res, world, event)?;
         if self.viewport.focused() {
-            if let Some(custom) = self.custom.as_deref_mut() {
+            if let Some(custom) = &mut self.custom {
                 event = custom.filter(res, world, event)?;
             }
             event = self.control.filter(res, world, event)?;
@@ -664,7 +663,7 @@ async fn configure_loader(cfg: &Config) -> eyre::Result<Loader> {
 
     #[cfg(feature = "asset-pipeline")]
     if let Some(treasury) = &cfg.treasury {
-        match init_treasury(&cfg.root, &treasury) {
+        match init_treasury(&cfg.root, treasury) {
             Err(err) => tracing::error!("Failed to initialize treasury loader. {:#}", err),
             Ok(treasury) => {
                 tracing::info!("Treasury source configured");

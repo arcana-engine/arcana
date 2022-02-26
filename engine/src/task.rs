@@ -127,6 +127,30 @@ impl<'a> TaskContext<'a> {
             server: self.server,
         }
     }
+
+    unsafe fn from_raw(raw: &mut RawTaskContext) -> TaskContext<'a> {
+        TaskContext {
+            world: &mut *raw.world.as_ptr(),
+            res: &mut *raw.res.as_ptr(),
+            spawner: &mut *raw.spawner.as_ptr(),
+            assets: &mut *raw.assets.as_ptr(),
+            scope: &*raw.scope.cast().as_ptr(),
+            #[cfg(feature = "visible")]
+            control: &mut *raw.control.as_ptr(),
+
+            #[cfg(feature = "graphics")]
+            graphics: &mut *raw.graphics.as_ptr(),
+
+            #[cfg(not(feature = "graphics"))]
+            graphics: Box::leak(Box::new(())),
+
+            #[cfg(feature = "client")]
+            client: &mut *raw.client.as_ptr(),
+
+            #[cfg(feature = "server")]
+            server: &mut *raw.server.as_ptr(),
+        }
+    }
 }
 
 /// Returns borrowed `TaskContext`.
@@ -162,7 +186,7 @@ where
             .as_mut()
             .expect("Called outside task executor");
 
-        f(tcx.from_raw())
+        f(TaskContext::from_raw(tcx))
     })
 }
 
@@ -300,30 +324,6 @@ impl RawTaskContext {
 
             #[cfg(feature = "server")]
             server: NonNull::from(cx.server),
-        }
-    }
-
-    unsafe fn from_raw<'a>(&mut self) -> TaskContext<'a> {
-        TaskContext {
-            world: &mut *self.world.as_ptr(),
-            res: &mut *self.res.as_ptr(),
-            spawner: &mut *self.spawner.as_ptr(),
-            assets: &mut *self.assets.as_ptr(),
-            scope: &*self.scope.cast().as_ptr(),
-            #[cfg(feature = "visible")]
-            control: &mut *self.control.as_ptr(),
-
-            #[cfg(feature = "graphics")]
-            graphics: &mut *self.graphics.as_ptr(),
-
-            #[cfg(not(feature = "graphics"))]
-            graphics: Box::leak(Box::new(())),
-
-            #[cfg(feature = "client")]
-            client: &mut *self.client.as_ptr(),
-
-            #[cfg(feature = "server")]
-            server: &mut *self.server.as_ptr(),
         }
     }
 }

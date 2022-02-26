@@ -23,6 +23,12 @@ pub struct Bullet;
 
 pub struct BulletCollider(pub Collider);
 
+impl Default for BulletCollider {
+    fn default() -> Self {
+        BulletCollider::new()
+    }
+}
+
 impl BulletCollider {
     pub fn new() -> Self {
         BulletCollider(
@@ -74,6 +80,12 @@ pub struct TankState {
     pub rotate: i8,
     pub fire: bool,
     pub alive: bool,
+}
+
+impl Default for TankState {
+    fn default() -> Self {
+        TankState::new()
+    }
 }
 
 impl TankState {
@@ -199,7 +211,7 @@ fn unfold_tank(
             ..Default::default()
         },
         #[cfg(feature = "graphics")]
-        tank_graph_animation(&sprite_sheet),
+        tank_graph_animation(sprite_sheet),
     ))
 }
 

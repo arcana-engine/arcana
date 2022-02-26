@@ -61,7 +61,7 @@ impl Block {
                 ..Sprite::default()
             },
             graphics::Material {
-                albedo_factor: [0.3.into(), 0.4.into(), 0.5.into(), 1.0.into()],
+                albedo_factor: [0.3, 0.4, 0.5, 1.0],
                 ..Default::default()
             },
             Global2::new(

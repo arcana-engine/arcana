@@ -30,8 +30,7 @@ pub(super) fn load_primitive(
         gltf::mesh::Mode::LineLoop => {
             return Err(Error::UnsupportedTopology {
                 unsupported: gltf::mesh::Mode::LineLoop,
-            }
-            .into());
+            });
         }
         gltf::mesh::Mode::LineStrip => PrimitiveTopology::LineStrip,
         gltf::mesh::Mode::Triangles => PrimitiveTopology::TriangleList,
@@ -59,12 +58,10 @@ pub(super) fn load_primitive(
         .try_into()
         .map_err(|_| Error::IntegerOverflow)?;
 
-    let mut bindings = Vec::new();
-
-    bindings.push(BindingFileHeader {
+    let mut bindings = vec![BindingFileHeader {
         offset: vertices.positions.start,
         layout: MeshFileVertexLayout::Position3,
-    });
+    }];
 
     if let Some(normals) = vertices.normals {
         bindings.push(BindingFileHeader {

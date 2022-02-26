@@ -45,6 +45,7 @@ enum Kind {
 
 #[cfg(feature = "3d")]
 impl Default for Camera3 {
+    #[inline]
     fn default() -> Self {
         Camera3::perspective(1.0, std::f32::consts::FRAC_PI_4, 0.01, 100.0)
     }
@@ -82,29 +83,34 @@ impl Camera3 {
         }
     }
 
+    #[inline]
     pub fn proj(&self) -> &na::Projective3<f32> {
         &self.proj
     }
 
     /// Update aspect ration of the camera.
+    #[inline]
     pub fn set_aspect(&mut self, aspect: f32) {
         self.aspect = aspect;
         self.update_proj();
     }
 
     /// Update aspect ration of the camera.
+    #[inline]
     pub fn set_fovy(&mut self, fovy: f32) {
         self.fovy = fovy;
         self.update_proj();
     }
 
     /// Update aspect ration of the camera.
+    #[inline]
     pub fn set_znear(&mut self, znear: f32) {
         self.znear = znear;
         self.update_proj();
     }
 
     /// Update aspect ration of the camera.
+    #[inline]
     pub fn set_zfar(&mut self, zfar: f32) {
         self.zfar = zfar;
         self.update_proj();
@@ -112,6 +118,7 @@ impl Camera3 {
 
     /// Converts point in world space into point in screen space.
     /// Screen space Z is depth.
+    #[inline]
     pub fn world_to_screen(
         &self,
         view: &na::Affine3<f32>,
@@ -122,6 +129,7 @@ impl Camera3 {
 
     /// Converts point in screen space into point in world space.
     /// Screen space Z is depth.
+    #[inline]
     pub fn screen_to_world(
         &self,
         view: &na::Affine3<f32>,
@@ -184,7 +192,16 @@ pub struct FreeCamera3Controller {
 }
 
 #[cfg(all(feature = "visible", feature = "3d"))]
+impl Default for FreeCamera3Controller {
+    #[inline]
+    fn default() -> Self {
+        FreeCamera3Controller::new()
+    }
+}
+
+#[cfg(all(feature = "visible", feature = "3d"))]
 impl FreeCamera3Controller {
+    #[inline]
     pub fn new() -> Self {
         FreeCamera3Controller {
             pitch: 0.0,
@@ -324,6 +341,7 @@ pub struct Camera2 {
 
 #[cfg(feature = "2d")]
 impl Default for Camera2 {
+    #[inline]
     fn default() -> Self {
         Camera2::new(1.0, 1.0)
     }

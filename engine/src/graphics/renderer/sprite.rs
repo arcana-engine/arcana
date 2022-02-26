@@ -33,17 +33,9 @@ pub struct SpriteDraw {
 }
 
 #[shader_repr]
-#[derive(Clone, Copy)]
+#[derive(Clone, Copy, Default)]
 struct Uniforms {
     camera: mat3,
-}
-
-impl Default for Uniforms {
-    fn default() -> Self {
-        Uniforms {
-            camera: mat3::default(),
-        }
-    }
 }
 
 #[descriptors]
@@ -143,8 +135,8 @@ impl SpriteDraw {
             pipeline: DynamicGraphicsPipeline::new(graphics_pipeline_desc! {
                 vertex_bindings,
                 vertex_attributes,
-                vertex_shader: VertexShader::new(vert_module.clone(), "main"),
-                fragment_shader: Some(FragmentShader::new(frag_module.clone(), "main")),
+                vertex_shader: VertexShader::new(vert_module, "main"),
+                fragment_shader: Some(FragmentShader::new(frag_module, "main")),
                 layout: pipeline_layout.raw().clone(),
                 depth_test: Some(DepthTest::LESS_WRITE),
             }),
@@ -309,15 +301,25 @@ unsafe impl bytemuck::Pod for SpriteInstance {}
 impl VertexType for SpriteInstance {
     const LOCATIONS: &'static [VertexLocation] = {
         let mut offset = 0;
+
+        let pos = vertex_location!(offset, Rect);
+        let uv = vertex_location!(offset, Rect);
+        let layer = vertex_location!(offset, f32 as "Layer");
+        let albedo = vertex_location!(offset, u32 as "Albedo");
+        let albedo_factor = vertex_location!(offset, LinSrgba<f32>);
+        let transform0 = vertex_location!(offset, [f32; 3] as "Transform2.0");
+        let transform1 = vertex_location!(offset, [f32; 3] as "Transform2.1");
+        let transform2 = vertex_location!(offset, [f32; 3] as "Transform2.2");
+
         &[
-            vertex_location!(offset, Rect),
-            vertex_location!(offset, Rect),
-            vertex_location!(offset, f32 as "Layer"),
-            vertex_location!(offset, u32 as "Albedo"),
-            vertex_location!(offset, LinSrgba<f32>),
-            vertex_location!(offset, [f32; 3] as "Transform2.0"),
-            vertex_location!(offset, [f32; 3] as "Transform2.1"),
-            vertex_location!(offset, [f32; 3] as "Transform2.2"),
+            pos,
+            uv,
+            layer,
+            albedo,
+            albedo_factor,
+            transform0,
+            transform1,
+            transform2,
         ]
     };
     const RATE: VertexInputRate = VertexInputRate::Instance;

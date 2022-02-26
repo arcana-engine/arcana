@@ -21,7 +21,8 @@ use tokio::net::TcpListener;
 use tanks::*;
 
 fn random_color() -> [f32; 3] {
-    const FI: f32 = 1.618033988;
+    const FI: f32 = 1.618_034;
+
     static COLOR_WHEEL: AtomicU32 = AtomicU32::new(0);
     let color_wheel = COLOR_WHEEL.fetch_add(1, Ordering::Relaxed);
 
@@ -98,6 +99,12 @@ pub struct TankStateInternal {
     reload: TimeSpan,
     last_fire: TimeStamp,
     pending_fire: bool,
+}
+
+impl Default for TankStateInternal {
+    fn default() -> Self {
+        TankStateInternal::new()
+    }
 }
 
 impl TankStateInternal {
@@ -279,7 +286,7 @@ fn main() {
                 let offset = na::Vector2::new(i as f32, j as f32).component_mul(&map.size());
 
                 game.world.spawn((
-                    Global2::new(na::Isometry2::new(offset.into(), 0.0)),
+                    Global2::new(na::Isometry2::new(offset, 0.0)),
                     map.clone(),
                     evoke::server::ServerOwned,
                 ));

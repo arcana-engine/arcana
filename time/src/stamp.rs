@@ -24,17 +24,20 @@ impl TimeStamp {
     /// # Panics
     ///
     /// This function may panic or produce arbitrary result if `rhs` is "later" than `self`.
+    #[inline]
     pub const fn elapsed_since(&self, rhs: TimeStamp) -> TimeSpan {
         TimeSpan::from_nanos(self.nanos - rhs.nanos)
     }
 
     /// Returns time elapsed since origin.
+    #[inline]
     pub const fn elapsed(&self) -> TimeSpan {
         TimeSpan::from_nanos(self.nanos)
     }
 }
 
 impl Default for TimeStamp {
+    #[inline]
     fn default() -> Self {
         Self::ORIGIN
     }
@@ -43,6 +46,7 @@ impl Default for TimeStamp {
 impl Add<TimeSpan> for TimeStamp {
     type Output = Self;
 
+    #[inline]
     fn add(self, rhs: TimeSpan) -> Self {
         TimeStamp {
             nanos: self.nanos + rhs.as_nanos(),
@@ -51,6 +55,7 @@ impl Add<TimeSpan> for TimeStamp {
 }
 
 impl AddAssign<TimeSpan> for TimeStamp {
+    #[inline]
     fn add_assign(&mut self, rhs: TimeSpan) {
         self.nanos += rhs.as_nanos();
     }
@@ -59,6 +64,7 @@ impl AddAssign<TimeSpan> for TimeStamp {
 impl Sub<TimeSpan> for TimeStamp {
     type Output = Self;
 
+    #[inline]
     fn sub(self, rhs: TimeSpan) -> Self {
         TimeStamp {
             nanos: self.nanos - rhs.as_nanos(),
@@ -67,6 +73,7 @@ impl Sub<TimeSpan> for TimeStamp {
 }
 
 impl SubAssign<TimeSpan> for TimeStamp {
+    #[inline]
     fn sub_assign(&mut self, rhs: TimeSpan) {
         self.nanos -= rhs.as_nanos();
     }

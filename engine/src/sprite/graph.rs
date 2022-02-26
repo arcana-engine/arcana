@@ -41,16 +41,20 @@ mod transition_serde {
     use serde::{de::*, ser::*};
 
     #[derive(Debug, serde::Serialize, serde::Deserialize)]
+    #[serde(bound(deserialize = "R: Deserialize<'de>, T: Deserialize<'de>"))]
+    struct Partial<R, T> {
+        pub rule: R,
+        pub target: usize,
+
+        #[serde(default)]
+        pub transition: Option<T>,
+    }
+
+    #[derive(Debug, serde::Serialize, serde::Deserialize)]
     struct Full<R, T> {
         pub rule: R,
         pub target: usize,
         pub transition: T,
-    }
-
-    #[derive(Debug, serde::Serialize, serde::Deserialize)]
-    struct Partial<R> {
-        pub rule: R,
-        pub target: usize,
     }
 
     impl<R, T> Serialize for super::Transition<R, T>
@@ -62,7 +66,7 @@ mod transition_serde {
         where
             S: Serializer,
         {
-            if std::mem::size_of::<T>() == 0 {
+            if serde_nothing::is_nothing(&self.transition) {
                 let mut serializer = serializer.serialize_struct("Transition", 2)?;
                 serializer.serialize_field("rule", &self.rule)?;
                 serializer.serialize_field("target", &self.target)?;
@@ -86,23 +90,25 @@ mod transition_serde {
         where
             D: Deserializer<'de>,
         {
-            if std::mem::size_of::<T>() == 0 {
-                let partial = Partial::deserialize(deserializer)?;
-                Ok(Self {
-                    rule: partial.rule,
-                    target: partial.target,
-                    transition: unsafe {
-                        // Safe for ZSTs.
-                        std::mem::MaybeUninit::uninit().assume_init()
-                    },
-                })
-            } else {
-                let full = Full::deserialize(deserializer)?;
-                Ok(Self {
-                    rule: full.rule,
-                    target: full.target,
-                    transition: full.transition,
-                })
+            match serde_nothing::from_nothing() {
+                None => {
+                    let value = Full::deserialize(deserializer)?;
+
+                    Ok(Self {
+                        rule: value.rule,
+                        target: value.target,
+                        transition: value.transition,
+                    })
+                }
+                Some(default_transition) => {
+                    let value = Partial::deserialize(deserializer)?;
+
+                    Ok(Self {
+                        rule: value.rule,
+                        target: value.target,
+                        transition: value.transition.unwrap_or(default_transition),
+                    })
+                }
             }
         }
     }

@@ -45,6 +45,7 @@ struct Uniforms {
 }
 
 impl Default for Uniforms {
+    #[inline]
     fn default() -> Self {
         Uniforms {
             camera_view: mat4::default(),

@@ -2,7 +2,7 @@ use std::path::{Path, PathBuf};
 
 use arcana_time::TimeSpan;
 
-const CONFIG_DEFAULT_NAME: &'static str = "Arcana.toml";
+const CONFIG_DEFAULT_NAME: &str = "Arcana.toml";
 
 #[derive(serde::Deserialize)]
 #[cfg(feature = "asset-pipeline")]

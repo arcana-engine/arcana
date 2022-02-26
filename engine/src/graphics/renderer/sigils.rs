@@ -29,6 +29,7 @@ struct Uniforms {
 }
 
 impl Default for Uniforms {
+    #[inline]
     fn default() -> Self {
         Uniforms { albedo: u32::MAX }
     }
@@ -194,12 +195,12 @@ unsafe impl bytemuck::Pod for Vertex {}
 impl VertexType for Vertex {
     const LOCATIONS: &'static [VertexLocation] = {
         let mut offset = 0;
-        &[
-            vertex_location!(offset, Position2),
-            vertex_location!(offset, UV),
-            vertex_location!(offset, u32 as "Albedo"),
-            vertex_location!(offset, LinSrgba<f32>),
-        ]
+
+        let pos = vertex_location!(offset, Position2);
+        let uv = vertex_location!(offset, UV);
+        let albedo = vertex_location!(offset, u32 as "Albedo");
+        let albedo_factor = vertex_location!(offset, LinSrgba<f32>);
+        &[pos, uv, albedo, albedo_factor]
     };
     const RATE: VertexInputRate = VertexInputRate::Vertex;
 }

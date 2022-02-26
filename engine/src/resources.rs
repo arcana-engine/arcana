@@ -11,6 +11,12 @@ pub struct Res {
     map: HashMap<TypeId, Box<dyn Any + Send + Sync>, NoopHasherBuilder>,
 }
 
+impl Default for Res {
+    fn default() -> Self {
+        Res::new()
+    }
+}
+
 impl Res {
     /// Returns new empty resources map.
     pub fn new() -> Self {
@@ -103,75 +109,92 @@ pub trait Query<'a> {
     fn get(res: &'a mut Res) -> Self::Item;
 }
 
-pub unsafe trait Fetch<'a>: Sized {
-    fn ty() -> TypeId;
-    fn mutable() -> bool;
-    unsafe fn get(res: *mut Res) -> Self;
-}
+mod sealed {
+    use std::{
+        any::{Any, TypeId},
+        ptr::NonNull,
+    };
 
-unsafe impl<'a, T: 'static> Fetch<'a> for &'a T {
-    fn ty() -> TypeId {
-        TypeId::of::<T>()
-    }
-    fn mutable() -> bool {
-        false
-    }
-    unsafe fn get(res: *mut Res) -> &'a T {
-        let r = (&*res)
-            .map
-            .get(&TypeId::of::<T>())
-            .expect("Resource expected");
-        r.downcast_ref().unwrap()
-    }
-}
+    use super::{Query, Res};
 
-unsafe impl<'a, T: 'static> Fetch<'a> for &'a mut T {
-    fn ty() -> TypeId {
-        TypeId::of::<T>()
-    }
-    fn mutable() -> bool {
-        true
-    }
-    unsafe fn get(res: *mut Res) -> &'a mut T {
-        let r = (&mut *res)
-            .map
-            .get_mut(&TypeId::of::<T>())
-            .expect("Resource expected");
-        r.downcast_mut().unwrap()
-    }
-}
+    /// This trait should be implemented by references and optional references.
+    ///
+    /// # Safety
+    ///
+    /// `ty` method must return referenced type.
+    /// `mutable` must return `true` for mutable references and `false` for immutable references.
+    pub trait Fetch<'a>: Sized {
+        #[doc(hidden)]
+        fn ty() -> TypeId;
 
-unsafe impl<'a, T: 'static> Fetch<'a> for Option<&'a T> {
-    fn ty() -> TypeId {
-        TypeId::of::<T>()
-    }
-    fn mutable() -> bool {
-        false
-    }
-    unsafe fn get(res: *mut Res) -> Option<&'a T> {
-        let r = (&*res).map.get(&TypeId::of::<T>())?;
-        Some(r.downcast_ref().unwrap())
-    }
-}
+        #[doc(hidden)]
+        fn mutable() -> bool;
 
-unsafe impl<'a, T: 'static> Fetch<'a> for Option<&'a mut T> {
-    fn ty() -> TypeId {
-        TypeId::of::<T>()
+        /// # Safety
+        ///
+        /// Caller must borrow value for `'a`,
+        /// mutably if `mutable()` returns `true`.
+        /// Value type must match id that `id` returns.
+        #[doc(hidden)]
+        unsafe fn get(res: Option<NonNull<dyn Any + Send + Sync>>) -> Self;
     }
-    fn mutable() -> bool {
-        true
-    }
-    unsafe fn get(res: *mut Res) -> Option<&'a mut T> {
-        let r = (&mut *res).map.get_mut(&TypeId::of::<T>())?;
-        Some(r.downcast_mut().unwrap())
-    }
-}
 
-unsafe trait QueryValid<'a> {
-    fn is_valid() -> bool;
-}
+    impl<'a, T: 'static> Fetch<'a> for &'a T {
+        fn ty() -> TypeId {
+            TypeId::of::<T>()
+        }
+        fn mutable() -> bool {
+            false
+        }
+        unsafe fn get(res: Option<NonNull<dyn Any + Send + Sync>>) -> &'a T {
+            res.expect("Resource expected").cast().as_ref()
+        }
+    }
 
-macro_rules! for_tuple {
+    impl<'a, T: 'static> Fetch<'a> for &'a mut T {
+        fn ty() -> TypeId {
+            TypeId::of::<T>()
+        }
+        fn mutable() -> bool {
+            true
+        }
+        unsafe fn get(res: Option<NonNull<dyn Any + Send + Sync>>) -> &'a mut T {
+            res.expect("Resource expected").cast().as_mut()
+        }
+    }
+
+    impl<'a, T: 'static> Fetch<'a> for Option<&'a T> {
+        fn ty() -> TypeId {
+            TypeId::of::<T>()
+        }
+        fn mutable() -> bool {
+            false
+        }
+        unsafe fn get(res: Option<NonNull<dyn Any + Send + Sync>>) -> Option<&'a T> {
+            Some(res?.cast().as_ref())
+        }
+    }
+
+    impl<'a, T: 'static> Fetch<'a> for Option<&'a mut T> {
+        fn ty() -> TypeId {
+            TypeId::of::<T>()
+        }
+        fn mutable() -> bool {
+            true
+        }
+        unsafe fn get(res: Option<NonNull<dyn Any + Send + Sync>>) -> Option<&'a mut T> {
+            Some(res?.cast().as_mut())
+        }
+    }
+
+    /// # Safety
+    ///
+    /// `is_valid` method must ensure that Query would not create mutable aliases.
+    unsafe trait QueryValid<'a> {
+        fn is_valid() -> bool;
+    }
+
+    macro_rules! for_tuple {
     () => {
         for_tuple!(for A B C D E F G H I J K L M N O P);
     };
@@ -216,10 +239,13 @@ macro_rules! for_tuple {
 
             fn get(res: &'a mut Res) -> ($($a,)+) {
                 assert!(<Self as QueryValid>::is_valid());
-                unsafe { ($( $a::get(res), )+) }
+                unsafe { ($(
+                    $a::get(res.map.get_mut(&$a::ty()).map(|b| NonNull::from(&mut **b))),
+                )+) }
             }
         }
     };
 }
 
-for_tuple!();
+    for_tuple!();
+}

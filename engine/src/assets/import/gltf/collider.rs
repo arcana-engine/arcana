@@ -8,7 +8,7 @@ use super::Error;
 
 #[derive(Clone, Copy)]
 pub enum ColliderKind {
-    AABB,
+    Aabb,
     Convex,
     TriMesh,
 }
@@ -27,7 +27,7 @@ pub(super) fn load_collider(
     let mut positions = reader.read_positions().unwrap();
 
     match kind {
-        ColliderKind::AABB => match positions.next() {
+        ColliderKind::Aabb => match positions.next() {
             Some([x, y, z]) => {
                 let mut mx = x.abs();
                 let mut my = y.abs();
@@ -43,7 +43,7 @@ pub(super) fn load_collider(
                     extent: na::Vector3::from([mx, my, mz]),
                 })
             }
-            None => Err(Error::InvalidConvexShape.into()),
+            None => Err(Error::InvalidConvexShape),
         },
 
         ColliderKind::Convex => {

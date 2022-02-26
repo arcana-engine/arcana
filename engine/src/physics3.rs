@@ -96,16 +96,19 @@ impl PhysicsData3 {
 }
 
 impl Default for PhysicsData3 {
+    #[inline]
     fn default() -> Self {
         Self::new()
     }
 }
 
 impl Physics3 {
+    #[inline]
     pub fn new() -> Self {
         Physics3::with_tick_span(DEFAULT_TICK_SPAN)
     }
 
+    #[inline]
     pub fn with_tick_span(tick_span: TimeSpan) -> Self {
         Physics3 {
             pipeline: PhysicsPipeline::new(),
@@ -121,6 +124,7 @@ impl Physics3 {
 }
 
 impl System for Physics3 {
+    #[inline]
     fn name(&self) -> &str {
         "Physics"
     }

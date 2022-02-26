@@ -306,6 +306,7 @@ pub type Skin = V2<Joints, Weights>;
 pub struct Transformation2(pub [[f32; 3]; 3]);
 
 impl Default for Transformation2 {
+    #[inline]
     fn default() -> Self {
         Transformation2([[1.0, 0.0, 0.0], [0.0, 1.0, 0.0], [0.0, 0.0, 1.0]])
     }
@@ -344,6 +345,7 @@ unsafe impl Zeroable for Transformation3 {}
 unsafe impl Pod for Transformation3 {}
 
 impl Default for Transformation3 {
+    #[inline]
     fn default() -> Self {
         Transformation3([
             [1.0, 0.0, 0.0, 0.0],

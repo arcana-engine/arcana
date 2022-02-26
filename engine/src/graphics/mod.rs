@@ -7,27 +7,31 @@
 /// Macro to simplify building of VertexLayout in const context.
 macro_rules! vertex_location {
     ($offset:ident, $elem:ty as $semantics:literal) => {
-        #[allow(unused_assignments)]
         VertexLocation {
             format: <$elem as $crate::graphics::FormatElement>::FORMAT,
             semantics: $crate::graphics::Semantics::new($semantics),
             offset: {
-                let o = $offset;
-                $offset += ::core::mem::size_of::<$elem>() as u32;
-                o
+                let offset = $offset;
+                #[allow(unused_assignments)]
+                {
+                    $offset += ::core::mem::size_of::<$elem>() as u32;
+                }
+                offset
             },
         }
     };
 
     ($offset:ident, $va:ty) => {
-        #[allow(unused_assignments)]
         VertexLocation {
             format: <$va as $crate::graphics::VertexAttribute>::FORMAT,
             semantics: <$va as $crate::graphics::VertexAttribute>::SEMANTICS,
             offset: {
-                let o = $offset;
-                $offset += ::core::mem::size_of::<$va>() as u32;
-                o
+                let offset = $offset;
+                #[allow(unused_assignments)]
+                {
+                    $offset += ::core::mem::size_of::<$va>() as u32;
+                }
+                offset
             },
         }
     };
@@ -76,9 +80,10 @@ macro_rules! define_vertex_type {
         impl $crate::graphics::VertexType for $vt {
             const LOCATIONS: &'static [$crate::graphics::VertexLocation] = {
                 let mut offset = 0;
-                &[$(
-                    $crate::vertex_location!(offset, $vat as $semantics ),
-                ),*]
+                $(
+                    let $van = $crate::vertex_location!(offset, $vat as $semantics );
+                )*
+                &[$($van,)*]
             };
             const RATE: $crate::graphics::VertexInputRate = $crate::graphics::VertexInputRate::$rate;
         }
@@ -206,73 +211,25 @@ impl Graphics {
 
     #[inline]
     #[tracing::instrument(skip(self, data))]
-    pub fn upload_image<T>(
-        &mut self,
-        image: &Image,
-        layers: SubresourceLayers,
-        old_layout: Option<Layout>,
-        new_layout: Layout,
-        old_access: AccessFlags,
-        new_access: AccessFlags,
-        data: &[T],
-        format: Format,
-        row_length: u32,
-        image_height: u32,
-    ) -> Result<(), OutOfMemory>
+    pub fn upload_image<T>(&mut self, upload: UploadImage, data: &[T]) -> Result<(), OutOfMemory>
     where
         T: Pod,
     {
-        self.uploader.upload_image(
-            &self.device,
-            image,
-            layers,
-            old_layout,
-            new_layout,
-            old_access,
-            new_access,
-            data,
-            format,
-            row_length,
-            image_height,
-        )
+        self.uploader.upload_image(&self.device, upload, data)
     }
 
     #[tracing::instrument(skip(self, data))]
     pub fn upload_image_with<'a, T>(
         &self,
-        image: &Image,
-        layers: SubresourceLayers,
-        old_layout: Option<Layout>,
-        new_layout: Layout,
-        old_access: AccessFlags,
-        new_access: AccessFlags,
-        offset: Offset3d,
-        extent: Extent3d,
+        upload: UploadImage,
         data: &[T],
-        format: Format,
-        row_length: u32,
-        image_height: u32,
         encoder: &mut Encoder<'a>,
     ) -> Result<(), MapError>
     where
         T: Pod,
     {
-        self.uploader.upload_image_with(
-            &self.device,
-            image,
-            layers,
-            old_layout,
-            new_layout,
-            old_access,
-            new_access,
-            offset,
-            extent,
-            data,
-            format,
-            row_length,
-            image_height,
-            encoder,
-        )
+        self.uploader
+            .upload_image_with(&self.device, upload, data, encoder)
     }
 
     #[tracing::instrument(skip(self, data))]
@@ -284,8 +241,8 @@ impl Graphics {
     where
         T: Pod,
     {
-        let mut buffer = self.device.create_buffer(info)?;
-        match self.upload_buffer(&mut buffer, 0, data) {
+        let buffer = self.device.create_buffer(info)?;
+        match self.upload_buffer(&buffer, 0, data) {
             Ok(()) => Ok(buffer),
             Err(MapError::OutOfMemory { .. }) => Err(OutOfMemory),
             _ => unreachable!(),
@@ -306,19 +263,23 @@ impl Graphics {
         T: Pod,
     {
         info.usage |= ImageUsage::TRANSFER_DST;
-        let subresource = SubresourceLayers::all_layers(&info, 0);
+        let layers = SubresourceLayers::all_layers(&info, 0);
         let image = self.device.create_image(info)?;
         self.upload_image(
-            &image,
-            subresource,
-            None,
-            layout,
-            AccessFlags::empty(),
-            AccessFlags::all(),
+            UploadImage {
+                image: &image,
+                offset: Offset3d::ZERO,
+                extent: info.extent.into_3d(),
+                layers,
+                old_layout: None,
+                new_layout: layout,
+                old_access: AccessFlags::empty(),
+                new_access: AccessFlags::all(),
+                format,
+                row_length,
+                image_height,
+            },
             data,
-            format,
-            row_length,
-            image_height,
         )?;
         Ok(image)
     }
@@ -373,10 +334,15 @@ pub struct SparseDescriptors<T> {
     next: u32,
 }
 
-impl<T> SparseDescriptors<T>
-where
-    T: Hash + Eq,
-{
+impl<T> Default for SparseDescriptors<T> {
+    #[inline]
+    fn default() -> Self {
+        SparseDescriptors::new()
+    }
+}
+
+impl<T> SparseDescriptors<T> {
+    #[inline]
     pub fn new() -> Self {
         SparseDescriptors {
             resources: HashMap::new(),
@@ -385,7 +351,10 @@ where
         }
     }
 
-    pub fn index(&mut self, resource: T) -> (u32, bool) {
+    pub fn index(&mut self, resource: T) -> (u32, bool)
+    where
+        T: Hash + Eq,
+    {
         match self.resources.entry(resource) {
             Entry::Occupied(entry) => (*entry.get(), false),
             Entry::Vacant(entry) => {
@@ -399,4 +368,19 @@ where
             }
         }
     }
+}
+
+#[derive(Debug)]
+pub struct UploadImage<'a> {
+    image: &'a Image,
+    offset: Offset3d,
+    extent: Extent3d,
+    layers: SubresourceLayers,
+    old_layout: Option<Layout>,
+    new_layout: Layout,
+    old_access: AccessFlags,
+    new_access: AccessFlags,
+    format: Format,
+    row_length: u32,
+    image_height: u32,
 }

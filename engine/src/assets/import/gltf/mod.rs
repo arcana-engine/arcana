@@ -163,10 +163,10 @@ impl Importer for GltfModelImporter {
         }
 
         let scene = gltf.default_scene().ok_or_else(|| ImportError::Other {
-            reason: format!("Unexpected glTF structure"),
+            reason: "Unexpected glTF structure".to_owned(),
         })?;
         let root = scene.nodes().next().ok_or_else(|| ImportError::Other {
-            reason: format!("Unexpected glTF structure"),
+            reason: "Unexpected glTF structure".to_owned(),
         })?;
 
         let materials: Vec<_> = gltf
@@ -179,7 +179,7 @@ impl Importer for GltfModelImporter {
                 .children()
                 .find(|node| node.mesh().is_some())
                 .ok_or_else(|| ImportError::Other {
-                    reason: format!("Unexpected glTF structure"),
+                    reason: "Unexpected glTF structure".to_owned(),
                 })?,
             Some(_) => root,
         };
@@ -275,7 +275,7 @@ fn read_accessor<'a>(
 ) -> Result<(&'a [u8], usize), Error> {
     let view = accessor.view().ok_or(Error::SparseAccessorUnsupported)?;
 
-    let stride = view.stride().unwrap_or(accessor.size());
+    let stride = view.stride().unwrap_or_else(|| accessor.size());
     if stride < accessor.size() {
         tracing::error!(
             "Accessor '{}' with size '{}' is bound to view '{}' with insufficient stride '{}'",

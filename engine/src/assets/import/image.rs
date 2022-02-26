@@ -70,51 +70,49 @@ impl Importer for ImageImporter {
                     })?;
                 }
                 read_total += read;
-            } else {
-                if rapid_qoi::Qoi::decode_header(&head).is_ok() {
-                    drop(source);
+            } else if rapid_qoi::Qoi::decode_header(&head).is_ok() {
+                drop(source);
 
-                    std::fs::copy(source_path, output_path).map_err(|err| ImportError::Other {
+                std::fs::copy(source_path, output_path).map_err(|err| ImportError::Other {
+                    reason: format!(
+                        "Failed to copy image file '{}' to '{}'. {:#}",
+                        source_path.display(),
+                        output_path.display(),
+                        err,
+                    ),
+                })?;
+
+                return Ok(());
+            } else {
+                let format = image::guess_format(&head).map_err(|err| ImportError::Other {
+                    reason: format!(
+                        "Failed to guess image format from file '{}'. {:#}",
+                        source_path.display(),
+                        err
+                    ),
+                })?;
+
+                let mut bytes = vec![];
+                bytes.extend_from_slice(&head);
+                source
+                    .read_to_end(&mut bytes)
+                    .map_err(|err| ImportError::Other {
                         reason: format!(
-                            "Failed to copy image file '{}' to '{}'. {:#}",
+                            "Failed to read image file '{}'. {:#}",
                             source_path.display(),
-                            output_path.display(),
                             err,
                         ),
                     })?;
 
-                    return Ok(());
-                } else {
-                    let format = image::guess_format(&head).map_err(|err| ImportError::Other {
+                break image::load_from_memory_with_format(&bytes, format).map_err(|err| {
+                    ImportError::Other {
                         reason: format!(
-                            "Failed to guess image format from file '{}'. {:#}",
+                            "Failed to read image file '{}'. {:#}",
                             source_path.display(),
                             err
                         ),
-                    })?;
-
-                    let mut bytes = vec![];
-                    bytes.extend_from_slice(&head);
-                    source
-                        .read_to_end(&mut bytes)
-                        .map_err(|err| ImportError::Other {
-                            reason: format!(
-                                "Failed to read image file '{}'. {:#}",
-                                source_path.display(),
-                                err,
-                            ),
-                        })?;
-
-                    break image::load_from_memory_with_format(&bytes, format).map_err(|err| {
-                        ImportError::Other {
-                            reason: format!(
-                                "Failed to read image file '{}'. {:#}",
-                                source_path.display(),
-                                err
-                            ),
-                        }
-                    })?;
-                }
+                    }
+                })?;
             }
         };
 

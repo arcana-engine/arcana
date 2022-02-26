@@ -171,7 +171,7 @@ pub fn derive_unfold(item: TokenStream) -> syn::Result<TokenStream> {
                         .push(quote::quote_spanned!(field.span() => ::core::option::Option::None));
                 }
 
-                updates.push(quote::quote_spanned!(field.span() => {
+                updates.push(quote::quote_spanned!(field.span() => 
                     let id = *Borrow::<AssetId>::borrow(&value.#value_field_ident);
                     match unfolded.#unfolded_field_ident {
                         Some(old_id) if old_id == id => {}
@@ -187,7 +187,7 @@ pub fn derive_unfold(item: TokenStream) -> syn::Result<TokenStream> {
                             }
                         },
                     }
-                }));
+                ));
             }
 
             let unfolded_struct = quote::quote_spanned!(ident.span() => struct #unfolded_ident {
@@ -299,11 +299,11 @@ pub fn derive_unfold(item: TokenStream) -> syn::Result<TokenStream> {
                         unfold_fn_args
                             .push(quote::quote_spanned!(field.span() => &unfolded.#field_ident));
 
-                        updates.push(quote::quote_spanned!(field.span() => {
+                        updates.push(quote::quote_spanned!(field.span() => 
                             if value.#field_ident != unfolded.#field_ident {
                                 updated = true;
                             }
-                        }));
+                        ));
                     }
                     Some(asset) => {
                         let asset_ty = match &asset.ty {
@@ -418,7 +418,7 @@ pub fn derive_unfold(item: TokenStream) -> syn::Result<TokenStream> {
                                 Some(unfolded) => unfolded,
                             };
 
-                            #(#updates;)*
+                            #(#updates)*
 
 
                             if updated && ready {

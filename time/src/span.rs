@@ -34,6 +34,7 @@ pub struct TimeSpan {
 }
 
 impl Default for TimeSpan {
+    #[inline]
     fn default() -> Self {
         TimeSpan::ZERO
     }
@@ -106,6 +107,7 @@ impl TimeSpan {
     pub const YEAR: Self = Self::GREGORIAN_YEAR;
 
     /// Convert number of nanoseconds into `TimeSpan`.
+    #[inline]
     pub const fn from_nanos(nanos: u64) -> Self {
         TimeSpan {
             nanos: nanos * Self::NANOSECOND.nanos,
@@ -113,6 +115,7 @@ impl TimeSpan {
     }
 
     /// Convert number of microseconds into `TimeSpan`.
+    #[inline]
     pub const fn from_micros(micros: u64) -> Self {
         TimeSpan {
             nanos: micros * Self::MICROSECOND.nanos,
@@ -120,6 +123,7 @@ impl TimeSpan {
     }
 
     /// Convert number of microseconds into `TimeSpan`.
+    #[inline]
     pub const fn from_millis(millis: u64) -> Self {
         TimeSpan {
             nanos: millis * Self::MILLISECOND.nanos,
@@ -127,6 +131,7 @@ impl TimeSpan {
     }
 
     /// Convert number of microseconds into `TimeSpan`.
+    #[inline]
     pub const fn from_seconds(seconds: u64) -> Self {
         TimeSpan {
             nanos: seconds * Self::SECOND.nanos,
@@ -134,52 +139,62 @@ impl TimeSpan {
     }
 
     /// Returns number of nanoseconds this value represents.
+    #[inline]
     pub const fn as_nanos(&self) -> u64 {
         self.nanos
     }
 
     /// Returns number of microseconds this value represents.
+    #[inline]
     pub const fn as_micros(&self) -> u64 {
         self.nanos / Self::MICROSECOND.nanos
     }
 
     /// Returns number of whole milliseconds this value represents.
+    #[inline]
     pub const fn as_millis(&self) -> u64 {
         self.nanos / Self::MILLISECOND.nanos
     }
 
     /// Returns number of whole seconds this value represents.
+    #[inline]
     pub const fn as_seconds(&self) -> u64 {
         self.nanos / Self::SECOND.nanos
     }
 
     /// Returns number of whole minutes this value represents.
+    #[inline]
     pub const fn as_minutes(&self) -> u64 {
         self.nanos / Self::MINUTE.nanos
     }
 
     /// Returns number of whole hours this value represents.
+    #[inline]
     pub const fn as_hours(&self) -> u64 {
         self.nanos / Self::HOUR.nanos
     }
 
     /// Returns number of whole days this value represents.
+    #[inline]
     pub const fn as_days(&self) -> u64 {
         self.nanos / Self::DAY.nanos
     }
 
     /// Returns number of whole weeks this value represents.
+    #[inline]
     pub const fn as_weeks(&self) -> u64 {
         self.nanos / Self::WEEK.nanos
     }
 
     /// Returns number of seconds as floating point value.
     /// This function should be used for small-ish spans when high precision is not required.
+    #[inline]
     pub fn as_secs_f32(&self) -> f32 {
         self.nanos as f32 / Self::SECOND.nanos as f32
     }
 
     /// Returns number of seconds as high precision floating point value.
+    #[inline]
     pub fn as_secs_f64(&self) -> f64 {
         self.nanos as f64 / Self::SECOND.nanos as f64
     }
@@ -187,6 +202,7 @@ impl TimeSpan {
     /// Returns `true` if this is zero span.
     /// That is, it equals `TimeSpan::ZERO`.
     /// Returns false otherwise.
+    #[inline]
     pub const fn is_zero(&self) -> bool {
         self.nanos == 0
     }
@@ -195,6 +211,7 @@ impl TimeSpan {
 impl Add for TimeSpan {
     type Output = Self;
 
+    #[inline]
     fn add(self, rhs: Self) -> Self {
         TimeSpan {
             nanos: self.nanos + rhs.nanos,
@@ -203,6 +220,7 @@ impl Add for TimeSpan {
 }
 
 impl AddAssign for TimeSpan {
+    #[inline]
     fn add_assign(&mut self, rhs: Self) {
         self.nanos += rhs.nanos;
     }
@@ -211,6 +229,7 @@ impl AddAssign for TimeSpan {
 impl Sub for TimeSpan {
     type Output = Self;
 
+    #[inline]
     fn sub(self, rhs: Self) -> Self {
         TimeSpan {
             nanos: self.nanos - rhs.nanos,
@@ -219,6 +238,7 @@ impl Sub for TimeSpan {
 }
 
 impl SubAssign for TimeSpan {
+    #[inline]
     fn sub_assign(&mut self, rhs: Self) {
         self.nanos -= rhs.nanos;
     }
@@ -227,6 +247,7 @@ impl SubAssign for TimeSpan {
 impl Mul<u64> for TimeSpan {
     type Output = Self;
 
+    #[inline]
     fn mul(self, rhs: u64) -> Self {
         TimeSpan {
             nanos: self.nanos * rhs,
@@ -237,6 +258,7 @@ impl Mul<u64> for TimeSpan {
 impl Mul<TimeSpan> for u64 {
     type Output = TimeSpan;
 
+    #[inline]
     fn mul(self, rhs: TimeSpan) -> TimeSpan {
         TimeSpan {
             nanos: self * rhs.nanos,
@@ -245,6 +267,7 @@ impl Mul<TimeSpan> for u64 {
 }
 
 impl MulAssign<u64> for TimeSpan {
+    #[inline]
     fn mul_assign(&mut self, rhs: u64) {
         self.nanos *= rhs;
     }
@@ -253,6 +276,7 @@ impl MulAssign<u64> for TimeSpan {
 impl Div<u64> for TimeSpan {
     type Output = Self;
 
+    #[inline]
     fn div(self, rhs: u64) -> Self {
         TimeSpan {
             nanos: self.nanos / rhs,
@@ -263,12 +287,14 @@ impl Div<u64> for TimeSpan {
 impl Div<Self> for TimeSpan {
     type Output = u64;
 
+    #[inline]
     fn div(self, rhs: Self) -> u64 {
         self.nanos / rhs.nanos
     }
 }
 
 impl DivAssign<u64> for TimeSpan {
+    #[inline]
     fn div_assign(&mut self, rhs: u64) {
         self.nanos /= rhs;
     }
@@ -277,6 +303,7 @@ impl DivAssign<u64> for TimeSpan {
 impl Rem for TimeSpan {
     type Output = TimeSpan;
 
+    #[inline]
     fn rem(self, rhs: Self) -> Self {
         TimeSpan {
             nanos: self.nanos % rhs.nanos,
@@ -285,12 +312,14 @@ impl Rem for TimeSpan {
 }
 
 impl RemAssign for TimeSpan {
+    #[inline]
     fn rem_assign(&mut self, rhs: Self) {
         self.nanos %= rhs.nanos;
     }
 }
 
 impl Sum<TimeSpan> for TimeSpan {
+    #[inline]
     fn sum<I: Iterator<Item = Self>>(iter: I) -> Self {
         TimeSpan {
             nanos: iter.map(|span| span.nanos).sum(),
@@ -299,6 +328,7 @@ impl Sum<TimeSpan> for TimeSpan {
 }
 
 impl From<Duration> for TimeSpan {
+    #[inline]
     fn from(duration: Duration) -> Self {
         let nanos = duration.as_nanos();
         debug_assert!(u64::MAX as u128 > nanos);
@@ -309,12 +339,14 @@ impl From<Duration> for TimeSpan {
 }
 
 impl From<TimeSpan> for Duration {
+    #[inline]
     fn from(span: TimeSpan) -> Self {
         Duration::new(span.as_seconds(), (span.as_nanos() % 1000000000) as u32)
     }
 }
 
 impl fmt::Debug for TimeSpan {
+    #[inline]
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         fmt::Display::fmt(self, f)
     }
@@ -413,6 +445,7 @@ impl fmt::Display for TimeSpanParseErr {
 
 #[cfg(feature = "std")]
 impl std::error::Error for TimeSpanParseErr {
+    #[inline]
     fn source(&self) -> Option<&(dyn std::error::Error + 'static)> {
         match self {
             Self::IntParseError { source } => Some(source),
@@ -451,10 +484,8 @@ impl FromStr for TimeSpan {
                     .parse()
                     .map_err(|source| TimeSpanParseErr::IntParseError { source })?;
 
-                if self.minutes.is_some() {
-                    if seconds > 59 {
-                        return Err(TimeSpanParseErr::SecondsOutOfBound { seconds });
-                    }
+                if self.minutes.is_some() && seconds > 59 {
+                    return Err(TimeSpanParseErr::SecondsOutOfBound { seconds });
                 }
 
                 let minutes: u64 = self
@@ -463,10 +494,8 @@ impl FromStr for TimeSpan {
                     .unwrap_or(Ok(0))
                     .map_err(|source| TimeSpanParseErr::IntParseError { source })?;
 
-                if self.hours.is_some() {
-                    if minutes > 59 {
-                        return Err(TimeSpanParseErr::MinutesOutOfBound { minutes });
-                    }
+                if self.hours.is_some() && minutes > 59 {
+                    return Err(TimeSpanParseErr::MinutesOutOfBound { minutes });
                 }
 
                 let hours: u64 = self
@@ -475,10 +504,8 @@ impl FromStr for TimeSpan {
                     .unwrap_or(Ok(0))
                     .map_err(|source| TimeSpanParseErr::IntParseError { source })?;
 
-                if self.days.is_some() {
-                    if hours > 23 {
-                        return Err(TimeSpanParseErr::HoursOutOfBound { hours });
-                    }
+                if self.days.is_some() && hours > 23 {
+                    return Err(TimeSpanParseErr::HoursOutOfBound { hours });
                 }
 
                 let days: u64 = self
@@ -705,6 +732,7 @@ impl FromStr for TimeSpan {
 
 #[cfg(feature = "serde")]
 impl serde::Serialize for TimeSpan {
+    #[inline]
     fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
     where
         S: serde::Serializer,

@@ -29,11 +29,19 @@ pub struct ClockIndex {
     pub now: TimeStamp,
 }
 
+impl Default for Clocks {
+    #[inline]
+    fn default() -> Self {
+        Clocks::new()
+    }
+}
+
 impl Clocks {
     /// Creates new clocks.
     /// This function saves `Instant` at which it was called to
     /// set `start` field for all `ClockIndex` instances
     /// produced by returned `Clocks`.
+    #[inline]
     pub fn new() -> Self {
         let now = Instant::now();
         Clocks {

@@ -46,6 +46,12 @@ pub struct MeshBuilder {
     pub topology: PrimitiveTopology,
 }
 
+impl Default for MeshBuilder {
+    fn default() -> Self {
+        MeshBuilder::new()
+    }
+}
+
 impl MeshBuilder {
     #[inline]
     pub fn new() -> Self {
@@ -359,6 +365,13 @@ pub struct MeshData<'a> {
     pub topology: PrimitiveTopology,
 }
 
+impl Default for MeshData<'_> {
+    #[inline]
+    fn default() -> Self {
+        MeshData::new()
+    }
+}
+
 impl MeshData<'_> {
     #[inline]
     pub fn new() -> Self {
@@ -462,16 +475,14 @@ impl MeshData<'_> {
                 min_vertex_count = min_vertex_count.min(vertex_count);
 
                 Ok(Binding {
-                    buffer: graphics
-                        .create_buffer_static(
-                            BufferInfo {
-                                align: 255,
-                                size: u64::try_from(binding.data.len()).map_err(|_| OutOfMemory)?,
-                                usage: vertices_usage,
-                            },
-                            &binding.data,
-                        )?
-                        .into(),
+                    buffer: graphics.create_buffer_static(
+                        BufferInfo {
+                            align: 255,
+                            size: u64::try_from(binding.data.len()).map_err(|_| OutOfMemory)?,
+                            usage: vertices_usage,
+                        },
+                        &binding.data,
+                    )?,
                     offset: 0,
                     layout: binding.layout.clone(),
                 })
@@ -490,16 +501,14 @@ impl MeshData<'_> {
                 count = u32::try_from(index_count).map_err(|_| OutOfMemory)?;
 
                 Ok(Indices {
-                    buffer: graphics
-                        .create_buffer_static(
-                            BufferInfo {
-                                align: 255,
-                                size: u64::try_from(indices.data.len()).map_err(|_| OutOfMemory)?,
-                                usage: indices_usage,
-                            },
-                            &indices.data,
-                        )?
-                        .into(),
+                    buffer: graphics.create_buffer_static(
+                        BufferInfo {
+                            align: 255,
+                            size: u64::try_from(indices.data.len()).map_err(|_| OutOfMemory)?,
+                            usage: indices_usage,
+                        },
+                        &indices.data,
+                    )?,
                     offset: 0,
                     index_type: indices.index_type,
                 })
@@ -913,7 +922,7 @@ fn build_triangles_blas<'a>(
 
     encoder.build_acceleration_structure(&[AccelerationStructureBuildGeometryInfo {
         src: None,
-        dst: &blas.clone(),
+        dst: &blas,
         flags: AccelerationStructureBuildFlags::PREFER_FAST_TRACE,
         geometries: &[AccelerationStructureGeometry::Triangles {
             flags: GeometryFlags::empty(),

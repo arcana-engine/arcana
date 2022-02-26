@@ -8,6 +8,8 @@ use sierra::{
     PipelineStageFlags, Queue, SubresourceLayers,
 };
 
+use super::UploadImage;
+
 mod rgb2rgba;
 
 pub struct Uploader {
@@ -113,21 +115,13 @@ impl Uploader {
     pub fn upload_image<T>(
         &mut self,
         device: &Device,
-        image: &Image,
-        layers: SubresourceLayers,
-        old_layout: Option<Layout>,
-        new_layout: Layout,
-        old_access: AccessFlags,
-        new_access: AccessFlags,
+        upload: UploadImage,
         data: &[T],
-        format: Format,
-        row_length: u32,
-        image_height: u32,
     ) -> Result<(), OutOfMemory>
     where
         T: Pod,
     {
-        let staging_usage = if format == image.info().format {
+        let staging_usage = if upload.format == upload.image.info().format {
             BufferUsage::TRANSFER_SRC
         } else {
             BufferUsage::UNIFORM_TEXEL
@@ -143,16 +137,18 @@ impl Uploader {
         )?;
 
         self.image_uploads.push(ImageUpload {
-            image: image.clone(),
-            layers,
-            old_layout,
-            new_layout,
-            old_access,
-            new_access,
+            image: upload.image.clone(),
+            offset: upload.offset,
+            extent: upload.extent,
+            layers: upload.layers,
+            old_layout: upload.old_layout,
+            new_layout: upload.new_layout,
+            old_access: upload.old_access,
+            new_access: upload.new_access,
             staging,
-            format,
-            row_length,
-            image_height,
+            format: upload.format,
+            row_length: upload.row_length,
+            image_height: upload.image_height,
         });
 
         Ok(())
@@ -161,24 +157,14 @@ impl Uploader {
     pub fn upload_image_with<'a, T>(
         &self,
         device: &Device,
-        image: &Image,
-        layers: SubresourceLayers,
-        old_layout: Option<Layout>,
-        new_layout: Layout,
-        old_access: AccessFlags,
-        new_access: AccessFlags,
-        offset: Offset3d,
-        extent: Extent3d,
+        upload: UploadImage,
         data: &[T],
-        format: Format,
-        row_length: u32,
-        image_height: u32,
         encoder: &mut Encoder<'a>,
     ) -> Result<(), MapError>
     where
         T: Pod,
     {
-        let staging_usage = if format == image.info().format {
+        let staging_usage = if upload.format == upload.image.info().format {
             BufferUsage::TRANSFER_SRC
         } else {
             BufferUsage::UNIFORM_TEXEL
@@ -197,65 +183,51 @@ impl Uploader {
             PipelineStageFlags::TOP_OF_PIPE,
             PipelineStageFlags::TRANSFER,
             &[ImageMemoryBarrier {
-                image,
-                old_layout,
+                image: upload.image,
+                old_layout: upload.old_layout,
                 new_layout: Layout::TransferDstOptimal,
-                old_access,
+                old_access: upload.old_access,
                 new_access: AccessFlags::TRANSFER_WRITE,
                 family_transfer: None,
-                range: layers.into(),
+                range: upload.layers.into(),
             }],
         );
 
-        // encoder.copy_buffer_to_image(
-        //     &staging,
-        //     image,
-        //     Layout::TransferDstOptimal,
-        //     &[BufferImageCopy {
-        //         buffer_offset: 0,
-        //         buffer_row_length: row_length,
-        //         buffer_image_height: image_height,
-        //         image_subresource: layers,
-        //         image_offset: offset,
-        //         image_extent: extent,
-        //     }],
-        // );
-
-        match (format, image.info().format) {
+        match (upload.format, upload.image.info().format) {
             (from, to) if from == to => encoder.copy_buffer_to_image(
                 &staging,
-                image,
+                upload.image,
                 Layout::TransferDstOptimal,
                 &[BufferImageCopy {
                     buffer_offset: 0,
-                    buffer_row_length: row_length,
-                    buffer_image_height: image_height,
-                    image_subresource: layers,
-                    image_offset: offset,
-                    image_extent: extent,
+                    buffer_row_length: upload.row_length,
+                    buffer_image_height: upload.image_height,
+                    image_subresource: upload.layers,
+                    image_offset: upload.offset,
+                    image_extent: upload.extent,
                 }],
             ),
             (Format::RGB8Unorm, Format::RGBA8Unorm) => {
                 self.rgb2rgba.upload_synchronized(
                     device,
-                    image,
-                    offset,
-                    extent,
+                    upload.image,
+                    upload.offset,
+                    upload.extent,
                     staging.clone(),
-                    row_length,
-                    image_height,
+                    upload.row_length,
+                    upload.image_height,
                     encoder,
                 )?;
             }
             (Format::RGB8Srgb, Format::RGBA8Srgb) => {
                 self.rgb2rgba.upload_synchronized(
                     device,
-                    image,
-                    offset,
-                    extent,
+                    upload.image,
+                    upload.offset,
+                    upload.extent,
                     staging.clone(),
-                    row_length,
-                    image_height,
+                    upload.row_length,
+                    upload.image_height,
                     encoder,
                 )?;
             }
@@ -268,13 +240,13 @@ impl Uploader {
             PipelineStageFlags::TRANSFER,
             PipelineStageFlags::ALL_COMMANDS,
             &[ImageMemoryBarrier {
-                image,
+                image: upload.image,
                 old_layout: Some(Layout::TransferDstOptimal),
-                new_layout,
+                new_layout: upload.new_layout,
                 old_access: AccessFlags::TRANSFER_WRITE,
-                new_access,
+                new_access: upload.new_access,
                 family_transfer: None,
-                range: layers.into(),
+                range: upload.layers.into(),
             }],
         );
 
@@ -367,8 +339,8 @@ impl Uploader {
                             buffer_row_length: upload.row_length,
                             buffer_image_height: upload.image_height,
                             image_subresource: upload.layers,
-                            image_offset: Offset3d::ZERO,
-                            image_extent: upload.image.info().extent.into_3d(),
+                            image_offset: upload.offset,
+                            image_extent: upload.extent,
                         }],
                     ),
                     (Format::RGB8Unorm, Format::RGBA8Unorm) => {
@@ -440,6 +412,8 @@ struct BufferUpload {
 
 struct ImageUpload {
     image: Image,
+    offset: Offset3d,
+    extent: Extent3d,
     layers: SubresourceLayers,
     old_layout: Option<Layout>,
     new_layout: Layout,

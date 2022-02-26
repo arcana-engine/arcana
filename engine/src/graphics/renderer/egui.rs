@@ -14,22 +14,17 @@ use sierra::{
 use super::{DrawNode, RendererContext};
 use crate::{
     egui::EguiResource,
-    graphics::{vertex_layouts_for_pipeline, Graphics, Position2, VertexLocation, VertexType, UV},
+    graphics::{
+        vertex_layouts_for_pipeline, Graphics, Position2, UploadImage, VertexLocation, VertexType,
+        UV,
+    },
 };
 use egui::ClippedMesh;
 
 #[shader_repr]
-#[derive(Clone, Copy)]
+#[derive(Clone, Copy, Default)]
 struct Uniforms {
     inv_dimensions: vec2,
-}
-
-impl Default for Uniforms {
-    fn default() -> Self {
-        Uniforms {
-            inv_dimensions: vec2::default(),
-        }
-    }
 }
 
 #[descriptors]
@@ -115,8 +110,8 @@ impl EguiDraw {
             pipeline: DynamicGraphicsPipeline::new(graphics_pipeline_desc! {
                 vertex_bindings,
                 vertex_attributes,
-                vertex_shader: VertexShader::new(vert_module.clone(), "main"),
-                fragment_shader: Some(FragmentShader::new(frag_module.clone(), "main")),
+                vertex_shader: VertexShader::new(vert_module, "main"),
+                fragment_shader: Some(FragmentShader::new(frag_module, "main")),
                 layout: pipeline_layout.raw().clone(),
                 depth_test: None,
                 scissor: State::Dynamic,
@@ -196,22 +191,24 @@ impl DrawNode for EguiDraw {
             }
 
             cx.graphics.upload_image_with(
-                &self.descriptors.font_image.info().image,
-                sierra::SubresourceLayers::color(0, 0..1),
-                old_layout,
-                sierra::Layout::ShaderReadOnlyOptimal,
-                sierra::AccessFlags::SHADER_READ,
-                sierra::AccessFlags::SHADER_READ,
-                Offset3d::ZERO,
-                Extent2d {
-                    width: font_image.width as u32,
-                    height: font_image.height as u32,
-                }
-                .into_3d(),
+                UploadImage {
+                    image: &self.descriptors.font_image.info().image,
+                    offset: Offset3d::ZERO,
+                    extent: Extent2d {
+                        width: font_image.width as u32,
+                        height: font_image.height as u32,
+                    }
+                    .into_3d(),
+                    layers: sierra::SubresourceLayers::color(0, 0..1),
+                    old_layout,
+                    new_layout: sierra::Layout::ShaderReadOnlyOptimal,
+                    old_access: sierra::AccessFlags::SHADER_READ,
+                    new_access: sierra::AccessFlags::SHADER_READ,
+                    format: sierra::Format::R8Unorm,
+                    row_length: 0,
+                    image_height: 0,
+                },
                 &font_image.pixels[..],
-                sierra::Format::R8Unorm,
-                0,
-                0,
                 encoder,
             )?;
         }
@@ -314,11 +311,10 @@ impl DrawNode for EguiDraw {
 impl VertexType for egui::epaint::Vertex {
     const LOCATIONS: &'static [VertexLocation] = {
         let mut offset = 0;
-        &[
-            vertex_location!(offset, Position2),
-            vertex_location!(offset, UV),
-            vertex_location!(offset, LinSrgba<u8>),
-        ]
+        let pos = vertex_location!(offset, Position2);
+        let uv = vertex_location!(offset, UV);
+        let color = vertex_location!(offset, LinSrgba<u8>);
+        &[pos, uv, color]
     };
     const RATE: VertexInputRate = VertexInputRate::Vertex;
 }

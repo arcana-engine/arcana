@@ -7,7 +7,15 @@ pub struct CommandQueue<T> {
     commands: VecDeque<T>,
 }
 
+impl<T> Default for CommandQueue<T> {
+    #[inline]
+    fn default() -> Self {
+        CommandQueue::new()
+    }
+}
+
 impl<T> CommandQueue<T> {
+    #[inline]
     pub fn new() -> Self {
         CommandQueue {
             commands: VecDeque::new(),

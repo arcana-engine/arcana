@@ -73,6 +73,7 @@ pub trait InputController: Send + 'static {
 }
 
 /// Collection of controllers.
+#[derive(Default)]
 pub struct Control {
     /// Controllers bound to specific devices.
     devices: HashMap<DeviceId, Box<dyn InputController>>,
@@ -92,10 +93,7 @@ pub struct GlobalControllerId {
 impl Control {
     /// Returns empty collection of controllers
     pub fn new() -> Control {
-        Control {
-            devices: HashMap::new(),
-            global: slab::Slab::new(),
-        }
+        Control::default()
     }
 
     /// Assign global controller.
@@ -130,11 +128,11 @@ impl Funnel<Event> for Control {
                 device_id,
                 event: ref device_event,
             } => {
-                let input_event = match device_event {
-                    &DeviceEvent::Motion { axis, value } => InputEvent::Motion { axis, value },
-                    &DeviceEvent::MouseMotion { delta } => InputEvent::MouseMotion { delta },
-                    &DeviceEvent::MouseWheel { delta } => InputEvent::MouseWheel { delta },
-                    &DeviceEvent::Button { button, state } => InputEvent::Button { button, state },
+                let input_event = match *device_event {
+                    DeviceEvent::Motion { axis, value } => InputEvent::Motion { axis, value },
+                    DeviceEvent::MouseMotion { delta } => InputEvent::MouseMotion { delta },
+                    DeviceEvent::MouseWheel { delta } => InputEvent::MouseWheel { delta },
+                    DeviceEvent::Button { button, state } => InputEvent::Button { button, state },
                     _ => return Some(event),
                 };
                 (input_event, device_id)
@@ -143,14 +141,14 @@ impl Funnel<Event> for Control {
             Event::WindowEvent {
                 event: ref window_event,
                 ..
-            } => match window_event {
-                &WindowEvent::MouseInput {
+            } => match *window_event {
+                WindowEvent::MouseInput {
                     device_id,
                     button,
                     state,
                     ..
                 } => (InputEvent::MouseInput { state, button }, device_id),
-                &WindowEvent::KeyboardInput {
+                WindowEvent::KeyboardInput {
                     device_id, input, ..
                 } => (InputEvent::KeyboardInput(input), device_id),
                 _ => return Some(event),

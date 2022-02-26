@@ -48,7 +48,7 @@ pub enum Event {
 }
 
 impl Event {
-    fn from_winit<'a, T>(event: winit::event::Event<'a, T>) -> Option<Self> {
+    fn from_winit<T>(event: winit::event::Event<'_, T>) -> Option<Self> {
         match event {
             winit::event::Event::NewEvents(_) => None,
             winit::event::Event::WindowEvent { window_id, event } => {
@@ -254,7 +254,7 @@ impl Loop {
     pub async fn next_event(&self, span: TimeSpan) -> Event {
         let deadline = Instant::now() + Duration::from(span);
         futures::future::poll_fn(|_ctx| match self.shared.take_next_event(deadline) {
-            Some(event) => return Poll::Ready(event),
+            Some(event) => Poll::Ready(event),
             None => Poll::Pending,
         })
         .await
@@ -264,7 +264,7 @@ impl Loop {
     pub async fn poll_events(&self) -> Event {
         let deadline = Instant::now();
         futures::future::poll_fn(|_ctx| match self.shared.take_next_event(deadline) {
-            Some(event) => return Poll::Ready(event),
+            Some(event) => Poll::Ready(event),
             None => Poll::Pending,
         })
         .await

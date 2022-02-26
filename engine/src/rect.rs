@@ -91,7 +91,8 @@ mod serde_impls {
     };
 
     #[derive(serde::Deserialize)]
-    struct LRTB {
+    #[serde(rename = "LRTB")]
+    struct Lrtb {
         #[serde(alias = "l")]
         left: f32,
 
@@ -106,7 +107,8 @@ mod serde_impls {
     }
 
     #[derive(serde::Deserialize)]
-    struct XYWH {
+    #[serde(rename = "XYWH")]
+    struct Xywh {
         x: f32,
         y: f32,
 
@@ -120,8 +122,8 @@ mod serde_impls {
     #[derive(serde::Deserialize)]
     #[serde(untagged)]
     enum AnyRect {
-        LRTB(LRTB),
-        XYWH(XYWH),
+        Lrtb(Lrtb),
+        Xywh(Xywh),
     }
 
     impl<'de> Deserialize<'de> for Rect {
@@ -130,13 +132,13 @@ mod serde_impls {
             D: Deserializer<'de>,
         {
             let rect = match AnyRect::deserialize(deserializer)? {
-                AnyRect::LRTB(lrtb) => Rect {
+                AnyRect::Lrtb(lrtb) => Rect {
                     left: lrtb.left,
                     right: lrtb.right,
                     top: lrtb.top,
                     bottom: lrtb.bottom,
                 },
-                AnyRect::XYWH(xywh) => Rect {
+                AnyRect::Xywh(xywh) => Rect {
                     left: xywh.x,
                     right: xywh.x + xywh.w,
                     top: xywh.y,

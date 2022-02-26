@@ -83,6 +83,7 @@ impl Rgb2RgbaUploader {
         })
     }
 
+    #[allow(clippy::too_many_arguments)]
     pub fn upload_synchronized<'a>(
         &self,
         device: &Device,
@@ -106,7 +107,7 @@ impl Rgb2RgbaUploader {
             format: Format::R8Unorm,
             offset: 0,
             size: buffer.info().size,
-            buffer: buffer,
+            buffer,
         })?;
 
         let staging_image = device

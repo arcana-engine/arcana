@@ -33,6 +33,7 @@ struct Uniforms {
 }
 
 impl Default for Uniforms {
+    #[inline]
     fn default() -> Self {
         Uniforms {
             camera_view: mat4::default(),
@@ -83,9 +84,11 @@ impl DrawNode for BasicDraw {
         let view = global.iso.inverse().to_homogeneous();
         let proj = camera.proj().to_homogeneous();
 
-        let mut uniforms = Uniforms::default();
-        uniforms.camera_view = mat4_na_to_sierra(view);
-        uniforms.camera_proj = mat4_na_to_sierra(proj);
+        let mut uniforms = Uniforms {
+            camera_view: mat4_na_to_sierra(view),
+            camera_proj: mat4_na_to_sierra(proj),
+            ..Uniforms::default()
+        };
 
         let mut new_entities = Vec::new_in(&*cx.scope);
 
@@ -194,7 +197,7 @@ impl BasicDraw {
                     VertexInputAttribute { location: 2, format: Format::RG32Sfloat, binding: 2, offset: 0 },
                 ],
                 vertex_shader: VertexShader::new(shader_module.clone(), "vs_main"),
-                fragment_shader: Some(FragmentShader::new(shader_module.clone(), "fs_main")),
+                fragment_shader: Some(FragmentShader::new(shader_module, "fs_main")),
                 layout: pipeline_layout.raw().clone(),
                 depth_test: Some(DepthTest::LESS_WRITE),
             }),

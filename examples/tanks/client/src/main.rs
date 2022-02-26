@@ -131,13 +131,11 @@ impl System for TankClientSystem {
             .query_mut::<(&Global2, &mut TankState)>()
             .with::<Tank>()
         {
-            if tank.alive {
-                if tank.fire {
-                    let pos = global.iso.transform_point(&na::Point2::new(0.0, -0.6));
-                    let dir = global.iso.transform_vector(&na::Vector2::new(0.0, -10.0));
-                    bullets.push((pos, dir));
-                    tank.fire = false;
-                }
+            if tank.alive && tank.fire {
+                let pos = global.iso.transform_point(&na::Point2::new(0.0, -0.6));
+                let dir = global.iso.transform_vector(&na::Vector2::new(0.0, -10.0));
+                bullets.push((pos, dir));
+                tank.fire = false;
             }
         }
 
@@ -328,7 +326,7 @@ fn main() {
                     egui::Window::new("Login")
                         .anchor(egui::Align2::CENTER_CENTER, egui::Vec2::ZERO)
                         .enabled(!model.connecting && model.error.is_none())
-                        .show(&ctx, |ui| {
+                        .show(ctx, |ui| {
                             ui.add(egui::Label::new("Connect to server!"));
                             ui.add(egui::TextEdit::singleline(&mut model.name));
 
@@ -392,7 +390,7 @@ fn main() {
                     if model.error.is_some() {
                         egui::Window::new("Error")
                             .anchor(egui::Align2::CENTER_CENTER, egui::Vec2::ZERO)
-                            .show(&ctx, |ui| {
+                            .show(ctx, |ui| {
                                 ui.add(egui::Label::new(model.error.as_deref().unwrap()));
                                 if ui.add(egui::Button::new("OK")).clicked() {
                                     model.error = None;

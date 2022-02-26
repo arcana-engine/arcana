@@ -86,10 +86,13 @@ pub struct SpriteGraphAnimationSystem<S, R> {
     marker: PhantomData<fn() -> (S, R)>,
 }
 
-impl<S, R> SpriteGraphAnimationSystem<S, R>
-where
-    R: AnimTransitionRule<S>,
-{
+impl<S, R> Default for SpriteGraphAnimationSystem<S, R> {
+    fn default() -> Self {
+        SpriteGraphAnimationSystem::new()
+    }
+}
+
+impl<S, R> SpriteGraphAnimationSystem<S, R> {
     pub fn new() -> Self {
         SpriteGraphAnimationSystem {
             marker: PhantomData,
@@ -126,7 +129,8 @@ where
                         false
                     }
                 })
-                .unwrap_or(frames.last().unwrap());
+                .or_else(|| frames.last())
+                .unwrap();
 
             sprite.src = Rect {
                 left: (frame.src.x as f32) / frame.src_size.w as f32,
