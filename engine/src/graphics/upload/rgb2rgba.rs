@@ -1,10 +1,9 @@
 use parking_lot::Mutex;
 use sierra::{
     descriptors, ivec2, pipeline, AccessFlags, AspectFlags, Buffer, BufferView, BufferViewInfo,
-    ComputePipeline, ComputePipelineInfo, ComputeShader, CreateImageError,
-    DescriptorsAllocationError, Device, Encoder, Extent3d, Format, Image, ImageCopy, ImageInfo,
-    ImageMemoryBarrier, ImageUsage, Layout, Offset3d, OutOfMemory, PipelineStageFlags,
-    Samples::Samples1, ShaderModuleInfo, Subresource,
+    ComputePipeline, ComputePipelineInfo, ComputeShader, DescriptorsAllocationError, Device,
+    Encoder, Extent3d, Format, Image, ImageCopy, ImageInfo, ImageMemoryBarrier, ImageUsage, Layout,
+    Offset3d, OutOfMemory, PipelineStageFlags, Samples::Samples1, ShaderModuleInfo, Subresource,
 };
 
 #[sierra::shader_repr(std140)]
@@ -110,19 +109,14 @@ impl Rgb2RgbaUploader {
             buffer,
         })?;
 
-        let staging_image = device
-            .create_image(ImageInfo {
-                extent: image.info().extent,
-                format: Format::RGBA8Unorm,
-                levels: 1,
-                layers: 1,
-                samples: Samples1,
-                usage: ImageUsage::STORAGE | ImageUsage::TRANSFER_SRC,
-            })
-            .map_err(|err| match err {
-                CreateImageError::OutOfMemory { source } => source,
-                _ => unreachable!(),
-            })?;
+        let staging_image = device.create_image(ImageInfo {
+            extent: image.info().extent,
+            format: Format::RGBA8Unorm,
+            levels: 1,
+            layers: 1,
+            samples: Samples1,
+            usage: ImageUsage::STORAGE | ImageUsage::TRANSFER_SRC,
+        })?;
 
         encoder.image_barriers(
             PipelineStageFlags::TOP_OF_PIPE,

@@ -13,8 +13,8 @@ use goods::{
 };
 use serde::ser::SerializeStruct;
 use sierra::{
-    CreateImageError, ImageExtent, ImageInfo, ImageUsage, ImageView, ImageViewInfo, Layout,
-    Sampler, SamplerInfo, Samples::Samples1,
+    ImageExtent, ImageInfo, ImageUsage, ImageView, ImageViewInfo, Layout, OutOfMemory, Sampler,
+    SamplerInfo, Samples::Samples1,
 };
 
 use crate::{assets::image::QoiImage, graphics::Graphics, is_default};
@@ -23,7 +23,7 @@ pub fn texture_view_from_qoi_image(
     qoi: &rapid_qoi::Qoi,
     pixels: &[u8],
     graphics: &mut Graphics,
-) -> Result<ImageView, CreateImageError> {
+) -> Result<ImageView, OutOfMemory> {
     use rapid_qoi::Colors::*;
     use sierra::Format::*;
 
@@ -250,7 +250,7 @@ where
 
 impl Asset for Texture {
     type DecodeError = rapid_qoi::DecodeError;
-    type BuildError = CreateImageError;
+    type BuildError = OutOfMemory;
     type Decoded = QoiImage;
     type Fut = Ready<Result<QoiImage, rapid_qoi::DecodeError>>;
 
@@ -272,7 +272,7 @@ impl<B> AssetBuild<B> for Texture
 where
     B: BorrowMut<Graphics>,
 {
-    fn build(image: QoiImage, builder: &mut B) -> Result<Self, CreateImageError> {
+    fn build(image: QoiImage, builder: &mut B) -> Result<Self, OutOfMemory> {
         let graphics = builder.borrow_mut();
         let image = texture_view_from_qoi_image(&image.qoi, &image.pixels, graphics)?;
 

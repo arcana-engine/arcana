@@ -1,14 +1,13 @@
 use std::{marker::PhantomData, sync::Arc};
 
 use crate::{
-    graphics::sprite_sheet::{SpriteFrame, SpriteSheet, SpriteSize},
     rect::Rect,
     system::{System, SystemContext},
 };
 
 use super::{
     graph::{AnimGraph, AnimGraphState, AnimNode, AnimTransitionRule, Transition},
-    Sprite,
+    Sprite, SpriteFrame, SpriteSheet, SpriteSize,
 };
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq, serde::Serialize, serde::Deserialize)]

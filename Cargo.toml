@@ -2,12 +2,13 @@
 [workspace]
 members = [
     "engine",
-    "examples/blocks",
+    # "engine-dyn",
+    # "examples/blocks",
     "examples/tanks/client",
     "examples/tanks/server",
-    "examples/bunnymark",
-    "examples/gltf-test",
-    "examples/unfold"
+    # "examples/bunnymark",
+    # "examples/gltf-test",
+    # "examples/unfold"
 ]
 
 [profile.release]

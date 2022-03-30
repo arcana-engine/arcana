@@ -4,8 +4,8 @@ use bytemuck::Pod;
 use scoped_arena::Scope;
 use sierra::{
     AccessFlags, Buffer, BufferCopy, BufferImageCopy, BufferInfo, BufferUsage, Device, Encoder,
-    Extent3d, Format, Image, ImageMemoryBarrier, Layout, MapError, Offset3d, OutOfMemory,
-    PipelineStageFlags, Queue, SubresourceLayers,
+    Extent3d, Format, Image, ImageMemoryBarrier, Layout, Offset3d, OutOfMemory, PipelineStageFlags,
+    Queue, SubresourceLayers,
 };
 
 use super::UploadImage;
@@ -35,7 +35,7 @@ impl Uploader {
         buffer: &Buffer,
         offset: u64,
         data: &[T],
-    ) -> Result<(), MapError>
+    ) -> Result<(), OutOfMemory>
     where
         T: Pod,
     {
@@ -70,7 +70,7 @@ impl Uploader {
         offset: u64,
         data: &'a [T],
         encoder: &mut Encoder<'a>,
-    ) -> Result<(), MapError>
+    ) -> Result<(), OutOfMemory>
     where
         T: Pod,
     {
@@ -160,7 +160,7 @@ impl Uploader {
         upload: UploadImage,
         data: &[T],
         encoder: &mut Encoder<'a>,
-    ) -> Result<(), MapError>
+    ) -> Result<(), OutOfMemory>
     where
         T: Pod,
     {

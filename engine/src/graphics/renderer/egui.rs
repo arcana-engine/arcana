@@ -2,24 +2,21 @@
 use std::mem;
 
 use edict::entity::EntityId;
+use hashbrown::hash_map::{Entry, HashMap};
 use palette::LinSrgba;
 use sierra::{
     align_up, descriptors, graphics_pipeline_desc, pipeline, shader_repr, vec2, AccessFlags,
-    Buffer, BufferMemoryBarrier, ComponentMapping, DynamicGraphicsPipeline, Encoder, Extent2d,
-    FragmentShader, ImageInfo, ImageUsage, ImageView, ImageViewInfo, IndexType, Layout, Offset3d,
-    PipelineInput, PipelineStageFlags, Rect2d, RenderPassEncoder, Sampler, ShaderModuleInfo, State,
-    Swizzle, VertexInputRate, VertexShader,
+    Buffer, BufferMemoryBarrier, DynamicGraphicsPipeline, Encoder, Extent2d, FragmentShader,
+    ImageView, IndexType, Layout, Offset3d, PipelineInput, PipelineStageFlags, Rect2d,
+    RenderPassEncoder, Sampler, ShaderModuleInfo, State, Swizzle, VertexInputRate, VertexShader,
 };
 
 use super::{DrawNode, RendererContext};
 use crate::{
     egui::EguiResource,
-    graphics::{
-        vertex_layouts_for_pipeline, Graphics, Position2, UploadImage, VertexLocation, VertexType,
-        UV,
-    },
+    graphics::{vertex_layouts_for_pipeline, Graphics, Position2, VertexLocation, VertexType, UV},
 };
-use egui::ClippedMesh;
+use egui::{ClippedMesh, TextureId};
 
 #[shader_repr]
 #[derive(Clone, Copy, Default)]
@@ -28,14 +25,17 @@ struct Uniforms {
 }
 
 #[descriptors]
-struct EguiDescriptors {
+struct TextureDescriptor {
+    #[image(sampled)]
+    #[stages(Fragment)]
+    texture: ImageView,
+}
+
+#[descriptors]
+struct SamplerUniforms {
     #[sampler]
     #[stages(Fragment)]
     sampler: Sampler,
-
-    #[image(sampled)]
-    #[stages(Fragment)]
-    font_image: ImageView,
 
     #[uniform]
     #[stages(Vertex)]
@@ -45,16 +45,19 @@ struct EguiDescriptors {
 #[pipeline]
 struct EguiPipeline {
     #[set]
-    set: EguiDescriptors,
+    sampler_uniforms: SamplerUniforms,
+
+    #[set]
+    texture: TextureDescriptor,
 }
 
 pub struct EguiDraw {
     pipeline: DynamicGraphicsPipeline,
-    pipeline_layout: <EguiPipeline as PipelineInput>::Layout,
-    descriptors: EguiDescriptors,
-    set: EguiDescriptorsInstance,
+    pipeline_layout: EguiPipelineLayout,
+    sampler_uniforms: SamplerUniforms,
+    sampler_uniforms_set: SamplerUniformsInstance,
     meshes: Buffer,
-    font_image_version: Option<u64>,
+    textures: HashMap<TextureId, TextureDescriptorInstance>,
 }
 
 impl EguiDraw {
@@ -101,7 +104,7 @@ impl EguiDraw {
                 | sierra::BufferUsage::TRANSFER_DST,
         })?;
 
-        let set = pipeline_layout.set.instance();
+        let sampler_uniforms_set = pipeline_layout.sampler_uniforms.instance();
 
         let (vertex_bindings, vertex_attributes) =
             vertex_layouts_for_pipeline(&[egui::epaint::Vertex::layout()]);
@@ -118,14 +121,13 @@ impl EguiDraw {
             }),
             pipeline_layout,
 
-            descriptors: EguiDescriptors {
+            sampler_uniforms: SamplerUniforms {
                 sampler,
-                font_image: dummy_texture,
                 uniforms: Uniforms::default(),
             },
-            set,
+            sampler_uniforms_set,
             meshes,
-            font_image_version: None,
+            textures: HashMap::new(),
         })
     }
 }
@@ -146,74 +148,16 @@ impl DrawNode for EguiDraw {
 
         let scale_factor = res.scale_factor();
 
-        self.descriptors.uniforms.inv_dimensions = vec2::from([
+        self.sampler_uniforms.uniforms.inv_dimensions = vec2::from([
             2.0 * scale_factor / viewport.width as f32,
             -2.0 * scale_factor / viewport.height as f32,
         ]);
 
-        let font_image = res.font_image();
-        if self.font_image_version != Some(font_image.version) {
-            self.font_image_version = Some(font_image.version);
+        res.update_egui_textures(encoder, cx.graphics);
 
-            let font_image_info = self.descriptors.font_image.info().image.info();
-            let font_image_info_extent = font_image_info.extent.into_2d();
-
-            let mut old_layout = Some(sierra::Layout::ShaderReadOnlyOptimal);
-
-            if font_image_info_extent.width != font_image.width as u32
-                || font_image_info_extent.height != font_image.height as u32
-            {
-                let new_font_image = cx.graphics.create_image(ImageInfo {
-                    extent: Extent2d {
-                        width: font_image.width as u32,
-                        height: font_image.height as u32,
-                    }
-                    .into(),
-                    format: sierra::Format::R8Unorm,
-                    levels: 1,
-                    layers: 1,
-                    samples: sierra::Samples1,
-                    usage: ImageUsage::SAMPLED | ImageUsage::TRANSFER_DST,
-                })?;
-
-                let new_font_image_view = cx.graphics.create_image_view(ImageViewInfo {
-                    mapping: ComponentMapping {
-                        r: Swizzle::One,
-                        g: Swizzle::One,
-                        b: Swizzle::One,
-                        a: Swizzle::R,
-                    },
-                    ..ImageViewInfo::new(new_font_image)
-                })?;
-
-                self.descriptors.font_image = new_font_image_view;
-                old_layout = None;
-            }
-
-            cx.graphics.upload_image_with(
-                UploadImage {
-                    image: &self.descriptors.font_image.info().image,
-                    offset: Offset3d::ZERO,
-                    extent: Extent2d {
-                        width: font_image.width as u32,
-                        height: font_image.height as u32,
-                    }
-                    .into_3d(),
-                    layers: sierra::SubresourceLayers::color(0, 0..1),
-                    old_layout,
-                    new_layout: sierra::Layout::ShaderReadOnlyOptimal,
-                    old_access: sierra::AccessFlags::SHADER_READ,
-                    new_access: sierra::AccessFlags::SHADER_READ,
-                    format: sierra::Format::R8Unorm,
-                    row_length: 0,
-                    image_height: 0,
-                },
-                &font_image.pixels[..],
-                encoder,
-            )?;
-        }
-
-        let updated = self.set.update(&self.descriptors, cx.graphics, encoder)?;
+        let updated =
+            self.sampler_uniforms_set
+                .update(&self.sampler_uniforms, cx.graphics, encoder)?;
 
         render_pass.bind_dynamic_graphics_pipeline(&mut self.pipeline, cx.graphics)?;
         render_pass.bind_graphics_descriptors(&self.pipeline_layout, updated);
@@ -275,6 +219,31 @@ impl DrawNode for EguiDraw {
             encoder.update_buffer(&self.meshes, indices_offset, &*mesh.indices);
             encoder.update_buffer(&self.meshes, vertices_offset, &*mesh.vertices);
 
+            let texture_set = match self.textures.entry(mesh.texture_id) {
+                Entry::Vacant(entry) => {
+                    let texture_set = self.pipeline_layout.texture.instance();
+
+                    entry.insert(texture_set)
+                }
+                Entry::Occupied(entry) => entry.into_mut(),
+            };
+
+            let view = match res.get_texture(mesh.texture_id) {
+                None => {
+                    tracing::error!("Missing texture '{:?}'", mesh.texture_id);
+                    continue;
+                }
+                Some(view) => view,
+            };
+            let updated = texture_set.update(
+                &TextureDescriptor {
+                    texture: view.clone(),
+                },
+                cx.graphics,
+                encoder,
+            )?;
+
+            render_pass.bind_graphics_descriptors(&self.pipeline_layout, updated);
             render_pass.bind_index_buffer(&self.meshes, indices_offset, IndexType::U32);
             render_pass.bind_vertex_buffers(0, &[(&self.meshes, vertices_offset)]);
             render_pass.draw_indexed(0..mesh.indices.len() as u32, 0, 0..1);
@@ -292,6 +261,10 @@ impl DrawNode for EguiDraw {
                 family_transfer: None,
             }],
         );
+
+        for id in res.free_textures() {
+            self.textures.remove(&id);
+        }
 
         Ok(())
     }

@@ -93,9 +93,6 @@ macro_rules! define_vertex_type {
 pub mod node;
 pub mod renderer;
 
-#[cfg(feature = "2d")]
-pub mod sprite_sheet;
-
 mod format;
 mod material;
 mod scale;
@@ -117,10 +114,9 @@ use bytemuck::Pod;
 use raw_window_handle::HasRawWindowHandle;
 use scoped_arena::Scope;
 use sierra::{
-    AccessFlags, Buffer, BufferInfo, CommandBuffer, CreateImageError, CreateSurfaceError, Device,
-    Encoder, Extent3d, Fence, Format, Image, ImageInfo, ImageUsage, Layout, MapError, Offset3d,
-    OutOfMemory, PipelineStageFlags, PresentOk, Queue, Semaphore, SingleQueueQuery,
-    SubresourceLayers, Surface, SwapchainImage,
+    AccessFlags, Buffer, BufferInfo, CommandBuffer, CreateSurfaceError, Device, Encoder, Extent3d,
+    Fence, Format, Image, ImageInfo, ImageUsage, Layout, Offset3d, OutOfMemory, PipelineStageFlags,
+    PresentOk, Queue, Semaphore, SingleQueueQuery, SubresourceLayers, Surface, SwapchainImage,
 };
 
 use self::upload::Uploader;
@@ -185,7 +181,7 @@ impl Graphics {
         buffer: &Buffer,
         offset: u64,
         data: &[T],
-    ) -> Result<(), MapError>
+    ) -> Result<(), OutOfMemory>
     where
         T: Pod,
     {
@@ -201,7 +197,7 @@ impl Graphics {
         offset: u64,
         data: &'a [T],
         encoder: &mut Encoder<'a>,
-    ) -> Result<(), MapError>
+    ) -> Result<(), OutOfMemory>
     where
         T: Pod,
     {
@@ -224,7 +220,7 @@ impl Graphics {
         upload: UploadImage,
         data: &[T],
         encoder: &mut Encoder<'a>,
-    ) -> Result<(), MapError>
+    ) -> Result<(), OutOfMemory>
     where
         T: Pod,
     {
@@ -242,11 +238,8 @@ impl Graphics {
         T: Pod,
     {
         let buffer = self.device.create_buffer(info)?;
-        match self.upload_buffer(&buffer, 0, data) {
-            Ok(()) => Ok(buffer),
-            Err(MapError::OutOfMemory { .. }) => Err(OutOfMemory),
-            _ => unreachable!(),
-        }
+        self.upload_buffer(&buffer, 0, data)?;
+        Ok(buffer)
     }
 
     #[tracing::instrument(skip(self, data))]
@@ -258,7 +251,7 @@ impl Graphics {
         format: Format,
         row_length: u32,
         image_height: u32,
-    ) -> Result<Image, CreateImageError>
+    ) -> Result<Image, OutOfMemory>
     where
         T: Pod,
     {
@@ -372,15 +365,15 @@ impl<T> SparseDescriptors<T> {
 
 #[derive(Debug)]
 pub struct UploadImage<'a> {
-    image: &'a Image,
-    offset: Offset3d,
-    extent: Extent3d,
-    layers: SubresourceLayers,
-    old_layout: Option<Layout>,
-    new_layout: Layout,
-    old_access: AccessFlags,
-    new_access: AccessFlags,
-    format: Format,
-    row_length: u32,
-    image_height: u32,
+    pub image: &'a Image,
+    pub offset: Offset3d,
+    pub extent: Extent3d,
+    pub layers: SubresourceLayers,
+    pub old_layout: Option<Layout>,
+    pub new_layout: Layout,
+    pub old_access: AccessFlags,
+    pub new_access: AccessFlags,
+    pub format: Format,
+    pub row_length: u32,
+    pub image_height: u32,
 }

@@ -56,9 +56,9 @@ cfg_if::cfg_if! {
 
 cfg_if::cfg_if! {
     if #[cfg(feature = "graphics")] {
-        pub mod graphics;
         pub mod viewport;
         pub use sierra;
+        pub mod graphics;
     }
 }
 

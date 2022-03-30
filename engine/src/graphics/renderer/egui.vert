@@ -7,7 +7,7 @@ layout(location = 2) in vec4 color;
 layout(location = 0) out vec4 out_color;
 layout(location = 1) out vec2 out_uv;
 
-layout(set = 0, binding = 2) uniform Uniforms {
+layout(set = 0, binding = 1) uniform Uniforms {
     vec2 inv_dimensions;
 };
 

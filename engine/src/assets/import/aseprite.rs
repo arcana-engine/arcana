@@ -3,9 +3,9 @@ use std::{path::Path, sync::Arc};
 use arcana_time::TimeSpan;
 use treasury_import::{Dependencies, Dependency, ImportError, Importer, Sources};
 
-use crate::graphics::{
-    sprite_sheet::{SpriteAnimation, SpriteFrame, SpriteRect, SpriteSheetInfo, SpriteSize},
-    TextureInfo,
+use crate::{
+    graphics::TextureInfo,
+    sprite::{SpriteAnimation, SpriteFrame, SpriteRect, SpriteSheetInfo, SpriteSize},
 };
 
 pub struct SpriteSheetImporter;
