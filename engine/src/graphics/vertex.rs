@@ -197,6 +197,10 @@ impl VertexAttribute for palette::rgb::LinSrgba<f32> {
 #[repr(C)]
 pub struct V2<A, B>(pub A, pub B);
 
+pub fn v2<A, B>(a: impl Into<A>, b: impl Into<B>) -> V2<A, B> {
+    V2(a.into(), b.into())
+}
+
 unsafe impl<A: Zeroable, B: Zeroable> Zeroable for V2<A, B> {}
 unsafe impl<A: Pod, B: Pod> Pod for V2<A, B> {}
 
@@ -223,6 +227,10 @@ where
 #[derive(Clone, Copy, Debug, Default, PartialEq, serde::Serialize, serde::Deserialize)]
 #[repr(C)]
 pub struct V3<A, B, C>(pub A, pub B, pub C);
+
+pub fn v3<A, B, C>(a: impl Into<A>, b: impl Into<B>, c: impl Into<C>) -> V3<A, B, C> {
+    V3(a.into(), b.into(), c.into())
+}
 
 unsafe impl<A: Zeroable, B: Zeroable, C: Zeroable> Zeroable for V3<A, B, C> {}
 unsafe impl<A: Pod, B: Pod, C: Pod> Pod for V3<A, B, C> {}
@@ -256,6 +264,15 @@ where
 #[derive(Clone, Copy, Debug, Default, PartialEq, serde::Serialize, serde::Deserialize)]
 #[repr(C)]
 pub struct V4<A, B, C, D>(pub A, pub B, pub C, pub D);
+
+pub fn v4<A, B, C, D>(
+    a: impl Into<A>,
+    b: impl Into<B>,
+    c: impl Into<C>,
+    d: impl Into<D>,
+) -> V4<A, B, C, D> {
+    V4(a.into(), b.into(), c.into(), d.into())
+}
 
 unsafe impl<A: Zeroable, B: Zeroable, C: Zeroable, D: Zeroable> Zeroable for V4<A, B, C, D> {}
 unsafe impl<A: Pod, B: Pod, C: Pod, D: Pod> Pod for V4<A, B, C, D> {}
@@ -295,6 +312,7 @@ where
 pub type Position2UV = V2<Position2, UV>;
 pub type Position3UV = V2<Position3, UV>;
 pub type PositionNormal3 = V2<Position3, Normal3>;
+pub type PositionTangent3 = V2<Position3, Tangent3>;
 pub type PositionNormalTangent3 = V3<Position3, Normal3, Tangent3>;
 pub type PositionNormal3UV = V3<Position3, Normal3, UV>;
 pub type PositionNormalTangent3UV = V4<Position3, Normal3, Tangent3, UV>;
@@ -412,28 +430,4 @@ pub fn vertex_layouts_for_pipeline(
         .collect();
 
     (bindings, locations)
-}
-
-#[cfg(feature = "genmesh")]
-mod gm {
-    use super::*;
-    use genmesh::Vertex;
-
-    impl From<Vertex> for Position3 {
-        fn from(v: Vertex) -> Self {
-            Position3([v.pos.x, v.pos.y, v.pos.z])
-        }
-    }
-
-    impl From<Vertex> for Normal3 {
-        fn from(v: Vertex) -> Self {
-            Normal3([v.normal.x, v.normal.y, v.normal.z])
-        }
-    }
-
-    impl From<Vertex> for V2<Position3, Normal3> {
-        fn from(v: Vertex) -> Self {
-            V2(Position3::from(v), Normal3::from(v))
-        }
-    }
 }

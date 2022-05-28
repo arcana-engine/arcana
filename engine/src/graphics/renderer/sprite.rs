@@ -3,10 +3,10 @@ use std::{convert::TryFrom, mem::size_of, ops::Range};
 use edict::entity::EntityId;
 use palette::LinSrgba;
 use sierra::{
-    descriptors, graphics_pipeline_desc, mat3, pipeline, shader_repr, AccessFlags, Buffer,
-    DepthTest, DynamicGraphicsPipeline, Encoder, Extent2d, FragmentShader, ImageView, Layout,
-    PipelineInput, PipelineStageFlags, RenderPassEncoder, Sampler, ShaderModuleInfo,
-    VertexInputRate, VertexShader,
+    graphics_pipeline_desc, mat3, AccessFlags, Buffer, DepthTest, Descriptors,
+    DynamicGraphicsPipeline, Encoder, Extent2d, FragmentShader, ImageView, Layout, PipelineInput,
+    PipelineStageFlags, RenderPassEncoder, Sampler, ShaderModuleInfo, ShaderRepr, VertexInputRate,
+    VertexShader,
 };
 
 use super::{mat3_na_to_sierra, DrawNode, RendererContext};
@@ -32,30 +32,27 @@ pub struct SpriteDraw {
     layer_range: Range<f32>,
 }
 
-#[shader_repr]
-#[derive(Clone, Copy, Default)]
+#[derive(Clone, Copy, Default, ShaderRepr)]
+#[sierra(std140)]
 struct Uniforms {
     camera: mat3,
 }
 
-#[descriptors]
+#[derive(Descriptors)]
 struct SpriteDescriptors {
-    #[sampler]
-    #[stages(Fragment)]
+    #[sierra(sampler, fragment)]
     sampler: Sampler,
 
-    #[image(sampled)]
-    #[stages(Fragment)]
+    #[sierra(image(sampled), fragment)]
     textures: [ImageView; 128],
 
-    #[uniform]
-    #[stages(Vertex)]
+    #[sierra(uniform, vertex)]
     uniforms: Uniforms,
 }
 
-#[pipeline]
+#[derive(PipelineInput)]
 struct SpritePipeline {
-    #[set]
+    #[sierra(set)]
     set: SpriteDescriptors,
 }
 

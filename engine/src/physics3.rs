@@ -1,27 +1,32 @@
-use {
-    crate::{
-        clocks::TimeSpan,
-        scene::Global3,
-        system::{System, SystemContext, DEFAULT_TICK_SPAN},
+use approx::relative_ne;
+use arcana_time::TimeSpan;
+use edict::entity::EntityId;
+use flume::{unbounded, Sender};
+use rapier3d::{
+    dynamics::{
+        CCDSolver, IntegrationParameters, IslandManager, JointSet, RigidBodyHandle, RigidBodySet,
     },
-    approx::relative_ne,
-    edict::entity::EntityId,
-    flume::{unbounded, Sender},
-    rapier3d::{
-        dynamics::{
-            CCDSolver, IntegrationParameters, IslandManager, JointSet, RigidBodyHandle,
-            RigidBodySet,
-        },
-        geometry::{
-            BroadPhase, ColliderHandle, ColliderSet, ContactEvent, ContactPair, IntersectionEvent,
-            NarrowPhase,
-        },
-        na,
-        pipeline::{EventHandler, PhysicsPipeline},
+    geometry::{
+        BroadPhase, ColliderHandle, ColliderSet, ContactEvent, ContactPair, IntersectionEvent,
+        NarrowPhase,
     },
+    na,
+    pipeline::{EventHandler, PhysicsPipeline, QueryPipeline},
+    prelude::{Collider, RigidBody},
+};
+
+use crate::{
+    scene::Global3,
+    system::{System, SystemContext, DEFAULT_TICK_SPAN},
 };
 
 pub use {parry3d::*, rapier3d::*};
+
+// use crate::{
+//     clocks::TimeSpan,
+//     scene::Global3,
+//     system::{System, SystemContext, DEFAULT_TICK_SPAN},
+// };
 
 pub struct ContactQueue3 {
     contacts_started: Vec<ColliderHandle>,
@@ -80,6 +85,7 @@ pub struct PhysicsData3 {
     pub colliders: ColliderSet,
     pub islands: IslandManager,
     pub joints: JointSet,
+    pub query_pipeline: QueryPipeline,
     pub gravity: na::Vector3<f32>,
 }
 
@@ -90,8 +96,19 @@ impl PhysicsData3 {
             colliders: ColliderSet::new(),
             islands: IslandManager::new(),
             joints: JointSet::new(),
+            query_pipeline: QueryPipeline::new(),
             gravity: na::Vector3::default(),
         }
+    }
+
+    pub fn body_user_data(&self, handle: RigidBodyHandle) -> Option<BodyUserData3> {
+        let body = self.bodies.get(handle)?;
+        BodyUserData3::get(body)
+    }
+
+    pub fn collider_user_data(&self, handle: ColliderHandle) -> Option<ColliderUserData3> {
+        let collider = self.colliders.get(handle)?;
+        ColliderUserData3::get(collider)
     }
 }
 
@@ -135,8 +152,8 @@ impl System for Physics3 {
         let mut remove_bodies = Vec::with_capacity_in(data.bodies.len(), &*cx.scope);
         let world = &mut *cx.world;
         data.bodies.iter().for_each(|(handle, body)| {
-            if let Some(e) = EntityId::from_bits(body.user_data as u64) {
-                match world.query_one_mut::<&RigidBodyHandle>(&e) {
+            if let Some(body_data) = BodyUserData3::from_user_data(body.user_data) {
+                match world.query_one_mut::<&RigidBodyHandle>(&body_data.entity) {
                     Ok(body) if *body == handle => {}
                     _ => remove_bodies.push(handle),
                 }
@@ -154,24 +171,20 @@ impl System for Physics3 {
         for (entity, body) in cx.world.query_mut::<&RigidBodyHandle>() {
             let body = data.bodies.get_mut(*body).unwrap();
 
-            match EntityId::from_bits(body.user_data as u64) {
-                Some(e) if e == entity => {}
+            match BodyUserData3::get(body) {
+                Some(body_data) if body_data.entity == entity => {}
                 _ => {
-                    body.user_data = entity.bits() as u128;
+                    BodyUserData3 { entity }.set_to(body);
 
                     for (index, &collider) in body.colliders().iter().enumerate() {
-                        data.colliders.get_mut(collider).unwrap().user_data =
-                            ((index as u128) << 64) | body.user_data;
+                        let collider = data.colliders.get_mut(collider).unwrap();
+                        ColliderUserData3 {
+                            entity,
+                            body_index: index,
+                        }
+                        .set_to(collider);
                     }
                 }
-            }
-        }
-
-        for (entity, collider) in cx.world.query_mut::<&ColliderHandle>() {
-            let collider = data.colliders.get_mut(*collider).unwrap();
-
-            if collider.user_data == 0 {
-                collider.user_data = entity.bits().into();
             }
         }
 
@@ -225,32 +238,42 @@ impl System for Physics3 {
         while let Ok(event) = rx.recv() {
             match event {
                 ContactEvent::Started(lhs, rhs) => {
-                    let bits = data.colliders.get(lhs).unwrap().user_data as u64;
-                    let entity = EntityId::from_bits(bits).unwrap();
+                    let lhs_data =
+                        ColliderUserData3::get(data.colliders.get(lhs).unwrap()).unwrap();
+                    let rhs_data =
+                        ColliderUserData3::get(data.colliders.get(rhs).unwrap()).unwrap();
 
-                    if let Ok(queue) = cx.world.query_one_mut::<&mut ContactQueue3>(&entity) {
+                    if let Ok(queue) = cx
+                        .world
+                        .query_one_mut::<&mut ContactQueue3>(&lhs_data.entity)
+                    {
                         queue.contacts_started.push(rhs);
                     }
 
-                    let bits = data.colliders.get(rhs).unwrap().user_data as u64;
-                    let entity = EntityId::from_bits(bits).unwrap();
-
-                    if let Ok(queue) = cx.world.query_one_mut::<&mut ContactQueue3>(&entity) {
+                    if let Ok(queue) = cx
+                        .world
+                        .query_one_mut::<&mut ContactQueue3>(&rhs_data.entity)
+                    {
                         queue.contacts_started.push(lhs);
                     }
                 }
                 ContactEvent::Stopped(lhs, rhs) => {
-                    let bits = data.colliders.get(lhs).unwrap().user_data as u64;
-                    let entity = EntityId::from_bits(bits).unwrap();
+                    let lhs_data =
+                        ColliderUserData3::get(data.colliders.get(lhs).unwrap()).unwrap();
+                    let rhs_data =
+                        ColliderUserData3::get(data.colliders.get(rhs).unwrap()).unwrap();
 
-                    if let Ok(queue) = cx.world.query_one_mut::<&mut ContactQueue3>(&entity) {
+                    if let Ok(queue) = cx
+                        .world
+                        .query_one_mut::<&mut ContactQueue3>(&lhs_data.entity)
+                    {
                         queue.contacts_stopped.push(rhs);
                     }
 
-                    let bits = data.colliders.get(rhs).unwrap().user_data as u64;
-                    let entity = EntityId::from_bits(bits).unwrap();
-
-                    if let Ok(queue) = cx.world.query_one_mut::<&mut ContactQueue3>(&entity) {
+                    if let Ok(queue) = cx
+                        .world
+                        .query_one_mut::<&mut ContactQueue3>(&rhs_data.entity)
+                    {
                         queue.contacts_stopped.push(lhs);
                     }
                 }
@@ -261,35 +284,91 @@ impl System for Physics3 {
             let lhs = event.collider1;
             let rhs = event.collider2;
 
-            if event.intersecting {
-                let bits = data.colliders.get(lhs).unwrap().user_data as u64;
-                let entity = EntityId::from_bits(bits).unwrap();
+            let lhs_data = ColliderUserData3::get(data.colliders.get(lhs).unwrap()).unwrap();
+            let rhs_data = ColliderUserData3::get(data.colliders.get(rhs).unwrap()).unwrap();
 
-                if let Ok(queue) = cx.world.query_one_mut::<&mut IntersectionQueue3>(&entity) {
+            if event.intersecting {
+                if let Ok(queue) = cx
+                    .world
+                    .query_one_mut::<&mut IntersectionQueue3>(&lhs_data.entity)
+                {
                     queue.intersecting_started.push(rhs);
                 }
 
-                let bits = data.colliders.get(rhs).unwrap().user_data as u64;
-                let entity = EntityId::from_bits(bits).unwrap();
-
-                if let Ok(queue) = cx.world.query_one_mut::<&mut IntersectionQueue3>(&entity) {
+                if let Ok(queue) = cx
+                    .world
+                    .query_one_mut::<&mut IntersectionQueue3>(&rhs_data.entity)
+                {
                     queue.intersecting_started.push(lhs);
                 }
             } else {
-                let bits = data.colliders.get(lhs).unwrap().user_data as u64;
-                let entity = EntityId::from_bits(bits).unwrap();
-
-                if let Ok(queue) = cx.world.query_one_mut::<&mut IntersectionQueue3>(&entity) {
+                if let Ok(queue) = cx
+                    .world
+                    .query_one_mut::<&mut IntersectionQueue3>(&lhs_data.entity)
+                {
                     queue.intersecting_stopped.push(rhs);
                 }
 
-                let bits = data.colliders.get(rhs).unwrap().user_data as u64;
-                let entity = EntityId::from_bits(bits).unwrap();
-
-                if let Ok(queue) = cx.world.query_one_mut::<&mut IntersectionQueue3>(&entity) {
+                if let Ok(queue) = cx
+                    .world
+                    .query_one_mut::<&mut IntersectionQueue3>(&rhs_data.entity)
+                {
                     queue.intersecting_stopped.push(lhs);
                 }
             }
         }
+
+        data.query_pipeline
+            .update(&data.islands, &data.bodies, &data.colliders);
+    }
+}
+
+pub struct BodyUserData3 {
+    pub entity: EntityId,
+}
+
+impl BodyUserData3 {
+    fn get(body: &RigidBody) -> Option<Self> {
+        Self::from_user_data(body.user_data)
+    }
+
+    fn set_to(&self, body: &mut RigidBody) {
+        body.user_data = self.to_user_data();
+    }
+
+    fn to_user_data(&self) -> u128 {
+        self.entity.bits() as u128
+    }
+
+    fn from_user_data(user_data: u128) -> Option<Self> {
+        Some(BodyUserData3 {
+            entity: EntityId::from_bits(user_data as u64)?,
+        })
+    }
+}
+
+pub struct ColliderUserData3 {
+    pub entity: EntityId,
+    pub body_index: usize,
+}
+
+impl ColliderUserData3 {
+    fn get(collider: &Collider) -> Option<Self> {
+        Self::from_user_data(collider.user_data)
+    }
+
+    fn set_to(&self, collider: &mut Collider) {
+        collider.user_data = self.to_user_data();
+    }
+
+    fn to_user_data(&self) -> u128 {
+        ((self.body_index as u128) << 64) | (self.entity.bits() as u128)
+    }
+
+    fn from_user_data(user_data: u128) -> Option<Self> {
+        Some(ColliderUserData3 {
+            body_index: (user_data >> 64) as usize,
+            entity: EntityId::from_bits(user_data as u64)?,
+        })
     }
 }

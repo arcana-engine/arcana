@@ -1,3 +1,5 @@
+use rapier2d::prelude::{Collider, RigidBody};
+
 use {
     crate::{
         clocks::TimeSpan,
@@ -101,6 +103,16 @@ impl PhysicsData2 {
             gravity: na::Vector2::default(),
         }
     }
+
+    pub fn body_user_data(&self, handle: RigidBodyHandle) -> Option<BodyUserData2> {
+        let body = self.bodies.get(handle)?;
+        BodyUserData2::get(body)
+    }
+
+    pub fn collider_user_data(&self, handle: ColliderHandle) -> Option<ColliderUserData2> {
+        let collider = self.colliders.get(handle)?;
+        ColliderUserData2::get(collider)
+    }
 }
 
 impl Default for Physics2 {
@@ -143,8 +155,8 @@ impl System for Physics2 {
         let mut remove_bodies = Vec::with_capacity_in(64, &*cx.scope);
         let world = &mut *cx.world;
         data.bodies.iter().for_each(|(handle, body)| {
-            if let Some(e) = EntityId::from_bits(body.user_data as u64) {
-                match world.query_one_mut::<&RigidBodyHandle>(&e) {
+            if let Some(body_data) = BodyUserData2::get(body) {
+                match world.query_one_mut::<&RigidBodyHandle>(&body_data.entity) {
                     Ok(body) if *body == handle => {}
                     _ => remove_bodies.push(handle),
                 }
@@ -162,14 +174,18 @@ impl System for Physics2 {
         for (entity, body) in cx.world.query_mut::<&RigidBodyHandle>() {
             let body = data.bodies.get_mut(*body).unwrap();
 
-            match EntityId::from_bits(body.user_data as u64) {
-                Some(e) if e == entity => {}
+            match BodyUserData2::get(body) {
+                Some(body_data) if body_data.entity == entity => {}
                 _ => {
-                    body.user_data = entity.bits().into();
+                    BodyUserData2 { entity }.set_to(body);
 
                     for (index, &collider) in body.colliders().iter().enumerate() {
-                        data.colliders.get_mut(collider).unwrap().user_data =
-                            ((index as u128) << 64) | body.user_data;
+                        let collider = data.colliders.get_mut(collider).unwrap();
+                        ColliderUserData2 {
+                            entity,
+                            body_index: index,
+                        }
+                        .set_to(collider);
                     }
                 }
             }
@@ -225,32 +241,44 @@ impl System for Physics2 {
         while let Ok(event) = rx.recv() {
             match event {
                 ContactEvent::Started(lhs, rhs) => {
-                    let bits = data.colliders.get(lhs).unwrap().user_data as u64;
-                    let entity = EntityId::from_bits(bits).unwrap();
+                    let lhs_data =
+                        ColliderUserData2::get(data.colliders.get(lhs).unwrap()).unwrap();
 
-                    if let Ok(queue) = cx.world.query_one_mut::<&mut ContactQueue2>(&entity) {
+                    let rhs_data =
+                        ColliderUserData2::get(data.colliders.get(rhs).unwrap()).unwrap();
+
+                    if let Ok(queue) = cx
+                        .world
+                        .query_one_mut::<&mut ContactQueue2>(&lhs_data.entity)
+                    {
                         queue.contacts_started.push(rhs);
                     }
 
-                    let bits = data.colliders.get(rhs).unwrap().user_data as u64;
-                    let entity = EntityId::from_bits(bits).unwrap();
-
-                    if let Ok(queue) = cx.world.query_one_mut::<&mut ContactQueue2>(&entity) {
+                    if let Ok(queue) = cx
+                        .world
+                        .query_one_mut::<&mut ContactQueue2>(&rhs_data.entity)
+                    {
                         queue.contacts_started.push(lhs);
                     }
                 }
                 ContactEvent::Stopped(lhs, rhs) => {
-                    let bits = data.colliders.get(lhs).unwrap().user_data as u64;
-                    let entity = EntityId::from_bits(bits).unwrap();
+                    let lhs_data =
+                        ColliderUserData2::get(data.colliders.get(lhs).unwrap()).unwrap();
 
-                    if let Ok(queue) = cx.world.query_one_mut::<&mut ContactQueue2>(&entity) {
+                    let rhs_data =
+                        ColliderUserData2::get(data.colliders.get(rhs).unwrap()).unwrap();
+
+                    if let Ok(queue) = cx
+                        .world
+                        .query_one_mut::<&mut ContactQueue2>(&lhs_data.entity)
+                    {
                         queue.contacts_stopped.push(rhs);
                     }
 
-                    let bits = data.colliders.get(rhs).unwrap().user_data as u64;
-                    let entity = EntityId::from_bits(bits).unwrap();
-
-                    if let Ok(queue) = cx.world.query_one_mut::<&mut ContactQueue2>(&entity) {
+                    if let Ok(queue) = cx
+                        .world
+                        .query_one_mut::<&mut ContactQueue2>(&rhs_data.entity)
+                    {
                         queue.contacts_stopped.push(lhs);
                     }
                 }
@@ -261,35 +289,88 @@ impl System for Physics2 {
             let lhs = event.collider1;
             let rhs = event.collider2;
 
-            if event.intersecting {
-                let bits = data.colliders.get(lhs).unwrap().user_data as u64;
-                let entity = EntityId::from_bits(bits).unwrap();
+            let lhs_data = ColliderUserData2::get(data.colliders.get(lhs).unwrap()).unwrap();
+            let rhs_data = ColliderUserData2::get(data.colliders.get(rhs).unwrap()).unwrap();
 
-                if let Ok(queue) = cx.world.query_one_mut::<&mut IntersectionQueue2>(&entity) {
+            if event.intersecting {
+                if let Ok(queue) = cx
+                    .world
+                    .query_one_mut::<&mut IntersectionQueue2>(&lhs_data.entity)
+                {
                     queue.intersecting_started.push(rhs);
                 }
 
-                let bits = data.colliders.get(rhs).unwrap().user_data as u64;
-                let entity = EntityId::from_bits(bits).unwrap();
-
-                if let Ok(queue) = cx.world.query_one_mut::<&mut IntersectionQueue2>(&entity) {
+                if let Ok(queue) = cx
+                    .world
+                    .query_one_mut::<&mut IntersectionQueue2>(&rhs_data.entity)
+                {
                     queue.intersecting_started.push(lhs);
                 }
             } else {
-                let bits = data.colliders.get(lhs).unwrap().user_data as u64;
-                let entity = EntityId::from_bits(bits).unwrap();
-
-                if let Ok(queue) = cx.world.query_one_mut::<&mut IntersectionQueue2>(&entity) {
+                if let Ok(queue) = cx
+                    .world
+                    .query_one_mut::<&mut IntersectionQueue2>(&lhs_data.entity)
+                {
                     queue.intersecting_stopped.push(rhs);
                 }
 
-                let bits = data.colliders.get(rhs).unwrap().user_data as u64;
-                let entity = EntityId::from_bits(bits).unwrap();
-
-                if let Ok(queue) = cx.world.query_one_mut::<&mut IntersectionQueue2>(&entity) {
+                if let Ok(queue) = cx
+                    .world
+                    .query_one_mut::<&mut IntersectionQueue2>(&rhs_data.entity)
+                {
                     queue.intersecting_stopped.push(lhs);
                 }
             }
         }
+    }
+}
+
+pub struct BodyUserData2 {
+    pub entity: EntityId,
+}
+
+impl BodyUserData2 {
+    fn get(body: &RigidBody) -> Option<Self> {
+        Self::from_user_data(body.user_data)
+    }
+
+    fn set_to(&self, body: &mut RigidBody) {
+        body.user_data = self.to_user_data();
+    }
+
+    fn to_user_data(&self) -> u128 {
+        self.entity.bits() as u128
+    }
+
+    fn from_user_data(user_data: u128) -> Option<Self> {
+        Some(BodyUserData2 {
+            entity: EntityId::from_bits(user_data as u64)?,
+        })
+    }
+}
+
+pub struct ColliderUserData2 {
+    pub entity: EntityId,
+    pub body_index: usize,
+}
+
+impl ColliderUserData2 {
+    fn get(collider: &Collider) -> Option<Self> {
+        Self::from_user_data(collider.user_data)
+    }
+
+    fn set_to(&self, collider: &mut Collider) {
+        collider.user_data = self.to_user_data();
+    }
+
+    fn to_user_data(&self) -> u128 {
+        ((self.body_index as u128) << 64) | (self.entity.bits() as u128)
+    }
+
+    fn from_user_data(user_data: u128) -> Option<Self> {
+        Some(ColliderUserData2 {
+            body_index: (user_data >> 64) as usize,
+            entity: EntityId::from_bits(user_data as u64)?,
+        })
     }
 }

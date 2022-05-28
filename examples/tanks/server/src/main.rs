@@ -97,6 +97,7 @@ impl evoke::server::RemotePlayer for RemoteTankPlayer {
 
 pub struct TankStateInternal {
     reload: TimeSpan,
+    pending_fire_threshold: TimeSpan,
     last_fire: TimeStamp,
     pending_fire: bool,
 }
@@ -110,7 +111,8 @@ impl Default for TankStateInternal {
 impl TankStateInternal {
     pub fn new() -> Self {
         TankStateInternal {
-            reload: TimeSpan::SECOND,
+            reload: timespan!(1 s),
+            pending_fire_threshold: timespan!(200 ms),
             last_fire: TimeStamp::ORIGIN,
             pending_fire: false,
         }
@@ -163,14 +165,16 @@ impl System for TankSystem {
 
             if tank.alive {
                 tank.fire = false;
+                // tank.drive = 0;
+                // tank.rotate = 0;
 
                 for cmd in commands.drain() {
                     match cmd {
-                        TankCommand::Drive(i) => tank.drive = tank.drive.saturating_add(i),
-                        TankCommand::Rotate(i) => tank.rotate = tank.rotate.saturating_add(i),
+                        TankCommand::Drive(i) => tank.drive += i,
+                        TankCommand::Rotate(i) => tank.rotate += i,
                         TankCommand::Fire => {
                             if internal.last_fire + internal.reload
-                                <= cx.clock.now + internal.reload / 4
+                                <= cx.clock.now + internal.pending_fire_threshold
                             {
                                 internal.pending_fire = true;
                             }

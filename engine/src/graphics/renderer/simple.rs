@@ -1,18 +1,18 @@
 //! Simple renderer made of single node that draws using provided render pass encoder.
 
-use sierra::{pass, ClearColor, ClearDepth, Fence, Format, Image, Layout, PipelineStageFlags};
+use sierra::{ClearColor, ClearDepth, Fence, Format, Image, Layout, Pass, PipelineStageFlags};
 
 use crate::viewport::Viewport;
 
 use super::{DrawNode, Renderer, RendererContext};
 
-#[pass]
-#[subpass(color = color, depth = depth)]
+#[derive(Pass)]
+#[sierra(subpass(color = color, depth = depth))]
 struct SimpleRenderPass {
-    #[attachment(store(const Layout::Present), clear(const ClearColor(0.2, 0.1, 0.1, 1.0)))]
+    #[sierra(attachment(store = const Layout::Present, clear = const ClearColor(0.02, 0.03, 0.03, 1.0)))]
     color: Image,
 
-    #[attachment(clear(const ClearDepth(1.0)))]
+    #[sierra(attachment(clear = const ClearDepth(1.0)))]
     depth: Format,
 }
 

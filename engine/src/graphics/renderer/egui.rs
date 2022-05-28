@@ -5,10 +5,10 @@ use edict::entity::EntityId;
 use hashbrown::hash_map::{Entry, HashMap};
 use palette::LinSrgba;
 use sierra::{
-    align_up, descriptors, graphics_pipeline_desc, pipeline, shader_repr, vec2, AccessFlags,
-    Buffer, BufferMemoryBarrier, DynamicGraphicsPipeline, Encoder, Extent2d, FragmentShader,
-    ImageView, IndexType, Layout, Offset3d, PipelineInput, PipelineStageFlags, Rect2d,
-    RenderPassEncoder, Sampler, ShaderModuleInfo, State, Swizzle, VertexInputRate, VertexShader,
+    align_up, graphics_pipeline_desc, vec2, AccessFlags, Buffer, BufferMemoryBarrier, Descriptors,
+    DynamicGraphicsPipeline, Encoder, Extent2d, FragmentShader, ImageView, IndexType,
+    PipelineInput, PipelineStageFlags, Rect2d, RenderPassEncoder, Sampler, ShaderModuleInfo,
+    ShaderRepr, State, VertexInputRate, VertexShader,
 };
 
 use super::{DrawNode, RendererContext};
@@ -18,36 +18,33 @@ use crate::{
 };
 use egui::{ClippedMesh, TextureId};
 
-#[shader_repr]
-#[derive(Clone, Copy, Default)]
+#[derive(Clone, Copy, Default, ShaderRepr)]
+#[sierra(std140)]
 struct Uniforms {
     inv_dimensions: vec2,
 }
 
-#[descriptors]
+#[derive(Descriptors)]
 struct TextureDescriptor {
-    #[image(sampled)]
-    #[stages(Fragment)]
+    #[sierra(image(sampled), fragment)]
     texture: ImageView,
 }
 
-#[descriptors]
+#[derive(Descriptors)]
 struct SamplerUniforms {
-    #[sampler]
-    #[stages(Fragment)]
+    #[sierra(sampler, fragment)]
     sampler: Sampler,
 
-    #[uniform]
-    #[stages(Vertex)]
+    #[sierra(uniform, vertex)]
     uniforms: Uniforms,
 }
 
-#[pipeline]
+#[derive(PipelineInput)]
 struct EguiPipeline {
-    #[set]
+    #[sierra(set)]
     sampler_uniforms: SamplerUniforms,
 
-    #[set]
+    #[sierra(set)]
     texture: TextureDescriptor,
 }
 
@@ -74,26 +71,6 @@ impl EguiDraw {
 
         let pipeline_layout = EguiPipeline::layout(graphics)?;
 
-        let dummy = graphics.create_image_static(
-            sierra::ImageInfo {
-                extent: sierra::ImageExtent::D2 {
-                    width: 1,
-                    height: 1,
-                },
-                format: sierra::Format::RGBA8Unorm,
-                levels: 1,
-                layers: 1,
-                samples: sierra::Samples1,
-                usage: sierra::ImageUsage::SAMPLED,
-            },
-            Layout::ShaderReadOnlyOptimal,
-            &[255u8, 255, 255, 255],
-            sierra::Format::RGBA8Unorm,
-            4,
-            1,
-        )?;
-
-        let dummy_texture = graphics.create_image_view(sierra::ImageViewInfo::new(dummy))?;
         let sampler = graphics.create_sampler(sierra::SamplerInfo::new())?;
 
         let meshes = graphics.create_buffer(sierra::BufferInfo {
@@ -153,7 +130,7 @@ impl DrawNode for EguiDraw {
             -2.0 * scale_factor / viewport.height as f32,
         ]);
 
-        res.update_egui_textures(encoder, cx.graphics);
+        res.update_egui_textures(encoder, cx.graphics)?;
 
         let updated =
             self.sampler_uniforms_set

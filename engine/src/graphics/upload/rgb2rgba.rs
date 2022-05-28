@@ -1,35 +1,36 @@
 use parking_lot::Mutex;
 use sierra::{
-    descriptors, ivec2, pipeline, AccessFlags, AspectFlags, Buffer, BufferView, BufferViewInfo,
-    ComputePipeline, ComputePipelineInfo, ComputeShader, DescriptorsAllocationError, Device,
-    Encoder, Extent3d, Format, Image, ImageCopy, ImageInfo, ImageMemoryBarrier, ImageUsage, Layout,
-    Offset3d, OutOfMemory, PipelineStageFlags, Samples::Samples1, ShaderModuleInfo, Subresource,
+    ivec2, AccessFlags, AspectFlags, Buffer, BufferView, BufferViewInfo, ComputePipeline,
+    ComputePipelineInfo, ComputeShader, Descriptors, DescriptorsAllocationError, Device, Encoder,
+    Extent3d, Format, Image, ImageCopy, ImageDescriptor, ImageInfo, ImageMemoryBarrier, ImageUsage,
+    Layout, Offset3d, OutOfMemory, PipelineInput, PipelineStageFlags, Samples::Samples1,
+    ShaderModuleInfo, ShaderRepr, Subresource,
 };
 
-#[sierra::shader_repr(std140)]
+#[derive(ShaderRepr)]
+#[sierra(std140)]
 struct OffsetStride {
     offset: ivec2,
     stride: u32,
 }
 
-#[descriptors(capacity = 32)]
+#[derive(Descriptors)]
+#[sierra(capacity = 32)]
 struct Rgb2RgbaDescriptors {
-    #[buffer(texel, uniform)]
-    #[stages(Compute)]
+    #[sierra(buffer(texel, uniform), compute)]
     pixels: BufferView,
 
-    #[image(storage, layout = const Layout::General)]
-    #[stages(Compute)]
-    image: Image,
+    #[sierra(image(storage), compute)]
+    image: ImageDescriptor<Image>,
 }
 
-#[pipeline]
+#[allow(unused)]
+#[derive(PipelineInput)]
 struct Rgb2RgbaPipeline {
-    #[set]
+    #[sierra(set)]
     set: Rgb2RgbaDescriptors,
 
-    #[push]
-    #[stages(Compute)]
+    #[sierra(push, compute)]
     offset_stride: OffsetStride,
 }
 
@@ -145,7 +146,10 @@ impl Rgb2RgbaUploader {
                 .update(
                     &Rgb2RgbaDescriptors {
                         pixels: buffer_view,
-                        image: staging_image.clone(),
+                        image: ImageDescriptor {
+                            image: staging_image.clone(),
+                            layout: Layout::General,
+                        },
                     },
                     device,
                     encoder,

@@ -39,28 +39,6 @@ pub struct ViewportData {
     pub scale_factor: f64,
 }
 
-pub struct Viewports {
-    array: Vec<ViewportData>,
-}
-
-impl Viewports {
-    const fn new() -> Self {
-        Viewports { array: Vec::new() }
-    }
-
-    pub fn get(&self, window: WindowId) -> Option<&ViewportData> {
-        self.array.iter().find(|data| data.window == window)
-    }
-
-    pub fn get_by_camera(&self, camera: EntityId) -> Option<&ViewportData> {
-        self.array.iter().find(|data| data.camera == camera)
-    }
-
-    fn get_mut(&mut self, window: WindowId) -> Option<&mut ViewportData> {
-        self.array.iter_mut().find(|data| data.window == window)
-    }
-}
-
 impl Viewport {
     /// Returns new viewport instance attached to specified camera.
     pub fn new(
@@ -69,6 +47,10 @@ impl Viewport {
         res: &mut Res,
         graphics: &Graphics,
     ) -> eyre::Result<Self> {
+        if res.get::<ViewportData>().is_some() {
+            return Err(eyre::eyre!("Only one viewport per `Res` is supported"));
+        }
+
         let mut surface = graphics.create_surface(window)?;
         let mut swapchain = graphics.create_swapchain(&mut surface)?;
         swapchain.configure(
@@ -80,7 +62,7 @@ impl Viewport {
         let size = window.inner_size();
         let scale_factor = window.scale_factor();
 
-        res.with(Viewports::new).array.push(ViewportData {
+        res.insert(ViewportData {
             camera,
             window: window.id(),
             size,
@@ -172,11 +154,7 @@ impl Funnel<Event> for Viewport {
                     camera.set_aspect(aspect);
                 }
 
-                res.get_mut::<Viewports>()
-                    .unwrap()
-                    .get_mut(self.window)
-                    .unwrap()
-                    .size = size;
+                res.get_mut::<ViewportData>().unwrap().size = size;
             }
             Event::WindowEvent {
                 event: WindowEvent::ScaleFactorChanged { scale_factor, .. },
@@ -184,11 +162,7 @@ impl Funnel<Event> for Viewport {
             } if window_id == self.window => {
                 self.scale_factor = scale_factor;
 
-                res.get_mut::<Viewports>()
-                    .unwrap()
-                    .get_mut(self.window)
-                    .unwrap()
-                    .scale_factor = scale_factor;
+                res.get_mut::<ViewportData>().unwrap().scale_factor = scale_factor;
             }
             Event::WindowEvent {
                 event: WindowEvent::Focused(focused),

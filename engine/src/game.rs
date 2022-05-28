@@ -452,6 +452,7 @@ where
             scope.reset();
 
             assets.cleanup();
+            world.maintain();
         }
     });
 }
@@ -629,6 +630,7 @@ where
                 .await;
 
                 assets.cleanup();
+                world.maintain();
             }
         })
         .unwrap()

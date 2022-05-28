@@ -549,7 +549,7 @@ fn topology_triangles() -> PrimitiveTopology {
 
 #[cfg(feature = "genmesh")]
 impl Mesh {
-    pub fn cube<V>(
+    pub fn cuboid<V>(
         usage: BufferUsage,
         cx: &mut Graphics,
         index_type: IndexType,
@@ -567,8 +567,9 @@ impl Mesh {
         )
     }
 
-    pub fn cube_pos(
+    pub fn cuboid_pos(
         extent: na::Vector3<f32>,
+        offset: na::Vector3<f32>,
         usage: BufferUsage,
         cx: &mut Graphics,
         index_type: IndexType,
@@ -576,14 +577,16 @@ impl Mesh {
         Self::from_generator_pos(
             &genmesh::generators::Cube::new(),
             extent,
+            offset,
             usage,
             cx,
             index_type,
         )
     }
 
-    pub fn cube_pos_norm(
+    pub fn cuboid_pos_norm(
         extent: na::Vector3<f32>,
+        offset: na::Vector3<f32>,
         usage: BufferUsage,
         cx: &mut Graphics,
         index_type: IndexType,
@@ -591,14 +594,16 @@ impl Mesh {
         Self::from_generator_pos_norm(
             &genmesh::generators::Cube::new(),
             extent,
+            offset,
             usage,
             cx,
             index_type,
         )
     }
 
-    pub fn cube_pos_norm_fixed_color<C>(
+    pub fn cuboid_pos_norm_fixed_color<C>(
         extent: na::Vector3<f32>,
+        offset: na::Vector3<f32>,
         usage: BufferUsage,
         cx: &mut Graphics,
         index_type: IndexType,
@@ -610,6 +615,7 @@ impl Mesh {
         Self::from_generator_pos_norm_fixed_color(
             &genmesh::generators::Cube::new(),
             extent,
+            offset,
             usage,
             cx,
             index_type,
@@ -620,6 +626,7 @@ impl Mesh {
     pub fn from_generator_pos<G>(
         generator: &G,
         extent: na::Vector3<f32>,
+        offset: na::Vector3<f32>,
         usage: BufferUsage,
         cx: &mut Graphics,
         index_type: IndexType,
@@ -629,13 +636,18 @@ impl Mesh {
             + genmesh::generators::IndexedPolygon<genmesh::Quad<usize>>,
     {
         Self::from_generator(generator, usage, cx, index_type, |v| {
-            Position3([v.pos.x * extent.x, v.pos.y * extent.y, v.pos.z * extent.z])
+            Position3([
+                v.pos.x.mul_add(extent.x, offset.x),
+                v.pos.y.mul_add(extent.y, offset.y),
+                v.pos.z.mul_add(extent.z, offset.z),
+            ])
         })
     }
 
     pub fn from_generator_pos_norm<G>(
         generator: &G,
         extent: na::Vector3<f32>,
+        offset: na::Vector3<f32>,
         usage: BufferUsage,
         cx: &mut Graphics,
         index_type: IndexType,
@@ -646,7 +658,11 @@ impl Mesh {
     {
         Self::from_generator(generator, usage, cx, index_type, |v| {
             V2(
-                Position3([v.pos.x * extent.x, v.pos.y * extent.y, v.pos.z * extent.z]),
+                Position3([
+                    v.pos.x.mul_add(extent.x, offset.x),
+                    v.pos.y.mul_add(extent.y, offset.y),
+                    v.pos.z.mul_add(extent.z, offset.z),
+                ]),
                 Normal3(v.normal.into()),
             )
         })
@@ -655,6 +671,7 @@ impl Mesh {
     pub fn from_generator_pos_norm_fixed_color<G, C>(
         generator: &G,
         extent: na::Vector3<f32>,
+        offset: na::Vector3<f32>,
         usage: BufferUsage,
         cx: &mut Graphics,
         index_type: IndexType,
@@ -667,8 +684,12 @@ impl Mesh {
     {
         Self::from_generator(generator, usage, cx, index_type, |v| {
             V3(
-                Position3([v.pos.x * extent.x, v.pos.y * extent.y, v.pos.z * extent.z]),
-                Normal3(v.pos.into()),
+                Position3([
+                    v.pos.x.mul_add(extent.x, offset.x),
+                    v.pos.y.mul_add(extent.y, offset.y),
+                    v.pos.z.mul_add(extent.z, offset.z),
+                ]),
+                Normal3(v.normal.into()),
                 color,
             )
         })

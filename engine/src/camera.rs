@@ -17,7 +17,7 @@ use crate::scene::Global3;
 
 #[cfg(feature = "3d")]
 /// Camera in 3 dimensions.
-#[derive(Debug)]
+#[derive(Clone, Debug)]
 pub struct Camera3 {
     kind: Kind,
 
@@ -37,7 +37,7 @@ pub struct Camera3 {
 }
 
 #[cfg(feature = "3d")]
-#[derive(Debug)]
+#[derive(Clone, Copy, Debug)]
 enum Kind {
     Perspective,
     Orthographic,
@@ -47,7 +47,7 @@ enum Kind {
 impl Default for Camera3 {
     #[inline]
     fn default() -> Self {
-        Camera3::perspective(1.0, std::f32::consts::FRAC_PI_4, 0.01, 100.0)
+        Camera3::perspective(1.0, std::f32::consts::FRAC_PI_2, 1.0, 100.0)
     }
 }
 
@@ -124,7 +124,8 @@ impl Camera3 {
         view: &na::Affine3<f32>,
         point: &na::Point3<f32>,
     ) -> na::Point3<f32> {
-        self.proj.transform_point(&view.transform_point(point))
+        self.proj
+            .transform_point(&view.inverse_transform_point(point))
     }
 
     /// Converts point in screen space into point in world space.
@@ -135,7 +136,7 @@ impl Camera3 {
         view: &na::Affine3<f32>,
         point: &na::Point3<f32>,
     ) -> na::Point3<f32> {
-        view.inverse_transform_point(&self.proj.inverse_transform_point(point))
+        view.transform_point(&self.proj.inverse_transform_point(point))
     }
 
     /// Converts point in screen space into ray in world space.
@@ -146,8 +147,8 @@ impl Camera3 {
         view: &na::Affine3<f32>,
         point: &na::Point2<f32>,
     ) -> parry3d::query::Ray {
-        let origin = self.screen_to_world(view, &na::Point3::new(point.x, point.x, 0.0));
-        let target = self.screen_to_world(view, &na::Point3::new(point.x, point.x, 1.0));
+        let origin = self.screen_to_world(view, &na::Point3::new(point.x, point.y, 0.0));
+        let target = self.screen_to_world(view, &na::Point3::new(point.x, point.y, 1.0));
         let dir = (target - origin).normalize();
 
         parry3d::query::Ray { origin, dir }

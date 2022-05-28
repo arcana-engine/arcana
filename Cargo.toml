@@ -2,10 +2,10 @@
 [workspace]
 members = [
     "engine",
-    # "engine-dyn",
     # "examples/blocks",
-    "examples/tanks/client",
-    "examples/tanks/server",
+    # "examples/tanks",
+    # "examples/tanks/client",
+    # "examples/tanks/server",
     # "examples/bunnymark",
     # "examples/gltf-test",
     # "examples/unfold"

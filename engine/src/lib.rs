@@ -77,14 +77,12 @@ cfg_if::cfg_if! {
 cfg_if::cfg_if! {
     if #[cfg(feature = "physics2d")] {
         pub mod physics2;
-        pub use {rapier2d, parry2d};
     }
 }
 
 cfg_if::cfg_if! {
     if #[cfg(feature = "physics3d")] {
         pub mod physics3;
-        pub use {rapier3d, parry3d};
     }
 }
 

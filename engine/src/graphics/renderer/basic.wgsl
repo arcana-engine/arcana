@@ -39,5 +39,6 @@ fn vs_main(
 
 [[stage(fragment)]]
 fn fs_main(in: VertexOutput) -> [[location(0)]] vec4<f32> {
-    return textureSample(albedo_texture, albedo_sampler, in.uv);
+    let albedo = textureSample(albedo_texture, albedo_sampler, in.uv);
+    return albedo * uniforms.albedo_factor;
 }

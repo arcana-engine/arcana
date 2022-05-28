@@ -110,6 +110,26 @@ impl Global2 {
     pub fn to_homogeneous(&self) -> na::Matrix4<f32> {
         self.iso.to_homogeneous().to_homogeneous()
     }
+
+    pub fn to_affine(&self) -> na::Affine2<f32> {
+        na::Affine2::from_matrix_unchecked(self.iso.to_homogeneous())
+    }
+}
+
+#[cfg(feature = "2d")]
+impl From<na::Point2<f32>> for Global2 {
+    fn from(point: na::Point2<f32>) -> Self {
+        Global2 {
+            iso: na::Isometry2::from(point),
+        }
+    }
+}
+
+#[cfg(feature = "2d")]
+impl From<na::Isometry2<f32>> for Global2 {
+    fn from(iso: na::Isometry2<f32>) -> Self {
+        Global2 { iso }
+    }
 }
 
 #[cfg(feature = "3d")]
@@ -213,6 +233,26 @@ impl Global3 {
 
     pub fn to_homogeneous(&self) -> na::Matrix4<f32> {
         self.iso.to_homogeneous()
+    }
+
+    pub fn to_affine(&self) -> na::Affine3<f32> {
+        na::Affine3::from_matrix_unchecked(self.iso.to_homogeneous())
+    }
+}
+
+#[cfg(feature = "3d")]
+impl From<na::Point3<f32>> for Global3 {
+    fn from(point: na::Point3<f32>) -> Self {
+        Global3 {
+            iso: na::Isometry3::from(point),
+        }
+    }
+}
+
+#[cfg(feature = "3d")]
+impl From<na::Isometry3<f32>> for Global3 {
+    fn from(iso: na::Isometry3<f32>) -> Self {
+        Global3 { iso }
     }
 }
 

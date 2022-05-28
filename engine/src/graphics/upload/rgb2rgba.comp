@@ -1,6 +1,6 @@
 #version 460
 
-layout(push_constant, std430) uniform PushConstants {
+layout(push_constant, std140) uniform PushConstants {
     layout(offset = 0) ivec2 offset;
     layout(offset = 8) uint stride;
 };

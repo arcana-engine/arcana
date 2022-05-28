@@ -25,22 +25,19 @@ use tanks::*;
 
 #[derive(Debug)]
 struct TankCommander {
-    forward_pressed: bool,
-    backward_pressed: bool,
-    left_pressed: bool,
-    right_pressed: bool,
-    fire_pressed: bool,
+    binder: SimpleKeyBinder<TankCommand>,
 }
 
 impl TankCommander {
     pub fn main() -> Self {
-        TankCommander {
-            forward_pressed: false,
-            backward_pressed: false,
-            left_pressed: false,
-            right_pressed: false,
-            fire_pressed: false,
-        }
+        let binder = SimpleKeyBinder::builder()
+            .on_switch_with(VirtualKeyCode::W, TankCommand::Drive, 1, -1)
+            .on_switch_with(VirtualKeyCode::S, TankCommand::Drive, -1, 1)
+            .on_switch_with(VirtualKeyCode::A, TankCommand::Rotate, -1, 1)
+            .on_switch_with(VirtualKeyCode::D, TankCommand::Rotate, 1, -1)
+            .on_press(VirtualKeyCode::Space, TankCommand::Fire)
+            .build();
+        TankCommander { binder }
     }
 }
 
@@ -49,68 +46,7 @@ impl EventTranslator for TankCommander {
 
     fn translate(&mut self, event: InputEvent) -> Option<TankCommand> {
         match event {
-            InputEvent::KeyboardInput(KeyboardInput {
-                state,
-                virtual_keycode: Some(key),
-                ..
-            }) => match key {
-                VirtualKeyCode::W => match state {
-                    ElementState::Pressed if !self.forward_pressed => {
-                        self.forward_pressed = true;
-                        Some(TankCommand::Drive(1))
-                    }
-                    ElementState::Released if self.forward_pressed => {
-                        self.forward_pressed = false;
-                        Some(TankCommand::Drive(-1))
-                    }
-                    _ => None,
-                },
-                VirtualKeyCode::S => match state {
-                    ElementState::Pressed if !self.backward_pressed => {
-                        self.backward_pressed = true;
-                        Some(TankCommand::Drive(-1))
-                    }
-                    ElementState::Released if self.backward_pressed => {
-                        self.backward_pressed = false;
-                        Some(TankCommand::Drive(1))
-                    }
-                    _ => None,
-                },
-                VirtualKeyCode::A => match state {
-                    ElementState::Pressed if !self.left_pressed => {
-                        self.left_pressed = true;
-                        Some(TankCommand::Rotate(-1))
-                    }
-                    ElementState::Released if self.left_pressed => {
-                        self.left_pressed = false;
-                        Some(TankCommand::Rotate(1))
-                    }
-                    _ => None,
-                },
-                VirtualKeyCode::D => match state {
-                    ElementState::Pressed if !self.right_pressed => {
-                        self.right_pressed = true;
-                        Some(TankCommand::Rotate(1))
-                    }
-                    ElementState::Released if self.right_pressed => {
-                        self.right_pressed = false;
-                        Some(TankCommand::Rotate(-1))
-                    }
-                    _ => None,
-                },
-                VirtualKeyCode::Space => match state {
-                    ElementState::Pressed if !self.fire_pressed => {
-                        self.fire_pressed = true;
-                        Some(TankCommand::Fire)
-                    }
-                    ElementState::Released if self.fire_pressed => {
-                        self.fire_pressed = false;
-                        None
-                    }
-                    _ => None,
-                },
-                _ => None,
-            },
+            InputEvent::KeyboardInput(input) => self.binder.handle_input(&input).copied(),
             _ => None,
         }
     }

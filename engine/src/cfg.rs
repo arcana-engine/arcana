@@ -4,8 +4,8 @@ use arcana_time::TimeSpan;
 
 const CONFIG_DEFAULT_NAME: &str = "Arcana.toml";
 
-#[derive(serde::Deserialize)]
 #[cfg(feature = "asset-pipeline")]
+#[derive(Debug, serde::Serialize, serde::Deserialize)]
 pub struct TreasuryConfig {
     pub base: Box<Path>,
 
@@ -20,7 +20,7 @@ pub struct TreasuryConfig {
 }
 
 #[allow(unused)]
-#[derive(serde::Deserialize)]
+#[derive(Debug, serde::Serialize, serde::Deserialize)]
 pub struct Config {
     #[cfg(feature = "asset-pipeline")]
     #[serde(default)]

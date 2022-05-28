@@ -1,9 +1,8 @@
 use edict::entity::EntityId;
 use sierra::{
-    descriptors, graphics_pipeline_desc, mat4, pipeline, shader_repr, vec4, DepthTest,
-    DescriptorsInput, DynamicGraphicsPipeline, Encoder, Extent2d, Format, FragmentShader,
-    ImageView, PipelineInput, RenderPassEncoder, Sampler, ShaderModuleInfo, VertexInputAttribute,
-    VertexInputBinding, VertexInputRate, VertexShader,
+    graphics_pipeline_desc, mat4, vec4, DepthTest, Descriptors, DynamicGraphicsPipeline, Encoder,
+    Extent2d, FragmentShader, ImageView, PipelineInput, RenderPassEncoder, Sampler,
+    ShaderModuleInfo, ShaderRepr, VertexShader,
 };
 
 use super::{mat4_na_to_sierra, DrawNode, RendererContext};
@@ -12,8 +11,8 @@ use crate::{
     graphics::{
         material::Material,
         mesh::Mesh,
-        vertex::{Normal3, Position3, VertexType as _, UV},
-        Graphics, Scale,
+        vertex::{Normal3, Position3, VertexType as _, UV, V3},
+        vertex_layouts_for_pipeline, Graphics, Scale,
     },
     scene::Global3,
 };
@@ -22,8 +21,8 @@ pub struct BasicDraw {
     pipeline: DynamicGraphicsPipeline,
 }
 
-#[shader_repr]
-#[derive(Clone, Copy)]
+#[derive(Clone, Copy, ShaderRepr)]
+#[sierra(std140)]
 struct Uniforms {
     albedo_factor: vec4,
     camera_view: mat4,
@@ -45,29 +44,27 @@ impl Default for Uniforms {
     }
 }
 
-#[descriptors]
+#[derive(Descriptors)]
 struct BasicDescriptors {
-    #[sampler]
-    #[stages(Fragment)]
+    #[sierra(sampler, fragment)]
     sampler: Sampler,
 
-    #[image(sampled)]
-    #[stages(Fragment)]
+    #[sierra(image(sampled), fragment)]
     albedo: ImageView,
 
-    #[uniform]
-    #[stages(Vertex, Fragment)]
+    #[sierra(uniform, stages(vertex, fragment))]
     uniforms: Uniforms,
 }
 
-#[pipeline]
+#[allow(unused)]
+#[derive(PipelineInput)]
 struct BasicPipeline {
-    #[set]
+    #[sierra(set)]
     set: BasicDescriptors,
 }
 
 struct BasicRenderable {
-    descriptors: <BasicDescriptors as DescriptorsInput>::Instance,
+    descriptors: <BasicDescriptors as Descriptors>::Instance,
 }
 
 impl DrawNode for BasicDraw {
@@ -103,6 +100,10 @@ impl DrawNode for BasicDraw {
             new_entities.push(e);
         }
 
+        if !new_entities.is_empty() {
+            tracing::info!("{} new meshes", new_entities.len());
+        }
+
         for e in new_entities {
             cx.world
                 .try_insert(
@@ -124,6 +125,7 @@ impl DrawNode for BasicDraw {
             Option<&Scale>,
         )>();
 
+        // let mut drawn_count = 0;
         for (_, (mesh, mat, global, renderable, scale)) in query {
             uniforms.albedo_factor = mat.albedo_factor.into();
 
@@ -150,23 +152,23 @@ impl DrawNode for BasicDraw {
 
                 render_pass.bind_graphics_descriptors(&self.pipeline_layout, updated);
 
-                let drawn = mesh.draw(
-                    0..1,
-                    &[Position3::layout(), Normal3::layout(), UV::layout()],
-                    render_pass,
-                );
+                let drawn = mesh.draw(0..1, &[V3::<Position3, Normal3, UV>::layout()], render_pass);
                 if !drawn {
                     tracing::warn!("Mesh is not drawn");
+                } else {
+                    // drawn_count += 1;
                 }
             }
         }
+
+        // tracing::info!("Meshes drawn {}", drawn_count);
 
         Ok(())
     }
 }
 
 impl BasicDraw {
-    pub fn new(graphics: &mut Graphics) -> eyre::Result<Self> {
+    pub fn new(graphics: &Graphics) -> eyre::Result<Self> {
         let shader_module = graphics.create_shader_module(ShaderModuleInfo::wgsl(
             std::include_bytes!("basic.wgsl")
                 .to_vec()
@@ -175,27 +177,13 @@ impl BasicDraw {
 
         let pipeline_layout = BasicPipeline::layout(graphics)?;
 
+        let (vertex_bindings, vertex_attributes) =
+            vertex_layouts_for_pipeline(&[V3::<Position3, Normal3, UV>::layout()]);
+
         Ok(BasicDraw {
             pipeline: DynamicGraphicsPipeline::new(graphics_pipeline_desc! {
-                vertex_bindings: vec![
-                    VertexInputBinding {
-                        rate: VertexInputRate::Vertex,
-                        stride: 12,
-                    },
-                    VertexInputBinding {
-                        rate: VertexInputRate::Vertex,
-                        stride: 12,
-                    },
-                    VertexInputBinding {
-                        rate: VertexInputRate::Vertex,
-                        stride: 8,
-                    },
-                ],
-                vertex_attributes: vec![
-                    VertexInputAttribute { location: 0, format: Format::RGB32Sfloat, binding: 0, offset: 0 },
-                    VertexInputAttribute { location: 1, format: Format::RGB32Sfloat, binding: 1, offset: 0 },
-                    VertexInputAttribute { location: 2, format: Format::RG32Sfloat, binding: 2, offset: 0 },
-                ],
+                vertex_bindings,
+                vertex_attributes,
                 vertex_shader: VertexShader::new(shader_module.clone(), "vs_main"),
                 fragment_shader: Some(FragmentShader::new(shader_module, "fs_main")),
                 layout: pipeline_layout.raw().clone(),

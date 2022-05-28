@@ -55,6 +55,12 @@ macro_rules! define_vertex_attribute {
             const FORMAT: $crate::sierra::Format = <$ft as $crate::graphics::FormatElement>::FORMAT;
             const SEMANTICS: $crate::graphics::Semantics = $semantics;
         }
+
+        impl<T> From<T> for $va where T: Into<$ft> {
+            fn from(t: T) -> $va {
+                $va(t.into())
+            }
+        }
     )*};
 }
 
