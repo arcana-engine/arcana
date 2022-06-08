@@ -54,7 +54,7 @@ raw-window-handle = { version = "0.4", optional = true }
 # Graphics
 # sierra = { version = "0.4", features = ["serde-1"], optional = true }
 # sierra = { version = "0.4", features = ["serde-1"], optional = true, git = "https://github.com/arcana-engine/sierra" }
-sierra = { version = "0.5", features = ["serde-1"], optional = true, path = "../../sierra" }
+sierra = { version = "0.5", features = ["serde-1", "glsl", "wgsl"], optional = true, path = "../../sierra" }
 
 # Gui
 # sigils = { path = "../sigils", optional = true }

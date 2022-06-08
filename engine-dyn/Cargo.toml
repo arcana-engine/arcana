@@ -1,0 +1,51 @@
+[package]
+name = "arcana"
+version = "0.1.0"
+edition = "2018"
+authors = ["Zakarum <zakarumych@ya.ru>"]
+license = "MIT OR Apache-2.0"
+documentation = "https://docs.rs/arcana"
+homepage = "https://github.com/arcana-engine/arcana"
+repository = "https://github.com/arcana-engine/arcana"
+
+[lib]
+crate-type = ["dylib"]
+
+[features]
+# Enables 2d utility features including 2d scene, sprites etc
+2d = ["arcana/2d"]
+
+# Enables 3d utility features including 3d scene
+3d = ["arcana/3d"]
+
+# Enables rapier physics of specific dementionality
+physics2d = ["arcana/physics2d"]
+physics3d = ["arcana/physics3d"]
+
+# Enables windowing and user input
+visible = ["arcana/visible"]
+
+# Enable graphics out-of-the-box
+graphics = ["arcana/graphics"]
+
+# Enables client side of the netcode
+client = ["arcana/client"]
+
+# Enables server side of the netcode
+server = ["arcana/server"]
+
+# Enables EGUI integration
+with-egui = ["arcana/with-egui"]
+
+# Enables asset pipeline
+asset-pipeline = ["arcana/asset-pipeline"]
+
+# By default arcana enables windowing, input and rendering.
+default = ["graphics", "asset-pipeline"]
+
+
+
+genmesh = ["arcana/genmesh"]
+
+[dependencies]
+arcana = { path = "../engine", default-features = false }

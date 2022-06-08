@@ -2,9 +2,9 @@ use parking_lot::Mutex;
 use sierra::{
     ivec2, AccessFlags, AspectFlags, Buffer, BufferView, BufferViewInfo, ComputePipeline,
     ComputePipelineInfo, ComputeShader, Descriptors, DescriptorsAllocationError, Device, Encoder,
-    Extent3d, Format, Image, ImageCopy, ImageDescriptor, ImageInfo, ImageMemoryBarrier, ImageUsage,
-    Layout, Offset3d, OutOfMemory, PipelineInput, PipelineStageFlags, Samples::Samples1,
-    ShaderModuleInfo, ShaderRepr, Subresource,
+    Extent3d, Format, Image, ImageCopy, ImageInfo, ImageMemoryBarrier, ImageUsage, Layout,
+    Offset3d, OutOfMemory, PipelineInput, PipelineStageFlags, Samples::Samples1, ShaderModuleInfo,
+    ShaderRepr, Subresource,
 };
 
 #[derive(ShaderRepr)]
@@ -17,11 +17,11 @@ struct OffsetStride {
 #[derive(Descriptors)]
 #[sierra(capacity = 32)]
 struct Rgb2RgbaDescriptors {
-    #[sierra(buffer(texel, uniform), compute)]
+    #[sierra(buffer(texel = rgba8unorm, uniform), compute)]
     pixels: BufferView,
 
-    #[sierra(image(storage), compute)]
-    image: ImageDescriptor<Image>,
+    #[sierra(image(storage, layout = General), compute)]
+    image: Image,
 }
 
 #[allow(unused)]
@@ -146,10 +146,7 @@ impl Rgb2RgbaUploader {
                 .update(
                     &Rgb2RgbaDescriptors {
                         pixels: buffer_view,
-                        image: ImageDescriptor {
-                            image: staging_image.clone(),
-                            layout: Layout::General,
-                        },
+                        image: staging_image.clone(),
                     },
                     device,
                     encoder,
