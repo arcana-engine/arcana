@@ -86,7 +86,7 @@ genmesh = { version = "0.6", optional = true }
 # Physics
 parry2d = { version = "0.7", optional = true }
 parry3d = { version = "0.7", optional = true }
-rapier2d = { version = "0.11", optional = true }
+rapier2d = { version = "0.13", optional = true }
 rapier3d = { version = "0.11", optional = true }
 
 # Error Handling
