@@ -57,7 +57,7 @@ sierra = { version = "0.6", features = ["serde-1", "glsl", "wgsl", "tracing"], o
 
 # Gui
 # sigils = { path = "../sigils", optional = true }
-egui = { version = "0.17", features = ["convert_bytemuck"], optional = true }
+egui = { version = "0.18", features = ["convert_bytemuck"], optional = true }
 egui-winit = { version = "0.17", optional = true }
 
 # Colors
