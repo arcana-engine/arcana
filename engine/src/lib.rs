@@ -19,6 +19,7 @@ pub mod cfg;
 pub mod clocks;
 pub mod command;
 pub mod debug;
+pub mod direction;
 pub mod fps;
 pub mod game;
 pub mod lifespan;
@@ -31,7 +32,7 @@ pub mod task;
 pub mod unfold;
 
 // Reexport crates used in public API.
-pub use {bincode, edict, eyre, na, palette, scoped_arena, tracing};
+pub use {bincode, bytemuck, edict, eyre, na, palette, scoped_arena, tracing};
 
 cfg_if::cfg_if! {
     if #[cfg(all(feature = "with-egui", feature = "graphics"))] {
@@ -134,3 +135,6 @@ where
 {
     *v == T::default()
 }
+
+#[inline]
+pub const fn assert_pod<T: bytemuck::Pod>() {}

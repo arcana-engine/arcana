@@ -39,6 +39,15 @@ pub struct ViewportData {
     pub scale_factor: f64,
 }
 
+impl ViewportData {
+    /// Converts viewport coordinates to screen space.
+    pub fn viewport_to_screen(&self, xy: [f32; 2]) -> [f32; 2] {
+        let x = (xy[0] / self.size.width as f32 * 2.0) - 1.0;
+        let y = 1.0 - (xy[1] / self.size.height as f32 * 2.0);
+        [x, y]
+    }
+}
+
 impl Viewport {
     /// Returns new viewport instance attached to specified camera.
     pub fn new(
@@ -104,6 +113,10 @@ impl Viewport {
         self.size
     }
 
+    pub fn aspect(&self) -> f32 {
+        self.size.width as f32 / self.size.height as f32
+    }
+
     pub fn scale_factor(&self) -> f64 {
         self.scale_factor
     }
@@ -142,7 +155,7 @@ impl Funnel<Event> for Viewport {
                 self.size = size;
 
                 #[cfg(any(feature = "2d", feature = "3d"))]
-                let aspect = size.width as f32 / size.height as f32;
+                let aspect = self.aspect();
 
                 #[cfg(feature = "2d")]
                 if let Ok(camera) = world.query_one_mut::<&mut Camera2>(&self.camera) {

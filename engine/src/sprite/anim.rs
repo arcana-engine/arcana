@@ -134,14 +134,14 @@ where
             sprite.src = Rect {
                 left: (frame.src.x as f32) / frame.src_size.w as f32,
                 right: (frame.src.x as f32 + frame.src.w as f32) / frame.src_size.w as f32,
-                top: (frame.src.y as f32) / frame.src_size.h as f32,
-                bottom: (frame.src.y as f32 + frame.src.h as f32) / frame.src_size.h as f32,
+                top: (frame.src.y as f32 + frame.src.h as f32) / frame.src_size.h as f32,
+                bottom: (frame.src.y as f32) / frame.src_size.h as f32,
             };
             sprite.tex = Rect {
                 left: (frame.tex.x as f32) / anim.tex_size.w as f32,
                 right: (frame.tex.x as f32 + frame.tex.w as f32) / anim.tex_size.w as f32,
-                top: (frame.tex.y as f32) / anim.tex_size.h as f32,
-                bottom: (frame.tex.y as f32 + frame.tex.h as f32) / anim.tex_size.h as f32,
+                top: (frame.tex.y as f32 + frame.tex.h as f32) / anim.tex_size.h as f32,
+                bottom: (frame.tex.y as f32) / anim.tex_size.h as f32,
             };
         }
     }

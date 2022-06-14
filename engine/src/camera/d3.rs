@@ -1,21 +1,16 @@
-//! Provides types and functions to deal with various types of cameras.
-
-#[cfg(feature = "3d")]
 use crate::{
     command::CommandQueue,
     system::{System, SystemContext},
 };
 
-#[cfg(all(feature = "3d", feature = "visible"))]
+#[cfg(feature = "visible")]
 use crate::{
     control::{EventTranslator, InputEvent},
     event::{ElementState, KeyboardInput, VirtualKeyCode},
 };
 
-#[cfg(feature = "3d")]
 use crate::scene::Global3;
 
-#[cfg(feature = "3d")]
 /// Camera in 3 dimensions.
 #[derive(Clone, Debug)]
 pub struct Camera3 {
@@ -36,14 +31,12 @@ pub struct Camera3 {
     proj: na::Projective3<f32>,
 }
 
-#[cfg(feature = "3d")]
 #[derive(Clone, Copy, Debug)]
 enum Kind {
     Perspective,
     Orthographic,
 }
 
-#[cfg(feature = "3d")]
 impl Default for Camera3 {
     #[inline]
     fn default() -> Self {
@@ -51,7 +44,6 @@ impl Default for Camera3 {
     }
 }
 
-#[cfg(feature = "3d")]
 impl Camera3 {
     /// Constructs perspective [`Camera3`].
     pub fn perspective(aspect: f32, fovy: f32, znear: f32, zfar: f32) -> Self {
@@ -172,14 +164,13 @@ impl Camera3 {
     }
 }
 
-#[cfg(feature = "3d")]
 #[derive(Debug)]
 pub enum FreeCamera3Command {
     RotateTo(na::UnitQuaternion<f32>),
     Move(na::Vector3<f32>),
 }
 
-#[cfg(all(feature = "visible", feature = "3d"))]
+#[cfg(feature = "visible")]
 pub struct FreeCamera3Controller {
     pitch: f32,
     yaw: f32,
@@ -192,7 +183,7 @@ pub struct FreeCamera3Controller {
     down_pressed: bool,
 }
 
-#[cfg(all(feature = "visible", feature = "3d"))]
+#[cfg(feature = "visible")]
 impl Default for FreeCamera3Controller {
     #[inline]
     fn default() -> Self {
@@ -200,7 +191,7 @@ impl Default for FreeCamera3Controller {
     }
 }
 
-#[cfg(all(feature = "visible", feature = "3d"))]
+#[cfg(feature = "visible")]
 impl FreeCamera3Controller {
     #[inline]
     pub fn new() -> Self {
@@ -218,7 +209,7 @@ impl FreeCamera3Controller {
     }
 }
 
-#[cfg(all(feature = "visible", feature = "3d"))]
+#[cfg(feature = "visible")]
 impl EventTranslator for FreeCamera3Controller {
     type Command = FreeCamera3Command;
 
@@ -279,13 +270,11 @@ impl EventTranslator for FreeCamera3Controller {
     }
 }
 
-#[cfg(feature = "3d")]
 pub struct FreeCamera3 {
     speed: f32,
     mov: na::Vector3<f32>,
 }
 
-#[cfg(feature = "3d")]
 impl FreeCamera3 {
     pub fn new(speed: f32) -> Self {
         FreeCamera3 {
@@ -295,10 +284,8 @@ impl FreeCamera3 {
     }
 }
 
-#[cfg(feature = "3d")]
 pub struct FreeCamera3System;
 
-#[cfg(feature = "3d")]
 impl System for FreeCamera3System {
     fn name(&self) -> &str {
         "FreeCamera3System"
@@ -324,79 +311,5 @@ impl System for FreeCamera3System {
             global.iso.translation.vector +=
                 global.iso.rotation * camera.mov * cx.clock.delta.as_secs_f32();
         }
-    }
-}
-
-#[cfg(feature = "2d")]
-/// Camera in 2 dimensions.
-#[derive(Debug)]
-pub struct Camera2 {
-    /// Viewport aspect ratio.
-    aspect: f32,
-
-    /// Vertical scale
-    scaley: f32,
-
-    affine: na::Affine2<f32>,
-}
-
-#[cfg(feature = "2d")]
-impl Default for Camera2 {
-    #[inline]
-    fn default() -> Self {
-        Camera2::new(1.0, 1.0)
-    }
-}
-
-#[cfg(feature = "2d")]
-impl Camera2 {
-    pub fn new(aspect: f32, scaley: f32) -> Self {
-        let affine = na::Affine2::from_matrix_unchecked(na::Matrix3::new(
-            aspect * scaley,
-            0.0,
-            0.0,
-            0.0,
-            scaley,
-            0.0,
-            0.0,
-            0.0,
-            1.0,
-        ));
-
-        Camera2 {
-            aspect,
-            scaley,
-            affine,
-        }
-    }
-
-    pub fn affine(&self) -> &na::Affine2<f32> {
-        &self.affine
-    }
-
-    /// Update aspect ration of the camera.
-    pub fn set_aspect(&mut self, aspect: f32) {
-        self.aspect = aspect;
-        self.update_affine();
-    }
-
-    /// Update aspect ration of the camera.
-    pub fn set_scaley(&mut self, scaley: f32) {
-        self.scaley = scaley;
-        self.update_affine();
-    }
-
-    pub fn update_affine(&mut self) {
-        self.affine = na::Affine2::from_matrix_unchecked(na::Matrix3::new(
-            self.scaley / self.aspect,
-            0.0,
-            0.0,
-            0.0,
-            self.scaley,
-            0.0,
-            0.0,
-            0.0,
-            1.0,
-        ));
     }
 }

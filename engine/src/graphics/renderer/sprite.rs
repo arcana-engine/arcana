@@ -52,6 +52,7 @@ struct SpriteDescriptors {
 
 #[derive(PipelineInput)]
 struct SpritePipeline {
+    #[allow(unused)]
     #[sierra(set)]
     set: SpriteDescriptors,
 }
@@ -232,8 +233,8 @@ impl DrawNode for SpriteDraw {
                         pos: Rect {
                             left: i as f32 * map.cell_size - hc,
                             right: i as f32 * map.cell_size + hc,
-                            top: j as f32 * map.cell_size - hc,
-                            bottom: j as f32 * map.cell_size + hc,
+                            top: j as f32 * map.cell_size + hc,
+                            bottom: j as f32 * map.cell_size - hc,
                         },
                         uv: tile.uv,
                         layer: self.layer_range.end,

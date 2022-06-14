@@ -79,6 +79,15 @@ pub trait InputController: Send + 'static {
     fn control(&mut self, event: InputEvent, res: &mut Res, world: &mut World) -> ControlResult;
 }
 
+impl<F> InputController for F
+where
+    F: FnMut(InputEvent, &mut Res, &mut World) -> ControlResult + Send + 'static,
+{
+    fn control(&mut self, event: InputEvent, res: &mut Res, world: &mut World) -> ControlResult {
+        (*self)(event, res, world)
+    }
+}
+
 /// Collection of controllers.
 #[derive(Default)]
 pub struct Control {

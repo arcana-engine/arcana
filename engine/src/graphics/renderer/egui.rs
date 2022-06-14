@@ -42,9 +42,11 @@ struct SamplerUniforms {
 #[derive(PipelineInput)]
 struct EguiPipeline {
     #[sierra(set)]
+    #[allow(unused)]
     sampler_uniforms: SamplerUniforms,
 
     #[sierra(set)]
+    #[allow(unused)]
     texture: TextureDescriptor,
 }
 

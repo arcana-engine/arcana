@@ -1,8 +1,8 @@
 use egui::{AlphaImage, ClippedMesh, ColorImage, Context, ImageData, TextureId, TexturesDelta};
 use hashbrown::hash_map::{Entry, HashMap};
 use sierra::{
-    AccessFlags, ComponentMapping, Encoder, Extent2d, Extent3d, ImageInfo, ImageView,
-    ImageViewInfo, Offset3d, OutOfMemory, SubresourceLayers,
+    AccessFlags, Encoder, Extent2d, Extent3d, ImageInfo, ImageView, ImageViewInfo, Offset3d,
+    OutOfMemory, SubresourceLayers,
 };
 use winit::{event::WindowEvent, window::Window};
 

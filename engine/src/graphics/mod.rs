@@ -41,6 +41,33 @@ macro_rules! vertex_location {
 macro_rules! define_vertex_attribute {
     ($(
         $(#[$meta:meta])*
+        $vis:vis struct $va:ident as $semantics:literal ($fvis:vis $ft:ty);
+    )*) => {$(
+        $(#[$meta])*
+        #[derive(Clone, Copy, Debug, Default, PartialEq, PartialOrd)]
+        #[repr(transparent)]
+        $vis struct $va($fvis $ft);
+
+        const _: () = $crate::assert_pod::<$ft>();
+
+        unsafe impl $crate::bytemuck::Zeroable for $va {}
+        unsafe impl $crate::bytemuck::Pod for $va {}
+
+        impl $crate::graphics::VertexAttribute for $va {
+            const FORMAT: $crate::sierra::Format = <$ft as $crate::graphics::FormatElement>::FORMAT;
+            const SEMANTICS: $crate::graphics::Semantics = $crate::graphics::Semantics::new($semantics);
+        }
+
+        impl<T> From<T> for $va where T: Into<$ft> {
+            #[inline]
+            fn from(t: T) -> $va {
+                $va(t.into())
+            }
+        }
+    )*};
+
+    ($(
+        $(#[$meta:meta])*
         $vis:vis struct $va:ident as $semantics:tt ($fvis:vis $ft:ty);
     )*) => {$(
         $(#[$meta])*
@@ -48,8 +75,10 @@ macro_rules! define_vertex_attribute {
         #[repr(transparent)]
         $vis struct $va($fvis $ft);
 
-        unsafe impl bytemuck::Zeroable for $va {}
-        unsafe impl bytemuck::Pod for $va {}
+        const _: () = $crate::assert_pod::<$ft>();
+
+        unsafe impl $crate::bytemuck::Zeroable for $va {}
+        unsafe impl $crate::bytemuck::Pod for $va {}
 
         impl $crate::graphics::VertexAttribute for $va {
             const FORMAT: $crate::sierra::Format = <$ft as $crate::graphics::FormatElement>::FORMAT;
@@ -57,6 +86,7 @@ macro_rules! define_vertex_attribute {
         }
 
         impl<T> From<T> for $va where T: Into<$ft> {
+            #[inline]
             fn from(t: T) -> $va {
                 $va(t.into())
             }
@@ -80,14 +110,18 @@ macro_rules! define_vertex_type {
             $( $van: $vat, )*
         }
 
-        unsafe impl bytemuck::Zeroable for $vt {}
-        unsafe impl bytemuck::Pod for $vt {}
+        $(
+            const _: () = $crate::assert_pod::<$vat>();
+        )*
+
+        unsafe impl $crate::bytemuck::Zeroable for $vt {}
+        unsafe impl $crate::bytemuck::Pod for $vt {}
 
         impl $crate::graphics::VertexType for $vt {
             const LOCATIONS: &'static [$crate::graphics::VertexLocation] = {
                 let mut offset = 0;
                 $(
-                    let $van = $crate::vertex_location!(offset, $vat as $semantics );
+                    let $van = $crate::vertex_location!(offset, $vat $(as $semantics)? );
                 )*
                 &[$($van,)*]
             };
@@ -125,6 +159,8 @@ use sierra::{
     PresentOk, Queue, Semaphore, SingleQueueQuery, SubresourceLayers, Surface, SwapchainImage,
 };
 
+pub use sierra::VertexInputRate;
+
 use self::upload::Uploader;
 pub use self::{format::*, material::*, scale::*, texture::*, vertex::*};
 
@@ -156,6 +192,8 @@ impl Graphics {
                 sierra::Feature::SurfacePresentation,
                 sierra::Feature::ShaderSampledImageDynamicIndexing,
                 sierra::Feature::ShaderSampledImageNonUniformIndexing,
+                sierra::Feature::ShaderStorageImageDynamicIndexing,
+                sierra::Feature::ShaderStorageImageNonUniformIndexing,
                 sierra::Feature::RuntimeDescriptorArray,
                 sierra::Feature::ScalarBlockLayout,
             ],

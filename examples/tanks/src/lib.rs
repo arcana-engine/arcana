@@ -132,8 +132,8 @@ impl System for BulletSystem {
                         world: Rect {
                             left: -0.2,
                             right: 0.2,
-                            top: -0.2,
-                            bottom: 0.2,
+                            top: 0.2,
+                            bottom: -0.2,
                         },
                         src: Rect::ONE_QUAD,
                         tex: Rect::ONE_QUAD,
@@ -197,8 +197,8 @@ fn unfold_tank(
             world: Rect {
                 left: -hs.x,
                 right: hs.x,
-                top: -hs.y,
-                bottom: hs.y,
+                top: hs.y,
+                bottom: -hs.y,
             },
             src: Rect::ONE_QUAD,
             tex: Rect::ONE_QUAD,

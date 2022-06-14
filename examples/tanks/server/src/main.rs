@@ -10,9 +10,11 @@ use arcana::{
     edict::{entity::EntityId, world::World},
     evoke, na,
     palette::*,
-    physics2::{ContactQueue2, Physics2, PhysicsData2},
+    physics2::{
+        prelude::{RigidBodyBuilder, RigidBodyHandle},
+        ContactQueue2, Physics2, PhysicsData2,
+    },
     prelude::*,
-    rapier2d::prelude::{RigidBodyBuilder, RigidBodyHandle},
     tiles::{TileMap, TileSet},
 };
 use eyre::WrapErr;

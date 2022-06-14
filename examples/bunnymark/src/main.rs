@@ -24,8 +24,8 @@ impl Bunny {
                 world: Rect {
                     left: -0.015,
                     right: 0.015,
-                    top: -0.02,
-                    bottom: 0.02,
+                    top: 0.02,
+                    bottom: +0.02,
                 },
                 ..Sprite::default()
             },

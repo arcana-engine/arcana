@@ -55,8 +55,8 @@ impl Block {
                 world: Rect {
                     left: -0.005,
                     right: 0.005,
-                    top: -0.005,
-                    bottom: 0.005,
+                    top: 0.005,
+                    bottom: -0.005,
                 },
                 ..Sprite::default()
             },
