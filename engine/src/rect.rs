@@ -18,8 +18,8 @@ use crate::graphics::{Semantics, VertexAttribute};
 pub struct Rect<T = f32> {
     pub left: T,
     pub right: T,
-    pub top: T,
     pub bottom: T,
+    pub top: T,
 }
 
 #[cfg(feature = "graphics")]
@@ -265,6 +265,14 @@ impl<T> Rect<T>
 where
     T: Num + Copy,
 {
+    pub fn width(&self) -> T {
+        self.right - self.left
+    }
+
+    pub fn height(&self) -> T {
+        self.top - self.bottom
+    }
+
     pub fn relative_to(&self, rhs: &Rect<T>) -> Rect<T> {
         let x = |x| (x - rhs.left) / (rhs.right - rhs.left);
         let y = |y| (y - rhs.bottom) / (rhs.top - rhs.bottom);
