@@ -2,6 +2,9 @@ use std::path::{Path, PathBuf};
 
 use arcana_time::TimeSpan;
 
+#[cfg(feature = "visible")]
+use winit::dpi::PhysicalSize;
+
 const CONFIG_DEFAULT_NAME: &str = "Arcana.toml";
 
 #[cfg(feature = "asset-pipeline")]
@@ -20,6 +23,14 @@ pub struct TreasuryConfig {
 }
 
 #[allow(unused)]
+#[derive(Debug, Default, serde::Serialize, serde::Deserialize)]
+pub struct Game {
+    #[cfg(feature = "visible")]
+    #[serde(skip_serializing_if = "Option::is_none", default)]
+    pub window_size: Option<PhysicalSize<u32>>,
+}
+
+#[allow(unused)]
 #[derive(Debug, serde::Serialize, serde::Deserialize)]
 pub struct Config {
     #[cfg(feature = "asset-pipeline")]
@@ -34,6 +45,9 @@ pub struct Config {
 
     #[serde(default = "default_root")]
     pub root: Box<Path>,
+
+    #[serde(default)]
+    pub game: Game,
 }
 
 impl Config {
@@ -44,6 +58,7 @@ impl Config {
             teardown_timeout: default_teardown_timeout(),
             main_step: default_main_step(),
             root: root.into(),
+            game: Game::default(),
         }
     }
 

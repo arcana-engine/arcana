@@ -15,7 +15,10 @@ use evoke::client::ClientSystem;
 use evoke::server::ServerSystem;
 
 #[cfg(feature = "visible")]
-use winit::window::{Window, WindowBuilder};
+use winit::{
+    dpi::PhysicalSize,
+    window::{Window, WindowBuilder},
+};
 
 use crate::{
     assets::Assets,
@@ -75,11 +78,15 @@ impl std::ops::Deref for MainWindow {
 
 #[cfg(feature = "visible")]
 impl MainWindow {
-    fn new(event_loop: &Loop) -> eyre::Result<Self> {
+    fn new(event_loop: &Loop, size: Option<PhysicalSize<u32>>) -> eyre::Result<Self> {
+        let mut builder = WindowBuilder::new().with_title("Arcana Game");
+
+        if let Some(size) = size {
+            builder = builder.with_inner_size(size);
+        }
+
         Ok(MainWindow {
-            window: WindowBuilder::new()
-                .with_title("Arcana Game")
-                .build(event_loop)?,
+            window: builder.build(event_loop)?,
         })
     }
 }
@@ -217,8 +224,8 @@ where
         let mut world = World::new();
 
         // Open game window.
-        let window =
-            MainWindow::new(&event_loop).wrap_err_with(|| "Failed to initialize main window")?;
+        let window = MainWindow::new(&event_loop, cfg.game.window_size)
+            .wrap_err_with(|| "Failed to initialize main window")?;
 
         let camera = world.spawn(C::default());
 
