@@ -119,6 +119,15 @@ impl<T> Rect<T> {
             bottom: self.bottom,
         }
     }
+
+    pub fn map<U>(&self, mut f: impl FnMut(&T) -> U) -> Rect<U> {
+        Rect {
+            left: f(&self.left),
+            right: f(&self.right),
+            bottom: f(&self.bottom),
+            top: f(&self.top),
+        }
+    }
 }
 
 pub struct RectIter<T> {
