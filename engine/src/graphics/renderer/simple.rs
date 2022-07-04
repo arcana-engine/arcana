@@ -72,7 +72,7 @@ where
             cx.graphics.reset_fences(&mut [fence]);
         }
 
-        let camera = viewport.camera();
+        let camera = viewport.camera;
 
         let mut swapchain_image = viewport.acquire_image()?;
 

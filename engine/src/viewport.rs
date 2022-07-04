@@ -5,7 +5,7 @@ use crate::{
     resources::Res,
 };
 use edict::{entity::EntityId, world::World};
-use sierra::{Format, ImageUsage, PresentMode, Surface, SurfaceError, Swapchain, SwapchainImage};
+use sierra::{ImageUsage, PresentMode, Surface, SurfaceError, Swapchain, SwapchainImage};
 use winit::window::{Window, WindowId};
 
 use winit::dpi::PhysicalSize;
@@ -18,20 +18,18 @@ use crate::camera::Camera3;
 
 /// Viewport into the world.
 pub struct Viewport {
-    camera: EntityId,
-    window: WindowId,
     #[allow(unused)]
     surface: Surface,
     swapchain: Swapchain,
     needs_redraw: bool,
     focused: bool,
-    size: PhysicalSize<u32>,
-    scale_factor: f64,
     swapchain_suboptimal_counter: u32,
+    data: ViewportData,
 }
 
 const MAX_SUBOPTIMAL_SEQ: u32 = 5;
 
+#[derive(Clone, Copy, Debug)]
 pub struct ViewportData {
     pub camera: EntityId,
     pub window: WindowId,
@@ -39,7 +37,23 @@ pub struct ViewportData {
     pub scale_factor: f64,
 }
 
+impl std::ops::Deref for Viewport {
+    type Target = ViewportData;
+
+    fn deref(&self) -> &ViewportData {
+        &self.data
+    }
+}
+
 impl ViewportData {
+    /// Converts viewport coordinates to screen space.
+    pub fn viewport_to_pixel(&self, xy: [f32; 2]) -> [u32; 2] {
+        let x = xy[0].clamp(0.0, self.size.width as f32) as u32;
+        let y = xy[1].clamp(0.0, self.size.height as f32) as u32;
+        let y = self.size.height - y;
+        [x, y]
+    }
+
     /// Converts viewport coordinates to screen space.
     pub fn viewport_to_screen(&self, xy: [f32; 2]) -> [f32; 2] {
         let x = (xy[0] / self.size.width as f32 * 2.0) - 1.0;
@@ -62,41 +76,69 @@ impl Viewport {
 
         let mut surface = graphics.create_surface(window)?;
         let mut swapchain = graphics.create_swapchain(&mut surface)?;
-        swapchain.configure(
-            ImageUsage::COLOR_ATTACHMENT,
-            Format::BGRA8Srgb,
-            PresentMode::Fifo,
-        )?;
+
+        let format = swapchain
+            .capabilities()
+            .formats
+            .iter()
+            .filter(|format| {
+                format.is_color()
+                    && matches!(
+                        format.description().channels,
+                        sierra::Channels::RGBA
+                            | sierra::Channels::BGRA
+                            | sierra::Channels::RGB
+                            | sierra::Channels::BGR
+                    )
+            })
+            .max_by_key(|format| match format.description().channels {
+                sierra::Channels::RGBA | sierra::Channels::BGRA => 0,
+                sierra::Channels::BGR | sierra::Channels::RGB => 1,
+                _ => unreachable!(),
+            } + match format.description().ty {
+                sierra::Type::Srgb => 2,
+                sierra::Type::Sint => 0,
+                sierra::Type::Unorm => 1,
+                sierra::Type::Snorm => 1,
+                _ => 0,
+            } * 2);
+
+        match format {
+            None => {
+                return Err(eyre::eyre!(
+                    "Failed to find suitable format. Supported formats are {:?}",
+                    swapchain.capabilities().formats
+                ))
+            }
+            Some(format) => {
+                swapchain.configure(ImageUsage::COLOR_ATTACHMENT, *format, PresentMode::Fifo)?;
+            }
+        }
 
         let size = window.inner_size();
         let scale_factor = window.scale_factor();
 
-        res.insert(ViewportData {
+        let data = ViewportData {
             camera,
             window: window.id(),
             size,
             scale_factor,
-        });
+        };
+
+        res.insert(data);
 
         Ok(Viewport {
-            camera,
-            window: window.id(),
+            data,
             surface,
             swapchain,
             needs_redraw: true,
             focused: true,
-            size,
-            scale_factor,
             swapchain_suboptimal_counter: 0,
         })
     }
 
     pub fn set_camera(&mut self, camera: EntityId) {
-        self.camera = camera;
-    }
-
-    pub fn camera(&self) -> EntityId {
-        self.camera
+        self.data.camera = camera;
     }
 
     /// Checks if this viewport needs a redraw.
@@ -109,16 +151,8 @@ impl Viewport {
         self.focused
     }
 
-    pub fn size(&self) -> PhysicalSize<u32> {
-        self.size
-    }
-
     pub fn aspect(&self) -> f32 {
         self.size.width as f32 / self.size.height as f32
-    }
-
-    pub fn scale_factor(&self) -> f64 {
-        self.scale_factor
     }
 
     pub fn acquire_image(&mut self) -> Result<SwapchainImage, SurfaceError> {
@@ -152,7 +186,7 @@ impl Funnel<Event> for Viewport {
                 event: WindowEvent::Resized(size),
                 window_id,
             } if window_id == self.window => {
-                self.size = size;
+                self.data.size = size;
 
                 #[cfg(any(feature = "2d", feature = "3d"))]
                 let aspect = self.aspect();
@@ -173,7 +207,7 @@ impl Funnel<Event> for Viewport {
                 event: WindowEvent::ScaleFactorChanged { scale_factor, .. },
                 window_id,
             } if window_id == self.window => {
-                self.scale_factor = scale_factor;
+                self.data.scale_factor = scale_factor;
 
                 res.get_mut::<ViewportData>().unwrap().scale_factor = scale_factor;
             }
