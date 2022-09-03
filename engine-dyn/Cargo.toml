@@ -18,10 +18,6 @@ crate-type = ["dylib"]
 # Enables 3d utility features including 3d scene
 3d = ["arcana/3d"]
 
-# Enables rapier physics of specific dementionality
-physics2d = ["arcana/physics2d"]
-physics3d = ["arcana/physics3d"]
-
 # Enables windowing and user input
 visible = ["arcana/visible"]
 

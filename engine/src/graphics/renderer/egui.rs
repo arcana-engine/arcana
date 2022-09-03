@@ -5,10 +5,10 @@ use edict::entity::EntityId;
 use hashbrown::hash_map::{Entry, HashMap};
 use palette::LinSrgba;
 use sierra::{
-    align_up, graphics_pipeline_desc, vec2, AccessFlags, Buffer, BufferMemoryBarrier, Descriptors,
-    DynamicGraphicsPipeline, Encoder, Extent2d, FragmentShader, ImageView, IndexType,
-    PipelineInput, PipelineStageFlags, Rect2d, RenderPassEncoder, Sampler, ShaderModuleInfo,
-    ShaderRepr, State, VertexInputRate, VertexShader,
+    align_up, graphics_pipeline_desc, vec2, Access, Buffer, BufferMemoryBarrier, Descriptors,
+    DynamicGraphicsPipeline, Encoder, Extent2, FragmentShader, ImageView, IndexType, Offset2,
+    PipelineInput, PipelineStages, Rect, RenderPassEncoder, Sampler, ShaderModuleInfo, ShaderRepr,
+    State, VertexInputRate, VertexShader,
 };
 
 use super::{DrawNode, RendererContext};
@@ -16,7 +16,7 @@ use crate::{
     egui::EguiResource,
     graphics::{vertex_layouts_for_pipeline, Graphics, Position2, VertexLocation, VertexType, UV},
 };
-use egui::{ClippedMesh, TextureId};
+use egui::{epaint::Primitive, ClippedPrimitive, TextureId};
 
 #[derive(Clone, Copy, Default, ShaderRepr)]
 #[sierra(std140)]
@@ -118,7 +118,7 @@ impl DrawNode for EguiDraw {
         encoder: &mut Encoder<'a>,
         render_pass: &mut RenderPassEncoder<'_, 'b>,
         _camera: EntityId,
-        viewport: Extent2d,
+        viewport: Extent2,
     ) -> eyre::Result<()> {
         let res = match cx.res.get_mut::<EguiResource>() {
             None => return Ok(()),
@@ -143,16 +143,24 @@ impl DrawNode for EguiDraw {
 
         let mut buffer_offset = 0;
 
-        for ClippedMesh(rect, mesh) in res.meshes() {
-            render_pass.set_scissor(Rect2d {
-                offset: sierra::Offset2d {
-                    x: (rect.min.x * scale_factor) as i32,
-                    y: (rect.min.y * scale_factor) as i32,
-                },
-                extent: Extent2d {
-                    width: ((rect.max.x - rect.min.x) * scale_factor) as u32,
-                    height: ((rect.max.y - rect.min.y) * scale_factor) as u32,
-                },
+        for clipped_primitives in res.primitives() {
+            let (clip_rect, mesh) = match clipped_primitives {
+                ClippedPrimitive {
+                    clip_rect,
+                    primitive: Primitive::Mesh(mesh),
+                } => (clip_rect, mesh),
+                _ => continue,
+            };
+
+            render_pass.set_scissor(Rect {
+                offset: Offset2::new(
+                    (clip_rect.min.x * scale_factor) as i32,
+                    (clip_rect.min.y * scale_factor) as i32,
+                ),
+                extent: Extent2::new(
+                    ((clip_rect.max.x - clip_rect.min.x) * scale_factor) as u32,
+                    ((clip_rect.max.y - clip_rect.min.y) * scale_factor) as u32,
+                ),
             });
 
             let mut indices_offset = align_up(3, buffer_offset).unwrap();
@@ -179,15 +187,14 @@ impl DrawNode for EguiDraw {
 
                 if buffer_offset > 0 {
                     encoder.buffer_barriers(
-                        PipelineStageFlags::TRANSFER,
-                        PipelineStageFlags::VERTEX_INPUT,
+                        PipelineStages::TRANSFER,
+                        PipelineStages::VERTEX_INPUT,
                         &[BufferMemoryBarrier {
                             buffer: &self.meshes,
                             offset: 0,
                             size: buffer_offset,
-                            old_access: AccessFlags::TRANSFER_WRITE,
-                            new_access: AccessFlags::INDEX_READ
-                                | AccessFlags::VERTEX_ATTRIBUTE_READ,
+                            old_access: Access::TRANSFER_WRITE,
+                            new_access: Access::INDEX_READ | Access::VERTEX_ATTRIBUTE_READ,
                             family_transfer: None,
                         }],
                     );
@@ -229,14 +236,14 @@ impl DrawNode for EguiDraw {
         }
 
         encoder.buffer_barriers(
-            PipelineStageFlags::TRANSFER,
-            PipelineStageFlags::VERTEX_INPUT,
+            PipelineStages::TRANSFER,
+            PipelineStages::VERTEX_INPUT,
             &[BufferMemoryBarrier {
                 buffer: &self.meshes,
                 offset: 0,
                 size: buffer_offset,
-                old_access: AccessFlags::TRANSFER_WRITE,
-                new_access: AccessFlags::INDEX_READ | AccessFlags::VERTEX_ATTRIBUTE_READ,
+                old_access: Access::TRANSFER_WRITE,
+                new_access: Access::INDEX_READ | Access::VERTEX_ATTRIBUTE_READ,
                 family_transfer: None,
             }],
         );

@@ -10,7 +10,7 @@ path = "src/main.rs"
 [dependencies]
 serde = { version = "1.0", features = ["derive"] }
 arcana = { package = "arcana", path = "../engine-dyn", version = "0.1", features = ["with-egui", "2d", "3d", "graphics"] }
-egui = { version = "0.17", features = ["convert_bytemuck"], optional = true }
-egui-winit = { version = "0.17", optional = true }
+egui = { version = "0.19", optional = true }
+egui-winit = { version = "0.19", optional = true }
 blueprint = { path = "../../blueprint", version = "0.1" }
 egui-blueprint = { path = "../../egui-blueprint", version = "0.1" }

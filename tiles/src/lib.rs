@@ -1,3 +1,5 @@
+#![feature(allocator_api)]
+
 mod map;
 mod set;
 mod tile;

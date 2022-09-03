@@ -1,7 +1,9 @@
+use edict::prelude::Component;
+
 use crate::rect::Rect;
 
 /// Camera in 2 dimensions.
-#[derive(Debug)]
+#[derive(Debug, Component)]
 pub struct Camera2 {
     /// Viewport aspect ratio.
     aspect: f32,

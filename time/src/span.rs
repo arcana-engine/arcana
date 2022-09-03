@@ -15,7 +15,7 @@ use core::{
 ///
 /// `TimeSpan` can be displayed and parsed from string.
 /// `TimeSpan` is serializable with same string format for human-readable serializer.
-/// `TimeSpan` is serializable as number of microseconds for binary serializer.
+/// `TimeSpan` is serializable as number of nanoseconds for binary serializer.
 ///
 /// # Example
 ///

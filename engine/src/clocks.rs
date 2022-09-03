@@ -116,4 +116,8 @@ impl Clocks {
     pub fn time_stamp_to_instant(&self, timestamp: TimeStamp) -> Instant {
         self.start + Duration::from(timestamp.elapsed())
     }
+
+    pub fn now(&self) -> TimeStamp {
+        self.now
+    }
 }

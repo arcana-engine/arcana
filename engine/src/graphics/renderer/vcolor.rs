@@ -13,7 +13,7 @@ use {
     sierra::{
         descriptors, graphics_pipeline_desc, mat4, pass, pipeline, shader_repr, ClearColor,
         ClearDepth, DepthTest, DescriptorsInput, DynamicGraphicsPipeline, Fence, Format,
-        FragmentShader, Image, Layout, PipelineInput, PipelineStageFlags, ShaderModuleInfo,
+        FragmentShader, Image, Layout, PipelineInput, PipelineStages, ShaderModuleInfo,
         VertexInputAttribute, VertexInputBinding, VertexInputRate, VertexShader,
     },
 };
@@ -185,7 +185,7 @@ impl VcolorRenderer {
         let [wait, signal] = swapchain_image.wait_signal();
 
         cx.graphics.submit(
-            &mut [(PipelineStageFlags::BOTTOM_OF_PIPE, wait)],
+            &mut [(PipelineStages::BOTTOM_OF_PIPE, wait)],
             std::array::IntoIter::new([encoder.finish(), render_pass_encoder.finish()]),
             &mut [signal],
             Some(fence),

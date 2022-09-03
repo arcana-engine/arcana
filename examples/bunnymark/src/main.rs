@@ -25,7 +25,7 @@ impl Bunny {
                     left: -0.015,
                     right: 0.015,
                     top: 0.02,
-                    bottom: +0.02,
+                    bottom: 0.02,
                 },
                 ..Sprite::default()
             },

@@ -2,7 +2,6 @@ use crate::{
     event::{Event, WindowEvent},
     funnel::Funnel,
     graphics::Graphics,
-    resources::Res,
 };
 use edict::{entity::EntityId, world::World};
 use sierra::{ImageUsage, PresentMode, Surface, SurfaceError, Swapchain, SwapchainImage};
@@ -67,10 +66,10 @@ impl Viewport {
     pub fn new(
         camera: EntityId,
         window: &Window,
-        res: &mut Res,
+        world: &World,
         graphics: &Graphics,
     ) -> eyre::Result<Self> {
-        if res.get::<ViewportData>().is_some() {
+        if world.get_resource::<ViewportData>().is_some() {
             return Err(eyre::eyre!("Only one viewport per `Res` is supported"));
         }
 
@@ -125,7 +124,7 @@ impl Viewport {
             scale_factor,
         };
 
-        res.insert(data);
+        world.insert_resource(data);
 
         Ok(Viewport {
             data,
@@ -175,9 +174,8 @@ impl Viewport {
 }
 
 impl Funnel<Event> for Viewport {
-    fn filter(&mut self, res: &mut Res, world: &mut World, event: Event) -> Option<Event> {
-        let _ = &world;
-        let _ = &res;
+    fn filter(&mut self, world: &mut World, event: Event) -> Option<Event> {
+        _ = world;
         match event {
             Event::RedrawRequested(id) if id == self.window => {
                 self.needs_redraw = true;
@@ -192,16 +190,16 @@ impl Funnel<Event> for Viewport {
                 let aspect = self.aspect();
 
                 #[cfg(feature = "2d")]
-                if let Ok(camera) = world.query_one_mut::<&mut Camera2>(&self.camera) {
+                if let Ok(camera) = world.query_one::<&mut Camera2>(&self.camera) {
                     camera.set_aspect(aspect);
                 }
 
                 #[cfg(feature = "3d")]
-                if let Ok(camera) = world.query_one_mut::<&mut Camera3>(&self.camera) {
+                if let Ok(camera) = world.query_one::<&mut Camera3>(&self.camera) {
                     camera.set_aspect(aspect);
                 }
 
-                res.get_mut::<ViewportData>().unwrap().size = size;
+                world.get_resource_mut::<ViewportData>().unwrap().size = size;
             }
             Event::WindowEvent {
                 event: WindowEvent::ScaleFactorChanged { scale_factor, .. },
@@ -209,7 +207,10 @@ impl Funnel<Event> for Viewport {
             } if window_id == self.window => {
                 self.data.scale_factor = scale_factor;
 
-                res.get_mut::<ViewportData>().unwrap().scale_factor = scale_factor;
+                world
+                    .get_resource_mut::<ViewportData>()
+                    .unwrap()
+                    .scale_factor = scale_factor;
             }
             Event::WindowEvent {
                 event: WindowEvent::Focused(focused),

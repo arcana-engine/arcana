@@ -1,28 +1,30 @@
 cfg_if::cfg_if! {
     if #[cfg(feature = "graphics")] {
-        use goods::AssetField;
-        use crate::rect::Rect;
-        use crate::graphics::Texture;
+        use arcana::{
+            assets::AssetField,
+            rect::Rect,
+            graphics::Texture,
+        };
     }
 }
 
 cfg_if::cfg_if! {
-    if #[cfg(feature = "physics2d")] {
+    if #[cfg(feature = "physics")] {
         use hashbrown::HashMap;
         use ordered_float::OrderedFloat;
-        use parry2d::shape::SharedShape;
-        use crate::resources::Res;
+        use arcana_physics::physics2::shape::SharedShape;
+        use arcana::resources::Res;
     }
 }
 
-#[cfg(feature = "physics2d")]
+#[cfg(feature = "physics")]
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash, serde::Serialize, serde::Deserialize)]
 #[serde(rename_all = "snake_case")]
 pub enum ColliderKind {
     Wall,
 }
 
-#[cfg(feature = "physics2d")]
+#[cfg(feature = "physics")]
 impl ColliderKind {
     pub fn shared_shape(&self, size: f32, res: &mut Res) -> SharedShape {
         struct TileShapes(HashMap<(ColliderKind, OrderedFloat<f32>), SharedShape>);
@@ -46,7 +48,7 @@ impl ColliderKind {
     derive(serde::Serialize, serde::Deserialize)
 )]
 pub struct Tile {
-    #[cfg(feature = "physics2d")]
+    #[cfg(feature = "physics")]
     #[serde(default)]
     pub collider: Option<ColliderKind>,
 

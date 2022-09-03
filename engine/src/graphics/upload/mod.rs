@@ -3,9 +3,9 @@ use std::{convert::TryFrom, mem::size_of_val};
 use bytemuck::Pod;
 use scoped_arena::Scope;
 use sierra::{
-    AccessFlags, Buffer, BufferCopy, BufferImageCopy, BufferInfo, BufferUsage, Device, Encoder,
-    Extent3d, Format, Image, ImageMemoryBarrier, Layout, Offset3d, OutOfMemory, PipelineStageFlags,
-    Queue, SubresourceLayers,
+    Access, Buffer, BufferCopy, BufferImageCopy, BufferInfo, BufferUsage, Device, Encoder, Extent3,
+    Format, Image, ImageMemoryBarrier, Layout, Offset3, OutOfMemory, PipelineStages, Queue,
+    SubresourceLayers,
 };
 
 use super::UploadImage;
@@ -56,8 +56,8 @@ impl Uploader {
             staging,
             buffer: buffer.clone(),
             offset,
-            old_access: AccessFlags::all(),
-            new_access: AccessFlags::all(),
+            old_access: Access::all(),
+            new_access: Access::all(),
         });
 
         Ok(())
@@ -180,14 +180,14 @@ impl Uploader {
         )?;
 
         encoder.image_barriers(
-            PipelineStageFlags::TOP_OF_PIPE,
-            PipelineStageFlags::TRANSFER,
+            PipelineStages::TOP_OF_PIPE,
+            PipelineStages::TRANSFER,
             &[ImageMemoryBarrier {
                 image: upload.image,
                 old_layout: upload.old_layout,
                 new_layout: Layout::TransferDstOptimal,
                 old_access: upload.old_access,
-                new_access: AccessFlags::TRANSFER_WRITE,
+                new_access: Access::TRANSFER_WRITE,
                 family_transfer: None,
                 range: upload.layers.into(),
             }],
@@ -237,13 +237,13 @@ impl Uploader {
         }
 
         encoder.image_barriers(
-            PipelineStageFlags::TRANSFER,
-            PipelineStageFlags::ALL_COMMANDS,
+            PipelineStages::TRANSFER,
+            PipelineStages::ALL_COMMANDS,
             &[ImageMemoryBarrier {
                 image: upload.image,
                 old_layout: Some(Layout::TransferDstOptimal),
                 new_layout: upload.new_layout,
-                old_access: AccessFlags::TRANSFER_WRITE,
+                old_access: Access::TRANSFER_WRITE,
                 new_access: upload.new_access,
                 family_transfer: None,
                 range: upload.layers.into(),
@@ -268,8 +268,8 @@ impl Uploader {
         if !self.buffer_uploads.is_empty() {
             tracing::debug!("Uploading buffers");
 
-            let mut old_access = AccessFlags::empty();
-            let mut new_access = AccessFlags::empty();
+            let mut old_access = Access::empty();
+            let mut new_access = Access::empty();
 
             for upload in &self.buffer_uploads {
                 old_access |= upload.old_access;
@@ -277,10 +277,10 @@ impl Uploader {
             }
 
             encoder.memory_barrier(
-                PipelineStageFlags::ALL_COMMANDS,
+                PipelineStages::ALL_COMMANDS,
                 old_access,
-                PipelineStageFlags::TRANSFER,
-                AccessFlags::TRANSFER_WRITE,
+                PipelineStages::TRANSFER,
+                Access::TRANSFER_WRITE,
             );
 
             for upload in &self.buffer_uploads {
@@ -296,9 +296,9 @@ impl Uploader {
             }
 
             encoder.memory_barrier(
-                PipelineStageFlags::TRANSFER,
-                AccessFlags::TRANSFER_WRITE,
-                PipelineStageFlags::ALL_COMMANDS,
+                PipelineStages::TRANSFER,
+                Access::TRANSFER_WRITE,
+                PipelineStages::ALL_COMMANDS,
                 new_access,
             );
         }
@@ -314,7 +314,7 @@ impl Uploader {
                     old_layout: upload.old_layout,
                     new_layout: Layout::TransferDstOptimal,
                     old_access: upload.old_access,
-                    new_access: AccessFlags::TRANSFER_WRITE,
+                    new_access: Access::TRANSFER_WRITE,
                     family_transfer: None,
                     range: upload.layers.into(),
                 });
@@ -323,8 +323,8 @@ impl Uploader {
             let images_len = images.len();
 
             encoder.image_barriers(
-                PipelineStageFlags::TOP_OF_PIPE,
-                PipelineStageFlags::TRANSFER,
+                PipelineStages::TOP_OF_PIPE,
+                PipelineStages::TRANSFER,
                 images.leak(),
             );
 
@@ -347,7 +347,7 @@ impl Uploader {
                         self.rgb2rgba.upload_synchronized(
                             device,
                             &upload.image,
-                            Offset3d::ZERO,
+                            Offset3::zeros(),
                             upload.image.info().extent.into_3d(),
                             upload.staging.clone(),
                             upload.row_length,
@@ -359,7 +359,7 @@ impl Uploader {
                         self.rgb2rgba.upload_synchronized(
                             device,
                             &upload.image,
-                            Offset3d::ZERO,
+                            Offset3::zeros(),
                             upload.image.info().extent.into_3d(),
                             upload.staging.clone(),
                             upload.row_length,
@@ -380,7 +380,7 @@ impl Uploader {
                     image: &upload.image,
                     old_layout: Some(Layout::TransferDstOptimal),
                     new_layout: upload.new_layout,
-                    old_access: AccessFlags::TRANSFER_WRITE,
+                    old_access: Access::TRANSFER_WRITE,
                     new_access: upload.new_access,
                     family_transfer: None,
                     range: upload.layers.into(),
@@ -388,8 +388,8 @@ impl Uploader {
             }
 
             encoder.image_barriers(
-                PipelineStageFlags::TRANSFER,
-                PipelineStageFlags::ALL_COMMANDS,
+                PipelineStages::TRANSFER,
+                PipelineStages::ALL_COMMANDS,
                 images.leak(),
             );
         }
@@ -406,19 +406,19 @@ struct BufferUpload {
     staging: Buffer,
     buffer: Buffer,
     offset: u64,
-    old_access: AccessFlags,
-    new_access: AccessFlags,
+    old_access: Access,
+    new_access: Access,
 }
 
 struct ImageUpload {
     image: Image,
-    offset: Offset3d,
-    extent: Extent3d,
+    offset: Offset3,
+    extent: Extent3,
     layers: SubresourceLayers,
     old_layout: Option<Layout>,
     new_layout: Layout,
-    old_access: AccessFlags,
-    new_access: AccessFlags,
+    old_access: Access,
+    new_access: Access,
     staging: Buffer,
     format: Format,
     row_length: u32,

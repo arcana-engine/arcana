@@ -1,26 +1,20 @@
-use rapier2d::prelude::{Collider, RigidBody};
-
-use {
-    crate::{
-        clocks::TimeSpan,
-        scene::Global2,
-        system::{System, SystemContext, DEFAULT_TICK_SPAN},
-    },
-    approx::relative_ne,
+use approx::relative_ne;
+use arcana::{
     edict::entity::EntityId,
-    flume::{unbounded, Sender},
-    rapier2d::{
-        dynamics::{
-            CCDSolver, IntegrationParameters, IslandManager, JointSet, RigidBodyHandle,
-            RigidBodySet,
-        },
-        geometry::{
-            BroadPhase, ColliderHandle, ColliderSet, ContactEvent, ContactPair, IntersectionEvent,
-            NarrowPhase,
-        },
-        na,
-        pipeline::{EventHandler, PhysicsPipeline},
+    scene::Global2,
+    system::{System, SystemContext, DEFAULT_TICK_SPAN},
+    TimeSpan,
+};
+use flume::{unbounded, Sender};
+use rapier2d::{
+    dynamics::{
+        CCDSolver, ImpulseJointSet, IntegrationParameters, IslandManager, MultibodyJointSet,
+        RigidBodyHandle, RigidBodySet,
     },
+    geometry::{BroadPhase, ColliderHandle, ColliderSet, CollisionEvent, ContactPair, NarrowPhase},
+    na,
+    pipeline::{EventHandler, PhysicsPipeline, QueryPipeline},
+    prelude::{Collider, RigidBody},
 };
 
 pub use {parry2d::*, rapier2d::*};
@@ -81,7 +75,9 @@ pub struct PhysicsData2 {
     pub bodies: RigidBodySet,
     pub colliders: ColliderSet,
     pub islands: IslandManager,
-    pub joints: JointSet,
+    pub impulse_joints: ImpulseJointSet,
+    pub multibody_joints: MultibodyJointSet,
+    pub query_pipeline: QueryPipeline,
     pub gravity: na::Vector2<f32>,
 }
 
@@ -99,7 +95,9 @@ impl PhysicsData2 {
             bodies: RigidBodySet::new(),
             colliders: ColliderSet::new(),
             islands: IslandManager::new(),
-            joints: JointSet::new(),
+            impulse_joints: ImpulseJointSet::new(),
+            multibody_joints: MultibodyJointSet::new(),
+            query_pipeline: QueryPipeline::new(),
             gravity: na::Vector2::default(),
         }
     }
@@ -167,7 +165,9 @@ impl System for Physics2 {
                 handle,
                 &mut data.islands,
                 &mut data.colliders,
-                &mut data.joints,
+                &mut data.impulse_joints,
+                &mut data.multibody_joints,
+                true,
             );
         }
 
@@ -200,21 +200,33 @@ impl System for Physics2 {
         }
 
         struct SenderEventHandler {
-            tx: Sender<ContactEvent>,
-            intersection_tx: Sender<IntersectionEvent>,
+            tx: Sender<CollisionEvent>,
         }
 
         impl EventHandler for SenderEventHandler {
-            fn handle_intersection_event(&self, event: IntersectionEvent) {
-                self.intersection_tx.send(event).unwrap();
-            }
-            fn handle_contact_event(&self, event: ContactEvent, _pair: &ContactPair) {
+            fn handle_collision_event(
+                &self,
+                _bodies: &RigidBodySet,
+                _colliders: &ColliderSet,
+                event: CollisionEvent,
+                _contact_pair: Option<&ContactPair>,
+            ) {
                 self.tx.send(event).unwrap();
+            }
+
+            fn handle_contact_force_event(
+                &self,
+                _dt: f32,
+                _bodies: &RigidBodySet,
+                _colliders: &ColliderSet,
+                _contact_pair: &ContactPair,
+                _total_force_magnitude: f32,
+            ) {
+                todo!();
             }
         }
 
         let (tx, rx) = unbounded();
-        let (intersection_tx, intersection_rx) = unbounded();
 
         self.pipeline.step(
             &data.gravity,
@@ -224,13 +236,11 @@ impl System for Physics2 {
             &mut self.narrow_phase,
             &mut data.bodies,
             &mut data.colliders,
-            &mut data.joints,
+            &mut data.impulse_joints,
+            &mut data.multibody_joints,
             &mut self.ccd_solver,
             &(),
-            &SenderEventHandler {
-                tx,
-                intersection_tx,
-            },
+            &SenderEventHandler { tx },
         );
 
         for (_, (global, body)) in cx.world.query_mut::<(&mut Global2, &RigidBodyHandle)>() {
@@ -240,7 +250,7 @@ impl System for Physics2 {
 
         while let Ok(event) = rx.recv() {
             match event {
-                ContactEvent::Started(lhs, rhs) => {
+                CollisionEvent::Started(lhs, rhs, _) => {
                     let lhs_data =
                         ColliderUserData2::get(data.colliders.get(lhs).unwrap()).unwrap();
 
@@ -261,7 +271,7 @@ impl System for Physics2 {
                         queue.contacts_started.push(lhs);
                     }
                 }
-                ContactEvent::Stopped(lhs, rhs) => {
+                CollisionEvent::Stopped(lhs, rhs, _) => {
                     let lhs_data =
                         ColliderUserData2::get(data.colliders.get(lhs).unwrap()).unwrap();
 
@@ -285,43 +295,8 @@ impl System for Physics2 {
             }
         }
 
-        while let Ok(event) = intersection_rx.recv() {
-            let lhs = event.collider1;
-            let rhs = event.collider2;
-
-            let lhs_data = ColliderUserData2::get(data.colliders.get(lhs).unwrap()).unwrap();
-            let rhs_data = ColliderUserData2::get(data.colliders.get(rhs).unwrap()).unwrap();
-
-            if event.intersecting {
-                if let Ok(queue) = cx
-                    .world
-                    .query_one_mut::<&mut IntersectionQueue2>(&lhs_data.entity)
-                {
-                    queue.intersecting_started.push(rhs);
-                }
-
-                if let Ok(queue) = cx
-                    .world
-                    .query_one_mut::<&mut IntersectionQueue2>(&rhs_data.entity)
-                {
-                    queue.intersecting_started.push(lhs);
-                }
-            } else {
-                if let Ok(queue) = cx
-                    .world
-                    .query_one_mut::<&mut IntersectionQueue2>(&lhs_data.entity)
-                {
-                    queue.intersecting_stopped.push(rhs);
-                }
-
-                if let Ok(queue) = cx
-                    .world
-                    .query_one_mut::<&mut IntersectionQueue2>(&rhs_data.entity)
-                {
-                    queue.intersecting_stopped.push(lhs);
-                }
-            }
-        }
+        data.query_pipeline
+            .update(&data.islands, &data.bodies, &data.colliders);
     }
 }
 

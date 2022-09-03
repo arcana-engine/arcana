@@ -1,16 +1,11 @@
 use arcana::{
-    game::game2,
-    graphics, na,
-    physics2::{
-        dynamics::RigidBodyBuilder,
-        geometry::{Collider, ColliderBuilder},
-        Physics2, PhysicsData2,
-    },
-    rect::Rect,
-    scene::Global2,
-    sprite::Sprite,
-    system::SystemContext,
+    game::game2, graphics, na, rect::Rect, scene::Global2, sprite::Sprite, system::SystemContext,
     TimeSpan,
+};
+use arcana_physics::physics2::{
+    dynamics::{RigidBodyBuilder, RigidBodyType},
+    geometry::{Collider, ColliderBuilder},
+    Physics2, PhysicsData2,
 };
 
 #[derive(Clone, Debug)]
@@ -36,7 +31,7 @@ impl Block {
         let physical_data = cx.res.with(PhysicsData2::new);
 
         let body = physical_data.bodies.insert(
-            RigidBodyBuilder::new_dynamic()
+            RigidBodyBuilder::new(RigidBodyType::Dynamic)
                 .linvel(na::Vector2::new(
                     rand::random::<f32>() - 0.5,
                     rand::random::<f32>() - 0.5,
@@ -83,16 +78,16 @@ fn main() {
 
         let top = physical_data
             .bodies
-            .insert(RigidBodyBuilder::new_static().build());
+            .insert(RigidBodyBuilder::new(RigidBodyType::Fixed).build());
         let bottom = physical_data
             .bodies
-            .insert(RigidBodyBuilder::new_static().build());
+            .insert(RigidBodyBuilder::new(RigidBodyType::Fixed).build());
         let left = physical_data
             .bodies
-            .insert(RigidBodyBuilder::new_static().build());
+            .insert(RigidBodyBuilder::new(RigidBodyType::Fixed).build());
         let right = physical_data
             .bodies
-            .insert(RigidBodyBuilder::new_static().build());
+            .insert(RigidBodyBuilder::new(RigidBodyType::Fixed).build());
 
         physical_data.colliders.insert_with_parent(
             ColliderBuilder::halfspace(na::UnitVector2::new_normalize(na::Vector2::new(0.0, 1.0)))

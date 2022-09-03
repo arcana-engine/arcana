@@ -1,333 +1,113 @@
+//! Inefficient implementation of task spawning in the world.
+//! The API leaves some room for improvement.
+//!
+
 use std::{
-    cell::UnsafeCell,
     future::Future,
+    marker::PhantomData,
     pin::Pin,
     ptr::NonNull,
     task::{Context, Poll},
-    time::{Duration, Instant},
 };
 
-use crate::{assets::Assets, resources::Res, system::SystemContext};
-use edict::world::World;
+use edict::{atomicell::AtomicCell, component::Component, world::World};
 use futures::task::noop_waker_ref;
-use scoped_arena::Scope;
 
-#[cfg(feature = "client")]
-use evoke::client::ClientSystem;
-
-#[cfg(feature = "server")]
-use evoke::server::ServerSystem;
-
-use tokio::task::LocalSet;
-
-#[cfg(feature = "visible")]
-use crate::control::Control;
-
-#[cfg(feature = "graphics")]
-use crate::graphics::Graphics;
-
-/// Context in which [`Task`]s runs.
-pub struct TaskContext<'a> {
-    /// Main world.
-    pub world: &'a mut World,
-
-    /// Resources map.
-    pub res: &'a mut Res,
-
-    /// Task spawner,
-    pub spawner: &'a mut Spawner,
-
-    /// Asset loader
-    pub assets: &'a mut Assets,
-
-    /// Arena allocator for allocations in hot-path.
-    pub scope: &'a Scope<'a>,
-
-    /// Input controllers.
-    #[cfg(feature = "visible")]
-    pub control: &'a mut Control,
-
-    /// Graphics context.
-    #[cfg(feature = "graphics")]
-    pub graphics: &'a mut Graphics,
-
-    #[cfg(not(feature = "graphics"))]
-    #[doc(hidden)]
-    pub graphics: &'a mut (),
-
-    #[cfg(feature = "client")]
-    pub client: &'a mut Option<ClientSystem>,
-
-    #[cfg(feature = "server")]
-    pub server: &'a mut Option<ServerSystem>,
+/// Component that wraps a future that will be polled regularly.
+struct Task<Fut> {
+    fut: Box<Fut>,
 }
 
-impl<'a> From<SystemContext<'a>> for TaskContext<'a> {
-    fn from(cx: SystemContext<'a>) -> Self {
-        TaskContext {
-            world: cx.world,
-            res: cx.res,
-            spawner: cx.spawner,
-            assets: cx.assets,
-            scope: &*cx.scope,
-            #[cfg(feature = "visible")]
-            control: cx.control,
-
-            graphics: cx.graphics,
-
-            #[cfg(feature = "client")]
-            client: cx.client,
-
-            #[cfg(feature = "server")]
-            server: cx.server,
-        }
-    }
-}
-
-impl<'a> From<&'a mut SystemContext<'_>> for TaskContext<'a> {
-    fn from(cx: &'a mut SystemContext<'_>) -> Self {
-        TaskContext {
-            world: cx.world,
-            res: cx.res,
-            spawner: cx.spawner,
-            assets: cx.assets,
-            scope: &*cx.scope,
-            #[cfg(feature = "visible")]
-            control: cx.control,
-
-            graphics: cx.graphics,
-
-            #[cfg(feature = "client")]
-            client: cx.client,
-
-            #[cfg(feature = "server")]
-            server: cx.server,
-        }
-    }
-}
-
-impl<'a> TaskContext<'a> {
-    /// Reborrow system context.
-    pub fn reborrow(&mut self) -> TaskContext<'_> {
-        TaskContext {
-            res: self.res,
-            world: self.world,
-            spawner: self.spawner,
-            assets: self.assets,
-            scope: self.scope,
-            #[cfg(feature = "visible")]
-            control: self.control,
-
-            graphics: self.graphics,
-
-            #[cfg(feature = "client")]
-            client: self.client,
-
-            #[cfg(feature = "server")]
-            server: self.server,
-        }
-    }
-
-    unsafe fn from_raw(raw: &mut RawTaskContext) -> TaskContext<'a> {
-        TaskContext {
-            world: &mut *raw.world.as_ptr(),
-            res: &mut *raw.res.as_ptr(),
-            spawner: &mut *raw.spawner.as_ptr(),
-            assets: &mut *raw.assets.as_ptr(),
-            scope: &*raw.scope.cast().as_ptr(),
-            #[cfg(feature = "visible")]
-            control: &mut *raw.control.as_ptr(),
-
-            #[cfg(feature = "graphics")]
-            graphics: &mut *raw.graphics.as_ptr(),
-
-            #[cfg(not(feature = "graphics"))]
-            graphics: Box::leak(Box::new(())),
-
-            #[cfg(feature = "client")]
-            client: &mut *raw.client.as_ptr(),
-
-            #[cfg(feature = "server")]
-            server: &mut *raw.server.as_ptr(),
-        }
-    }
-}
-
-/// Returns borrowed `TaskContext`.
-/// Only usable when called in futures spawned with [`Spawner`].
-///
-/// # Panics
-///
-/// Panics if called outside future spawner with [`Spawner`].
-///
-/// # Safety
-///
-/// ???
-///
-/// ```compile_fail
-/// # fn func<'a>(cx: TaskContext<'a>) {
-/// let cx: TaskContext<'_> = cx;
-/// std::thread::new(move || { cx; })
-/// # }
-/// ```
-///
-/// ```compile_fail
-/// # fn func<'a>(cx: TaskContext<'a>) {
-/// let cx: &TaskContext<'_> = &cx;
-/// std::thread::new(move || { cx; })
-/// # }
-/// ```
-pub fn with_async_task_context<F, R>(f: F) -> R
+impl<Fut> Component for Task<Fut>
 where
-    F: for<'a> FnOnce(TaskContext<'a>) -> R,
+    Fut: 'static,
 {
-    TASK_CONTEXT.with(|cell| unsafe {
-        let tcx = (&mut *cell.get())
-            .as_mut()
-            .expect("Called outside task executor");
-
-        f(TaskContext::from_raw(tcx))
-    })
-}
-
-/// Task spawner.
-pub struct Spawner {
-    local_set: Option<LocalSet>,
-}
-
-impl Spawner {
-    pub(crate) fn new() -> Self {
-        Spawner {
-            local_set: Some(LocalSet::new()),
-        }
-    }
-
-    pub fn spawn<Fut>(&mut self, fut: Fut)
-    where
-        Fut: Future<Output = ()> + 'static,
-    {
-        match &mut self.local_set {
-            Some(local_set) => local_set.spawn_local(fut),
-            None => tokio::task::spawn_local(fut),
-        };
+    fn name() -> &'static str {
+        "Task"
     }
 }
 
-impl Spawner {
-    pub(crate) fn run_once(mut tcx: TaskContext<'_>) {
-        let mut local_set = tcx.spawner.local_set.take().unwrap();
+trait TaskTrait: Send {
+    fn poll_unchecked(&mut self, cx: &mut Context) -> Poll<()>;
+}
 
-        {
-            TASK_CONTEXT.with(|cell| unsafe {
-                *cell.get() = Some(RawTaskContext::into_raw(tcx.reborrow()));
-            });
-
-            let _unset = UnsetTaskContext;
-            let _ = Pin::new(&mut local_set).poll(&mut Context::from_waker(noop_waker_ref()));
-        }
-        tcx.spawner.local_set = Some(local_set);
+impl<Fut> TaskTrait for Task<Fut>
+where
+    Fut: Future<Output = ()> + Send,
+{
+    fn poll_unchecked(&mut self, cx: &mut Context) -> Poll<()> {
+        Fut::poll(Pin::new(&mut self.fut), cx)
     }
+}
 
-    pub(crate) async fn teardown(mut tcx: TaskContext<'_>, timeout: Duration) {
-        struct Teardown<'a> {
-            tcx: TaskContext<'a>,
-            local_set: &'a mut LocalSet,
-            deadline: Instant,
-        }
+pub fn task_system(world: &World) {
+    WORLD.with(|ptr| unsafe {
+        struct Unset;
 
-        impl Future for Teardown<'_> {
-            type Output = ();
-
-            fn poll(self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<()> {
-                let me = self.get_mut();
-
-                if me.deadline >= Instant::now() {
-                    return Poll::Ready(());
-                }
-
-                TASK_CONTEXT.with(|cell| unsafe {
-                    *cell.get() = Some(RawTaskContext::into_raw(me.tcx.reborrow()));
+        impl Drop for Unset {
+            fn drop(&mut self) {
+                WORLD.with(|ptr| {
+                    *ptr.get() = None;
                 });
-                let _unset = UnsetTaskContext;
-                Pin::new(&mut *me.local_set).poll(cx)
             }
         }
 
-        let mut local_set = tcx.spawner.local_set.take().unwrap();
+        let unset = Unset; // Guard drops last.
 
-        Teardown {
-            tcx: tcx.reborrow(),
-            local_set: &mut local_set,
-            deadline: Instant::now() + timeout,
+        {
+            let ptr = ptr.borrow_mut();
+            *ptr = Some(NonNull::from(world));
         }
-        .await;
 
-        tcx.spawner.local_set = Some(local_set);
-    }
+        let mut cx = Context::from_waker(noop_waker_ref());
+
+        world
+            .build_query()
+            .borrow_any::<(dyn TaskTrait)>()
+            .for_each(|task| task.poll_unchecked(&mut cx));
+    });
 }
 
-struct UnsetTaskContext;
+pub async fn teardown_tasks(world: &World) {
+    let mut despawn = Vec::new();
 
-impl Drop for UnsetTaskContext {
-    fn drop(&mut self) {
-        TASK_CONTEXT.with(|cell| unsafe {
-            *cell.get() = None;
-        })
-    }
-}
-
-struct SetTaskContext;
-
-impl Drop for SetTaskContext {
-    fn drop(&mut self) {
-        TASK_CONTEXT.with(|cell| unsafe {
-            *cell.get() = None;
-        })
-    }
-}
-
-struct RawTaskContext {
-    pub world: NonNull<World>,
-    pub res: NonNull<Res>,
-    pub spawner: NonNull<Spawner>,
-    pub assets: NonNull<Assets>,
-    pub scope: NonNull<u8>,
-    #[cfg(feature = "visible")]
-    pub control: NonNull<Control>,
-
-    #[cfg(feature = "graphics")]
-    pub graphics: NonNull<Graphics>,
-
-    #[cfg(feature = "client")]
-    pub client: NonNull<Option<ClientSystem>>,
-
-    #[cfg(feature = "server")]
-    pub server: NonNull<Option<ServerSystem>>,
-}
-
-impl RawTaskContext {
-    fn into_raw(cx: TaskContext<'_>) -> Self {
-        RawTaskContext {
-            world: NonNull::from(cx.world),
-            res: NonNull::from(cx.res),
-            spawner: NonNull::from(cx.spawner),
-            assets: NonNull::from(cx.assets),
-            scope: NonNull::from(cx.scope).cast(),
-            #[cfg(feature = "visible")]
-            control: NonNull::from(cx.control),
-
-            #[cfg(feature = "graphics")]
-            graphics: NonNull::from(cx.graphics),
-
-            #[cfg(feature = "client")]
-            client: NonNull::from(cx.client),
-
-            #[cfg(feature = "server")]
-            server: NonNull::from(cx.server),
+    std::future::poll_fn(|cx| {
+        for (entity, task) in world.new_query().borrow_any::<&mut dyn TaskTrait>() {
+            if task.poll_unchecked(cx).is_ready() {
+                despawn.push(entity);
+            }
         }
+    })
+    .await;
+
+    for entity in despawn {
+        world.despawn(entity);
+    }
+}
+
+/// WorldRef
+pub struct WorldRef {
+    _world: PhantomData<NonNull<World>>,
+}
+
+impl WorldRef {
+    pub fn with_world(&self, f: impl FnOnce(&World)) {
+        WORLD.with(|opt| {
+            let world = unsafe {
+                // # Safety.
+                // Pointer is valid while set to some.
+                opt.borrow().as_ref().unwrap().as_ref()
+            };
+            f(world);
+        })
     }
 }
 
 std::thread_local! {
-    static TASK_CONTEXT: UnsafeCell<Option<RawTaskContext>> = UnsafeCell::new(None);
+    static WORLD: AtomicCell<Option<NonNull<World>>> = AtomicCell::new(None);
+}
+
+pub fn spawn<Fut>(world: &World, fut: Fut) {
+    let task = Task { fut };
+    world.spawn((task,));
 }
