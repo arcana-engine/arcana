@@ -1,10 +1,10 @@
 use parking_lot::Mutex;
 use sierra::{
-    ivec2, AccessFlags, AspectFlags, Buffer, BufferView, BufferViewInfo, ComputePipeline,
+    ivec2, Access, AspectFlags, Buffer, BufferView, BufferViewInfo, ComputePipeline,
     ComputePipelineInfo, ComputeShader, Descriptors, DescriptorsAllocationError, Device, Encoder,
-    Extent3d, Format, Image, ImageCopy, ImageInfo, ImageMemoryBarrier, ImageUsage, Layout,
-    Offset3d, OutOfMemory, PipelineInput, PipelineStageFlags, Samples::Samples1, ShaderModuleInfo,
-    ShaderRepr, Subresource,
+    Extent3, Format, Image, ImageCopy, ImageInfo, ImageMemoryBarrier, ImageUsage, Layout, Offset3,
+    OutOfMemory, PipelineInput, PipelineStages, Samples::Samples1, ShaderModuleInfo, ShaderRepr,
+    Subresource,
 };
 
 #[derive(ShaderRepr)]
@@ -88,8 +88,8 @@ impl Rgb2RgbaUploader {
         &self,
         device: &Device,
         image: &Image,
-        offset: Offset3d,
-        extent: Extent3d,
+        offset: Offset3,
+        extent: Extent3,
         buffer: Buffer,
         row_length: u32,
         _image_height: u32,
@@ -120,14 +120,14 @@ impl Rgb2RgbaUploader {
         })?;
 
         encoder.image_barriers(
-            PipelineStageFlags::TOP_OF_PIPE,
-            PipelineStageFlags::COMPUTE_SHADER,
+            PipelineStages::TOP_OF_PIPE,
+            PipelineStages::COMPUTE_SHADER,
             &[ImageMemoryBarrier {
                 image: &staging_image,
                 old_layout: None,
                 new_layout: Layout::General,
-                old_access: AccessFlags::empty(),
-                new_access: AccessFlags::SHADER_WRITE,
+                old_access: Access::empty(),
+                new_access: Access::SHADER_STORAGE_WRITE,
                 family_transfer: None,
                 range: Subresource {
                     aspect: AspectFlags::COLOR,
@@ -178,14 +178,14 @@ impl Rgb2RgbaUploader {
         };
 
         encoder.image_barriers(
-            PipelineStageFlags::COMPUTE_SHADER,
-            PipelineStageFlags::TRANSFER,
+            PipelineStages::COMPUTE_SHADER,
+            PipelineStages::TRANSFER,
             &[ImageMemoryBarrier {
                 image: &staging_image,
                 old_layout: Some(Layout::General),
                 new_layout: Layout::TransferSrcOptimal,
-                old_access: AccessFlags::SHADER_WRITE,
-                new_access: AccessFlags::TRANSFER_READ,
+                old_access: Access::SHADER_STORAGE_WRITE,
+                new_access: Access::TRANSFER_READ,
                 family_transfer: None,
                 range: subresource.into(),
             }],
@@ -198,9 +198,9 @@ impl Rgb2RgbaUploader {
             Layout::TransferDstOptimal,
             &[ImageCopy {
                 src_subresource: subresource.into(),
-                src_offset: Offset3d::ZERO,
+                src_offset: Offset3::zeros(),
                 dst_subresource: subresource.into(),
-                dst_offset: Offset3d::ZERO,
+                dst_offset: Offset3::zeros(),
                 extent,
             }],
         );

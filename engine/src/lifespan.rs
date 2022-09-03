@@ -1,6 +1,8 @@
+use edict::{prelude::ActionEncoder, system::Res, world::QueryRef};
+
 use crate::{
-    clocks::TimeSpan,
-    system::{System, SystemContext},
+    clocks::{ClockIndex, TimeSpan},
+    scoped_allocator::ScopedAllocator,
 };
 
 /// Component for entities with limited lifespan.
@@ -20,26 +22,23 @@ impl LifeSpan {
     }
 }
 
-pub struct LifeSpanSystem;
+pub fn lifetime_system(
+    clock: Res<ClockIndex>,
+    query: QueryRef<&mut LifeSpan>,
+    encoder: &mut ActionEncoder,
+    scope: &mut ScopedAllocator,
+) {
+    let mut despawn = Vec::new_in(&**scope);
 
-impl System for LifeSpanSystem {
-    fn name(&self) -> &str {
-        "LifeSpan"
+    for (e, ls) in query {
+        if ls.left > clock.delta {
+            ls.left -= clock.delta;
+        } else {
+            despawn.push(e);
+        }
     }
 
-    fn run(&mut self, cx: SystemContext<'_>) {
-        let mut despawn = Vec::new_in(&*cx.scope);
-
-        for (e, ls) in cx.world.query_mut::<&mut LifeSpan>() {
-            if ls.left > cx.clock.delta {
-                ls.left -= cx.clock.delta;
-            } else {
-                despawn.push(e);
-            }
-        }
-
-        for e in despawn {
-            let _ = cx.world.despawn(&e);
-        }
+    for e in despawn {
+        encoder.despawn(e);
     }
 }

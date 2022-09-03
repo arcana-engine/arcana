@@ -1,17 +1,17 @@
-use egui::{AlphaImage, ClippedMesh, ColorImage, Context, ImageData, TextureId, TexturesDelta};
+use egui::{ClippedPrimitive, ColorImage, Context, FontImage, ImageData, TextureId, TexturesDelta};
 use hashbrown::hash_map::{Entry, HashMap};
 use sierra::{
-    AccessFlags, Encoder, Extent2d, Extent3d, ImageInfo, ImageView, ImageViewInfo, Offset3d,
-    OutOfMemory, SubresourceLayers,
+    Access, Encoder, Extent2, Extent3, ImageInfo, ImageView, ImageViewInfo, Offset3, OutOfMemory,
+    SubresourceLayers,
 };
-use winit::{event::WindowEvent, window::Window};
+use winit::{event::WindowEvent, event_loop::EventLoopWindowTarget, window::Window};
 
 use crate::graphics::{Graphics, UploadImage};
 
 pub struct EguiResource {
     ctx: Context,
     state: egui_winit::State,
-    meshes: Vec<ClippedMesh>,
+    primitives: Vec<ClippedPrimitive>,
     egui_textures: HashMap<u64, ImageView>,
     user_textures: HashMap<u64, ImageView>,
     textures_delta: Option<TexturesDelta>,
@@ -20,11 +20,11 @@ pub struct EguiResource {
 }
 
 impl EguiResource {
-    pub fn new(window: &Window) -> Self {
+    pub fn new<T>(events: &EventLoopWindowTarget<T>) -> Self {
         EguiResource {
             ctx: Context::default(),
-            state: egui_winit::State::new(4096, window),
-            meshes: Vec::new(),
+            state: egui_winit::State::new(events),
+            primitives: Vec::new(),
             egui_textures: HashMap::new(),
             user_textures: HashMap::new(),
             textures_delta: None,
@@ -40,8 +40,8 @@ impl EguiResource {
         self.state.pixels_per_point()
     }
 
-    pub fn meshes(&self) -> &[ClippedMesh] {
-        &self.meshes
+    pub fn primitives(&self) -> &[ClippedPrimitive] {
+        &self.primitives
     }
 
     pub fn add_texture(&mut self, id: u64, view: ImageView) {
@@ -55,7 +55,7 @@ impl EguiResource {
         let output = self.ctx.end_frame();
         self.state
             .handle_platform_output(window, &self.ctx, output.platform_output);
-        self.meshes = self.ctx.tessellate(output.shapes);
+        self.primitives = self.ctx.tessellate(output.shapes);
         self.textures_delta = Some(output.textures_delta);
     }
 
@@ -65,8 +65,8 @@ impl EguiResource {
         graphics: &mut Graphics,
     ) -> Result<(), OutOfMemory> {
         if let Some(textures_delta) = self.textures_delta.take() {
-            for (&id, delta) in &textures_delta.set {
-                let id = match id {
+            for (id, delta) in &textures_delta.set {
+                let id = match *id {
                     TextureId::Managed(id) => id,
                     TextureId::User(id) => {
                         tracing::error!("Egui provides delta for user-texture '{}'", id);
@@ -82,7 +82,7 @@ impl EguiResource {
                         bytemuck::cast_slice::<_, u8>(&pixels[..]),
                         sierra::Format::RGBA8Srgb,
                     ),
-                    ImageData::Alpha(AlphaImage { size, pixels }) => (
+                    ImageData::Font(FontImage { size, pixels }) => (
                         *size,
                         bytemuck::cast_slice(&pixels[..]),
                         sierra::Format::R8Srgb,
@@ -92,11 +92,7 @@ impl EguiResource {
                 let (view, new) = match self.egui_textures.entry(id) {
                     Entry::Vacant(entry) => {
                         let image = graphics.create_image(ImageInfo {
-                            extent: Extent2d {
-                                width: size[0] as _,
-                                height: size[1] as _,
-                            }
-                            .into(),
+                            extent: Extent2::new(size[0] as _, size[1] as _).into(),
                             format,
                             levels: 1,
                             layers: 1,
@@ -118,16 +114,8 @@ impl EguiResource {
                 graphics.upload_image_with(
                     UploadImage {
                         image,
-                        offset: Offset3d {
-                            x: pos[0] as _,
-                            y: pos[1] as _,
-                            z: 0,
-                        },
-                        extent: Extent3d {
-                            width: size[0] as _,
-                            height: size[1] as _,
-                            depth: 1,
-                        },
+                        offset: Offset3::new(pos[0] as _, pos[1] as _, 0),
+                        extent: Extent3::new(size[0] as _, size[1] as _, 1),
                         layers: SubresourceLayers::color(0, 0..1),
                         old_layout: if new {
                             None
@@ -135,8 +123,8 @@ impl EguiResource {
                             Some(sierra::Layout::ShaderReadOnlyOptimal)
                         },
                         new_layout: sierra::Layout::ShaderReadOnlyOptimal,
-                        old_access: AccessFlags::SHADER_READ,
-                        new_access: AccessFlags::SHADER_READ,
+                        old_access: Access::SHADER_SAMPLED_READ,
+                        new_access: Access::SHADER_SAMPLED_READ,
                         format,
                         row_length: 0,
                         image_height: 0,

@@ -1,5 +1,5 @@
 // #![deny(missing_docs)]
-#![feature(allocator_api, hash_drain_filter, ready_macro)]
+#![feature(allocator_api)]
 
 //!
 //! Arcana is a game engine built with focus on ease of use without compromising on level of control.
@@ -26,7 +26,7 @@ pub mod lifespan;
 mod noophash;
 pub mod prelude;
 pub mod rect;
-pub mod resources;
+pub mod scoped_allocator;
 pub mod system;
 pub mod task;
 pub mod unfold;
@@ -64,26 +64,8 @@ cfg_if::cfg_if! {
 }
 
 cfg_if::cfg_if! {
-    if #[cfg(feature = "2d")] {
-        pub mod tiles;
-    }
-}
-
-cfg_if::cfg_if! {
     if #[cfg(feature = "3d")] {
         pub mod model;
-    }
-}
-
-cfg_if::cfg_if! {
-    if #[cfg(feature = "physics2d")] {
-        pub mod physics2;
-    }
-}
-
-cfg_if::cfg_if! {
-    if #[cfg(feature = "physics3d")] {
-        pub mod physics3;
     }
 }
 

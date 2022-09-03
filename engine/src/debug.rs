@@ -51,7 +51,7 @@ impl<'a> EntityRefDebugInfo<'a> {
     }
 
     pub fn fetch(entity: EntityId, world: &'a World) -> Option<Self> {
-        let info = world.query_one::<&DebugInfo>(&entity).ok()?;
+        let info = world.query_one::<&DebugInfo>(entity).ok()?;
         Some(EntityRefDebugInfo { entity, info })
     }
 }

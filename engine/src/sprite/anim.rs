@@ -1,9 +1,8 @@
 use std::{borrow::Cow, marker::PhantomData, sync::Arc};
 
-use crate::{
-    rect::Rect,
-    system::{System, SystemContext},
-};
+use edict::{system::Res, world::QueryRef};
+
+use crate::{clocks::ClockIndex, rect::Rect};
 
 use super::{
     graph::{AnimGraph, AnimGraphState, AnimNode, AnimTransitionRule, Transition},
@@ -129,51 +128,45 @@ impl<S, R> SpriteGraphAnimationSystem<S, R> {
     }
 }
 
-impl<S, R> System for SpriteGraphAnimationSystem<S, R>
-where
+pub fn sprite_graph_animation_system<S, R>(
+    query: QueryRef<(&S, &mut SpriteGraphAnimation<R>, &mut Sprite)>,
+    clock: Res<ClockIndex>,
+) where
     S: Send + Sync + 'static,
     R: AnimTransitionRule<S> + Send + Sync + 'static,
 {
-    fn name(&self) -> &str {
-        "SpriteGraphAnimationSystem"
-    }
+    let delta = clock.delta;
+    query.for_each(|(state, anim, sprite)| {
+        let result = anim.state.animate(state, &anim.graph, delta);
+        let frames = &anim.frames[result.animation.from..=result.animation.to];
 
-    fn run(&mut self, cx: SystemContext<'_>) {
-        for (_, (state, anim, sprite)) in cx
-            .world
-            .query_mut::<(&S, &mut SpriteGraphAnimation<R>, &mut Sprite)>()
-        {
-            let result = anim.state.animate(state, &anim.graph, cx.clock.delta);
-            let frames = &anim.frames[result.animation.from..=result.animation.to];
+        let mut left = result.elapsed;
 
-            let mut left = result.elapsed;
+        let frame = frames
+            .iter()
+            .find(|frame| {
+                if frame.span > left {
+                    true
+                } else {
+                    left -= frame.span;
+                    false
+                }
+            })
+            .or_else(|| frames.last())
+            .unwrap();
 
-            let frame = frames
-                .iter()
-                .find(|frame| {
-                    if frame.span > left {
-                        true
-                    } else {
-                        left -= frame.span;
-                        false
-                    }
-                })
-                .or_else(|| frames.last())
-                .unwrap();
+        sprite.src = Rect {
+            left: (frame.src.x as f32) / frame.src_size.w as f32,
+            right: (frame.src.x as f32 + frame.src.w as f32) / frame.src_size.w as f32,
+            bottom: 1.0 - (frame.src.y as f32 + frame.src.h as f32) / frame.src_size.h as f32,
+            top: 1.0 - (frame.src.y as f32) / frame.src_size.h as f32,
+        };
 
-            sprite.src = Rect {
-                left: (frame.src.x as f32) / frame.src_size.w as f32,
-                right: (frame.src.x as f32 + frame.src.w as f32) / frame.src_size.w as f32,
-                bottom: 1.0 - (frame.src.y as f32 + frame.src.h as f32) / frame.src_size.h as f32,
-                top: 1.0 - (frame.src.y as f32) / frame.src_size.h as f32,
-            };
-
-            sprite.tex = Rect {
-                left: (frame.tex.x as f32) / anim.tex_size.w as f32,
-                right: (frame.tex.x as f32 + frame.tex.w as f32) / anim.tex_size.w as f32,
-                bottom: (frame.tex.y as f32) / anim.tex_size.h as f32,
-                top: (frame.tex.y as f32 + frame.tex.h as f32) / anim.tex_size.h as f32,
-            };
-        }
-    }
+        sprite.tex = Rect {
+            left: (frame.tex.x as f32) / anim.tex_size.w as f32,
+            right: (frame.tex.x as f32 + frame.tex.w as f32) / anim.tex_size.w as f32,
+            bottom: (frame.tex.y as f32) / anim.tex_size.h as f32,
+            top: (frame.tex.y as f32 + frame.tex.h as f32) / anim.tex_size.h as f32,
+        };
+    })
 }

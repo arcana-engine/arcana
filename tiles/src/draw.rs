@@ -1,24 +1,24 @@
 use std::{convert::TryFrom, mem::size_of, ops::Range};
 
-use edict::entity::EntityId;
-use palette::LinSrgba;
+use arcana::{
+    camera::Camera2,
+    edict::{entity::EntityId, world::World},
+    eyre,
+    graphics::{
+        vertex_layouts_for_pipeline, Graphics, Material, SparseDescriptors, Transformation2,
+        VertexLocation, VertexType,
+    },
+    palette::LinSrgba,
+    rect::Rect,
+    scene::Global2,
+};
 use sierra::{
     graphics_pipeline_desc, mat3, Access, Buffer, DepthTest, Descriptors, DynamicGraphicsPipeline,
     Encoder, Extent2, FragmentShader, ImageView, Layout, PipelineInput, PipelineStages,
     RenderPassEncoder, Sampler, ShaderModuleInfo, ShaderRepr, VertexInputRate, VertexShader,
 };
 
-use super::{mat3_na_to_sierra, DrawNode, RendererContext};
-use crate::{
-    camera::Camera2,
-    graphics::{
-        material::Material, vertex_layouts_for_pipeline, Graphics, SparseDescriptors,
-        Transformation2, VertexLocation, VertexType,
-    },
-    rect::Rect,
-    scene::Global2,
-    sprite::Sprite,
-};
+use crate::{TileMap, TileSet};
 
 pub struct SpriteDraw {
     pipeline: DynamicGraphicsPipeline,
@@ -204,6 +204,48 @@ impl DrawNode for SpriteDraw {
             sprites.push(instance);
         }
 
+        for (_, (map, set, global)) in cx.world.query_mut::<(&TileMap, &TileSet, &Global2)>() {
+            let hc = map.cell_size * 0.5;
+
+            for (j, row) in map.cells.chunks(map.width).enumerate() {
+                for (i, &cell) in row.iter().enumerate() {
+                    let tile = match set.tiles.get(cell) {
+                        None => {
+                            return Err(eyre::eyre!("Missing tile '{}' in the tileset", cell));
+                        }
+                        Some(tile) => tile,
+                    };
+
+                    let albedo = match &tile.texture {
+                        Some(texture) => {
+                            let (index, new) = self.textures.index(texture.image.clone());
+                            if new {
+                                self.descriptors.textures[index as usize] = texture.image.clone();
+                            }
+                            index
+                        }
+                        None => u32::MAX,
+                    };
+
+                    let instance = SpriteInstance {
+                        pos: Rect {
+                            left: i as f32 * map.cell_size - hc,
+                            right: i as f32 * map.cell_size + hc,
+                            top: j as f32 * map.cell_size + hc,
+                            bottom: j as f32 * map.cell_size - hc,
+                        },
+                        uv: tile.uv,
+                        layer: self.layer_range.end,
+                        albedo,
+                        albedo_factor: LinSrgba::new(1.0, 1.0, 1.0, 1.0),
+                        transform: Transformation2(global.iso.to_homogeneous().into()),
+                    };
+
+                    sprites.push(instance);
+                }
+            }
+        }
+
         tracing::debug!("Rendering {} sprites", sprites.len());
 
         let updated = self.set.update(&self.descriptors, cx.graphics, encoder)?;
@@ -277,4 +319,46 @@ impl VertexType for SpriteInstance {
         ]
     };
     const RATE: VertexInputRate = VertexInputRate::Instance;
+}
+
+pub fn collect_sprites(
+    world: &mut World,
+    get_texture_index: FnMut(ImageView) -> u32,
+    extend: &mut impl Extend<SpriteInstance>,
+) {
+    for (_, (map, set, global)) in world.query_mut::<(&TileMap, &TileSet, &Global2)>() {
+        let hc = map.cell_size * 0.5;
+
+        for (j, row) in map.cells.chunks(map.width).enumerate() {
+            for (i, &cell) in row.iter().enumerate() {
+                let tile = match set.tiles.get(cell) {
+                    None => {
+                        return Err(eyre::eyre!("Missing tile '{}' in the tileset", cell));
+                    }
+                    Some(tile) => tile,
+                };
+
+                let albedo = match &tile.texture {
+                    Some(texture) => get_texture_index(texture.image.clone()),
+                    None => u32::MAX,
+                };
+
+                let instance = SpriteInstance {
+                    pos: Rect {
+                        left: i as f32 * map.cell_size - hc,
+                        right: i as f32 * map.cell_size + hc,
+                        top: j as f32 * map.cell_size + hc,
+                        bottom: j as f32 * map.cell_size - hc,
+                    },
+                    uv: tile.uv,
+                    layer: self.layer_range.end,
+                    albedo,
+                    albedo_factor: LinSrgba::new(1.0, 1.0, 1.0, 1.0),
+                    transform: Transformation2(global.iso.to_homogeneous().into()),
+                };
+
+                sprites.push(instance);
+            }
+        }
+    }
 }

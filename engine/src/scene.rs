@@ -1,18 +1,27 @@
-use std::{
-    collections::VecDeque,
-    fmt::{self, Display},
+use std::fmt::{self, Display};
+
+use edict::{
+    prelude::{ActionEncoder, Component, EntityId},
+    query::{Alt, Modified, With},
+    relation::{ChildOf, FilterNotRelates, FilterRelates, Related, RelatesExclusive, Relation},
+    world::QueryRef,
 };
 
-use bitsetium::{BitEmpty, BitSet, BitTest, Bits65536};
-use edict::{prelude::EntityId, world::EntityError};
-
-use crate::system::{System, SystemContext};
+use crate::scoped_allocator::ScopedAllocator;
 
 #[cfg(feature = "2d")]
 #[derive(Clone, Copy, Debug, PartialEq)]
 pub struct Local2 {
-    pub parent: EntityId,
     pub iso: na::Isometry2<f32>,
+}
+
+#[cfg(feature = "2d")]
+impl Relation for Local2 {
+    const EXCLUSIVE: bool = true;
+
+    fn on_target_drop(entity: EntityId, _target: EntityId, encoder: &mut ActionEncoder) {
+        encoder.despawn(entity);
+    }
 }
 
 #[cfg(feature = "2d")]
@@ -24,34 +33,31 @@ impl Display for Local2 {
 
 #[cfg(feature = "2d")]
 impl Local2 {
-    pub fn identity(parent: EntityId) -> Self {
+    pub fn identity() -> Self {
         Local2 {
-            parent,
             iso: na::Isometry2::identity(),
         }
     }
 
-    pub fn new(parent: EntityId, iso: na::Isometry2<f32>) -> Self {
-        Local2 { parent, iso }
+    pub fn new(iso: na::Isometry2<f32>) -> Self {
+        Local2 { iso }
     }
 
-    pub fn from_translation(parent: EntityId, tr: na::Translation2<f32>) -> Self {
+    pub fn from_translation(tr: na::Translation2<f32>) -> Self {
         Local2 {
-            parent,
             iso: na::Isometry2::from_parts(tr, na::UnitComplex::identity()),
         }
     }
 
-    pub fn from_rotation(parent: EntityId, rot: na::UnitComplex<f32>) -> Self {
+    pub fn from_rotation(rot: na::UnitComplex<f32>) -> Self {
         Local2 {
-            parent,
             iso: na::Isometry2::from_parts(na::Translation2::identity(), rot),
         }
     }
 }
 
 #[cfg(feature = "2d")]
-#[derive(Clone, Copy, Debug, PartialEq, serde::Serialize, serde::Deserialize)]
+#[derive(Clone, Copy, Debug, PartialEq, serde::Serialize, serde::Deserialize, Component)]
 #[serde(transparent)]
 #[repr(transparent)]
 pub struct Global2 {
@@ -135,8 +141,16 @@ impl From<na::Isometry2<f32>> for Global2 {
 #[cfg(feature = "3d")]
 #[derive(Clone, Copy, Debug, PartialEq)]
 pub struct Local3 {
-    pub parent: EntityId,
     pub iso: na::Isometry3<f32>,
+}
+
+#[cfg(feature = "3d")]
+impl Relation for Local3 {
+    const EXCLUSIVE: bool = true;
+
+    fn on_target_drop(entity: EntityId, _target: EntityId, encoder: &mut ActionEncoder) {
+        encoder.despawn(entity);
+    }
 }
 
 #[cfg(feature = "3d")]
@@ -148,34 +162,31 @@ impl Display for Local3 {
 
 #[cfg(feature = "3d")]
 impl Local3 {
-    pub fn identity(parent: EntityId) -> Self {
+    pub fn identity() -> Self {
         Local3 {
-            parent,
             iso: na::Isometry3::identity(),
         }
     }
 
-    pub fn new(parent: EntityId, iso: na::Isometry3<f32>) -> Self {
-        Local3 { parent, iso }
+    pub fn new(iso: na::Isometry3<f32>) -> Self {
+        Local3 { iso }
     }
 
-    pub fn from_translation(parent: EntityId, tr: na::Translation3<f32>) -> Self {
+    pub fn from_translation(tr: na::Translation3<f32>) -> Self {
         Local3 {
-            parent,
             iso: na::Isometry3::from_parts(tr, na::UnitQuaternion::identity()),
         }
     }
 
-    pub fn from_rotation(parent: EntityId, rot: na::UnitQuaternion<f32>) -> Self {
+    pub fn from_rotation(rot: na::UnitQuaternion<f32>) -> Self {
         Local3 {
-            parent,
             iso: na::Isometry3::from_parts(na::Translation3::identity(), rot),
         }
     }
 }
 
 #[cfg(feature = "3d")]
-#[derive(Clone, Copy, Debug, PartialEq, serde::Serialize, serde::Deserialize)]
+#[derive(Clone, Copy, Debug, PartialEq, serde::Serialize, serde::Deserialize, Component)]
 #[serde(transparent)]
 #[repr(transparent)]
 pub struct Global3 {
@@ -256,141 +267,156 @@ impl From<na::Isometry3<f32>> for Global3 {
     }
 }
 
-pub struct SceneSystem {
-    #[cfg(feature = "2d")]
-    cap_2: usize,
-    #[cfg(feature = "3d")]
-    cap_3: usize,
-}
+#[cfg(feature = "2d")]
+fn scene_system2(
+    roots_modified: QueryRef<(Modified<&Global2>, Related<ChildOf>), FilterNotRelates<ChildOf>>,
+    modified: QueryRef<Modified<&Local2>, (FilterRelates<ChildOf>, With<Global2>)>,
+    children: QueryRef<Related<ChildOf>, (With<Local2>, With<Global2>)>,
+    update: QueryRef<(RelatesExclusive<&ChildOf>, &Local2, Alt<Global2>)>,
+    read_global: QueryRef<&Global2>,
+    scope: &mut ScopedAllocator,
+) {
+    use hashbrown::{hash_map::Entry, HashMap};
 
-impl SceneSystem {
-    pub const fn new() -> Self {
-        SceneSystem {
-            #[cfg(feature = "2d")]
-            cap_2: 0,
-            #[cfg(feature = "3d")]
-            cap_3: 0,
+    let mut to_update = Vec::new_in(&**scope);
+    let mut visiting_counter = HashMap::new_in(&**scope);
+
+    roots_modified.for_each(|(global, children)| {
+        for &child in children {
+            *visiting_counter.entry(child).or_insert(0) += 1;
+            to_update.push(child);
+        }
+    });
+
+    let mut i = 0;
+    while i < to_update.len() {
+        let entity = to_update[i];
+
+        if let Ok(children) = children.one(entity) {
+            for &child in children {
+                let counter = visiting_counter.entry(child).or_insert(0);
+                *counter += 1;
+                debug_assert_eq!(*counter, 1, "Two roots in hierarchy");
+                to_update.push(child);
+            }
+        }
+
+        i += 1;
+    }
+
+    for (entity, _local) in modified {
+        if visiting_counter.contains_key(&entity) {
+            continue;
+        }
+
+        match visiting_counter.entry(entity) {
+            Entry::Occupied(_) => continue,
+            Entry::Vacant(entry) => {
+                entry.insert(1);
+                to_update.push(entity);
+            }
+        }
+    }
+
+    while i < to_update.len() {
+        let entity = to_update[i];
+
+        if let Ok(children) = children.one(entity) {
+            for &child in children {
+                *visiting_counter.entry(child).or_insert(0) += 1;
+                to_update.push(child);
+            }
+        }
+
+        i += 1;
+    }
+
+    for entity in to_update {
+        let counter = &mut visiting_counter[&entity];
+        *counter -= 1;
+
+        if *counter == 0 {
+            let ((_, parent), local, global) = update.one(entity).unwrap();
+
+            let parent_global = read_global.one(parent).unwrap();
+            global.iso = parent_global.iso * local.iso;
         }
     }
 }
 
-impl System for SceneSystem {
-    fn name(&self) -> &str {
-        "Scene"
-    }
+#[cfg(feature = "3d")]
+fn scene_system3(
+    roots_modified: QueryRef<(Modified<&Global3>, Related<ChildOf>), FilterNotRelates<ChildOf>>,
+    modified: QueryRef<Modified<&Local3>, (FilterRelates<ChildOf>, With<Global3>)>,
+    children: QueryRef<Related<ChildOf>, (With<Local3>, With<Global3>)>,
+    update: QueryRef<(RelatesExclusive<&ChildOf>, &Local3, Alt<Global3>)>,
+    read_global: QueryRef<&Global3>,
+    scope: &mut ScopedAllocator,
+) {
+    use hashbrown::{hash_map::Entry, HashMap};
 
-    fn run(&mut self, cx: SystemContext<'_>) {
-        #[cfg(feature = "2d")]
-        {
-            let mut update = VecDeque::with_capacity_in(self.cap_2, &*cx.scope);
-            let mut ready = Bits65536::empty();
+    let mut to_update = Vec::new_in(&**scope);
+    let mut visiting_counter = HashMap::new_in(&**scope);
 
-            let mut count_2 = 0;
+    roots_modified.for_each(|(global, children)| {
+        for &child in children {
+            *visiting_counter.entry(child).or_insert(0) += 1;
+            to_update.push(child);
+        }
+    });
 
-            let query = cx.world.query_mut::<&Local2>().with::<Global2>();
+    let mut i = 0;
+    while i < to_update.len() {
+        let entity = to_update[i];
 
-            for (entity, local) in query {
-                update.push_back((entity, *local));
-            }
-
-            while let Some((entity, local)) = update.front() {
-                if !ready.test(entity.bits() as usize) {
-                    ready.set(entity.bits() as usize);
-                    count_2 += 1;
-                    match cx
-                        .world
-                        .query_one_mut::<(Option<&Local2>, &Global2)>(&local.parent)
-                    {
-                        Ok((None, parent_global)) => {
-                            let iso = parent_global.iso * local.iso;
-                            cx.world.query_one_mut::<&mut Global2>(entity).unwrap().iso = iso;
-                            update.pop_front();
-                        }
-                        Ok((Some(parent_local), parent_global)) => {
-                            if !ready.test(local.parent.bits() as usize) {
-                                ready.set(local.parent.bits() as usize);
-                                let elem = (local.parent, *parent_local);
-                                update.push_front(elem);
-                            } else {
-                                let iso = parent_global.iso * local.iso;
-                                cx.world.query_one_mut::<&mut Global2>(entity).unwrap().iso = iso;
-                                update.pop_front();
-                            }
-                        }
-                        Err(EntityError::NoSuchEntity) => {
-                            let _ = cx.world.despawn(entity);
-                            update.pop_front();
-                        }
-                        Err(EntityError::MissingComponents) => {
-                            let entity = *entity;
-                            let _ = cx.world.remove::<Global2>(&entity);
-                            update.pop_front();
-                        }
-                    }
-                }
-            }
-
-            if count_2 > self.cap_2 {
-                self.cap_2 = count_2;
-            } else {
-                self.cap_2 = self.cap_2 / 2 + count_2 / 2;
+        if let Ok(children) = children.one(entity) {
+            for &child in children {
+                let counter = visiting_counter.entry(child).or_insert(0);
+                *counter += 1;
+                debug_assert_eq!(*counter, 1, "Two roots in hierarchy");
+                to_update.push(child);
             }
         }
 
-        #[cfg(feature = "3d")]
-        {
-            let mut update = VecDeque::with_capacity_in(self.cap_3, &*cx.scope);
-            let mut ready = Bits65536::empty();
+        i += 1;
+    }
 
-            let mut count_3 = 0;
+    for (entity, _local) in modified {
+        if visiting_counter.contains_key(&entity) {
+            continue;
+        }
 
-            let query = cx.world.query_mut::<&Local3>().with::<Global3>();
-
-            for (entity, local) in query {
-                update.push_back((entity, *local));
+        match visiting_counter.entry(entity) {
+            Entry::Occupied(_) => continue,
+            Entry::Vacant(entry) => {
+                entry.insert(1);
+                to_update.push(entity);
             }
+        }
+    }
 
-            while let Some((entity, local)) = update.front() {
-                if !ready.test(entity.bits() as usize) {
-                    ready.set(entity.bits() as usize);
-                    count_3 += 1;
-                    match cx
-                        .world
-                        .query_one_mut::<(Option<&Local3>, &Global3)>(&local.parent)
-                    {
-                        Ok((None, parent_global)) => {
-                            let iso = parent_global.iso * local.iso;
-                            cx.world.query_one_mut::<&mut Global3>(entity).unwrap().iso = iso;
-                            update.pop_front();
-                        }
-                        Ok((Some(parent_local), parent_global)) => {
-                            if !ready.test(local.parent.bits() as usize) {
-                                ready.set(local.parent.bits() as usize);
-                                let elem = (local.parent, *parent_local);
-                                update.push_front(elem);
-                            } else {
-                                let iso = parent_global.iso * local.iso;
-                                cx.world.query_one_mut::<&mut Global3>(entity).unwrap().iso = iso;
-                                update.pop_front();
-                            }
-                        }
-                        Err(EntityError::NoSuchEntity) => {
-                            let _ = cx.world.despawn(entity);
-                            update.pop_front();
-                        }
-                        Err(EntityError::MissingComponents) => {
-                            let _ = cx.world.remove::<Global3>(entity);
-                            update.pop_front();
-                        }
-                    }
-                }
-            }
+    while i < to_update.len() {
+        let entity = to_update[i];
 
-            if count_3 > self.cap_3 {
-                self.cap_3 = count_3;
-            } else {
-                self.cap_3 = self.cap_3 / 2 + count_3 / 2;
+        if let Ok(children) = children.one(entity) {
+            for &child in children {
+                *visiting_counter.entry(child).or_insert(0) += 1;
+                to_update.push(child);
             }
+        }
+
+        i += 1;
+    }
+
+    for entity in to_update {
+        let counter = &mut visiting_counter[&entity];
+        *counter -= 1;
+
+        if *counter == 0 {
+            let ((_, parent), local, global) = update.one(entity).unwrap();
+
+            let parent_global = read_global.one(parent).unwrap();
+            global.iso = parent_global.iso * local.iso;
         }
     }
 }

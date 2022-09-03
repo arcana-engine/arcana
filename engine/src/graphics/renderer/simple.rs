@@ -1,6 +1,6 @@
 //! Simple renderer made of single node that draws using provided render pass encoder.
 
-use sierra::{ClearColor, ClearDepth, Fence, Format, Image, Layout, Pass, PipelineStageFlags};
+use sierra::{ClearColor, ClearDepth, Fence, Format, Image, Layout, Pass, PipelineStages};
 
 use crate::viewport::Viewport;
 
@@ -115,7 +115,7 @@ where
         let [wait, signal] = swapchain_image.wait_signal();
 
         cx.graphics.submit(
-            &mut [(PipelineStageFlags::BOTTOM_OF_PIPE, wait)],
+            &mut [(PipelineStages::BOTTOM_OF_PIPE, wait)],
             cbufs,
             &mut [signal],
             Some(fence),

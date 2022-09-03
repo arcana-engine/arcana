@@ -1,7 +1,6 @@
-use crate::{
-    command::CommandQueue,
-    system::{System, SystemContext},
-};
+use edict::{prelude::Component, system::Res, world::QueryRef};
+
+use crate::{clocks::ClockIndex, command::CommandQueue};
 
 #[cfg(feature = "visible")]
 use crate::{
@@ -12,7 +11,7 @@ use crate::{
 use crate::scene::Global3;
 
 /// Camera in 3 dimensions.
-#[derive(Clone, Debug)]
+#[derive(Clone, Debug, Component)]
 pub struct Camera3 {
     kind: Kind,
 
@@ -286,30 +285,26 @@ impl FreeCamera3 {
 
 pub struct FreeCamera3System;
 
-impl System for FreeCamera3System {
-    fn name(&self) -> &str {
-        "FreeCamera3System"
-    }
-
-    fn run(&mut self, cx: SystemContext<'_>) {
-        let query = cx.world.query_mut::<(
-            &mut Global3,
-            &mut FreeCamera3,
-            &mut CommandQueue<FreeCamera3Command>,
-        )>();
-        for (_, (global, camera, commands)) in query {
-            for cmd in commands.drain() {
-                match cmd {
-                    FreeCamera3Command::RotateTo(rot) => {
-                        global.iso.rotation = rot;
-                    }
-                    FreeCamera3Command::Move(mov) => {
-                        camera.mov = mov * camera.speed;
-                    }
+pub fn free_camera3_system(
+    query: QueryRef<(
+        &mut Global3,
+        &mut FreeCamera3,
+        &mut CommandQueue<FreeCamera3Command>,
+    )>,
+    clock: Res<ClockIndex>,
+) {
+    query.for_each(|(global, camera, commands)| {
+        for cmd in commands.drain() {
+            match cmd {
+                FreeCamera3Command::RotateTo(rot) => {
+                    global.iso.rotation = rot;
+                }
+                FreeCamera3Command::Move(mov) => {
+                    camera.mov = mov * camera.speed;
                 }
             }
-            global.iso.translation.vector +=
-                global.iso.rotation * camera.mov * cx.clock.delta.as_secs_f32();
         }
-    }
+        global.iso.translation.vector +=
+            global.iso.rotation * camera.mov * clock.delta.as_secs_f32();
+    });
 }

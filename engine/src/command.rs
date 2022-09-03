@@ -1,8 +1,12 @@
 use std::collections::VecDeque;
 
+use edict::prelude::Component;
+
 /// A queue of commands.
 /// It should be used as a component on controlled entity.
 #[repr(transparent)]
+#[derive(Component)]
+#[edict(where T: 'static)]
 pub struct CommandQueue<T> {
     commands: VecDeque<T>,
 }

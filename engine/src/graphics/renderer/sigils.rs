@@ -4,12 +4,12 @@ use edict::entity::EntityId;
 use goods::AssetId;
 use palette::LinSrgba;
 use sierra::{
-    align_up, descriptors, graphics_pipeline_desc, pipeline, shader_repr, AccessFlags, Buffer,
-    BufferImageCopy, BufferInfo, BufferUsage, DynamicGraphicsPipeline, Encoder, Extent2d, Extent3d,
+    align_up, descriptors, graphics_pipeline_desc, pipeline, shader_repr, Access, Buffer,
+    BufferImageCopy, BufferInfo, BufferUsage, DynamicGraphicsPipeline, Encoder, Extent, Extent,
     Format, FragmentShader, ImageExtent, ImageInfo, ImageUsage, ImageView, ImageViewInfo,
-    IndexType, Layout, LayoutTransition, Offset3d, PipelineInput, PipelineStage,
-    PipelineStageFlags, RenderPassEncoder, Sampler, Samples::Samples1, ShaderModuleInfo,
-    SubresourceLayers, Swizzle, VertexInputRate, VertexShader,
+    IndexType, Layout, LayoutTransition, Offset, PipelineInput, PipelineStage, PipelineStages,
+    RenderPassEncoder, Sampler, Samples::Samples1, ShaderModuleInfo, SubresourceLayers, Swizzle,
+    VertexInputRate, VertexShader,
 };
 
 use super::{DrawNode, RendererContext};
@@ -149,7 +149,7 @@ impl DrawNode for SigilsDraw {
         encoder: &mut Encoder<'a>,
         render_pass: &mut RenderPassEncoder<'_, 'b>,
         _camera: EntityId,
-        viewport: Extent2d,
+        viewport: Extent3,
     ) -> eyre::Result<()> {
         cx.res.with(|| SigilsDrawAssets {
             images: HashMap::new(),

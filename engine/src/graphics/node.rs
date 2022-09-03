@@ -1,12 +1,11 @@
 use super::Graphics;
-use crate::{clocks::ClockIndex, resources::Res};
+use crate::clocks::ClockIndex;
 use edict::world::World;
 use scoped_arena::Scope;
 
 pub struct NodeContext<'a> {
     pub graphics: &'a mut Graphics,
     pub world: &'a mut World,
-    pub res: &'a mut Res,
     pub scope: &'a Scope<'a>,
     pub clock: ClockIndex,
 }

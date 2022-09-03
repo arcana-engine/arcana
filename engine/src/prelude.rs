@@ -1,6 +1,7 @@
+pub use edict::prelude::*;
+
 pub use crate::{
-    camera::*, clocks::*, command::*, game::*, lifespan::*, resources::Res, system::*, task::*,
-    unfold::*,
+    camera::*, clocks::*, command::*, game::*, lifespan::*, system::*, task::*, unfold::*,
 };
 
 #[cfg(feature = "visible")]

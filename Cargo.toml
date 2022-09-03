@@ -2,11 +2,13 @@
 [workspace]
 members = [
     "engine",
-    # "examples/blocks",
-    "examples/tanks",
-    "examples/tanks/client",
-    "examples/tanks/server",
-    # "examples/bunnymark",
+    "physics",
+    "tiles",
+    "examples/blocks",
+    # "examples/tanks",
+    # "examples/tanks/client",
+    # "examples/tanks/server",
+    "examples/bunnymark",
     # "examples/gltf-test",
     # "examples/unfold"
 ]

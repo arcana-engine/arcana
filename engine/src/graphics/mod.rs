@@ -154,9 +154,9 @@ use bytemuck::Pod;
 use raw_window_handle::HasRawWindowHandle;
 use scoped_arena::Scope;
 use sierra::{
-    AccessFlags, Buffer, BufferInfo, CommandBuffer, CreateSurfaceError, Device, Encoder, Extent3d,
-    Fence, Format, Image, ImageInfo, ImageUsage, Layout, Offset3d, OutOfMemory, PipelineStageFlags,
-    PresentOk, Queue, Semaphore, SingleQueueQuery, SubresourceLayers, Surface, SwapchainImage,
+    Access, Buffer, BufferInfo, CommandBuffer, CreateSurfaceError, Device, Encoder, Extent3, Fence,
+    Format, Image, ImageInfo, ImageUsage, Layout, Offset3, OutOfMemory, PipelineStages, PresentOk,
+    Queue, Semaphore, SingleQueueQuery, SubresourceLayers, Surface, SwapchainImage,
 };
 
 pub use sierra::VertexInputRate;
@@ -305,13 +305,13 @@ impl Graphics {
         self.upload_image(
             UploadImage {
                 image: &image,
-                offset: Offset3d::ZERO,
+                offset: Offset3::zeros(),
                 extent: info.extent.into_3d(),
                 layers,
                 old_layout: None,
                 new_layout: layout,
-                old_access: AccessFlags::empty(),
-                new_access: AccessFlags::all(),
+                old_access: Access::empty(),
+                new_access: Access::all(),
                 format,
                 row_length,
                 image_height,
@@ -327,7 +327,7 @@ impl Graphics {
 
     pub fn submit(
         &mut self,
-        wait: &mut [(PipelineStageFlags, &mut Semaphore)],
+        wait: &mut [(PipelineStages, &mut Semaphore)],
         cbufs: impl IntoIterator<Item = CommandBuffer>,
         signal: &mut [&mut Semaphore],
         fence: Option<&mut Fence>,
@@ -410,13 +410,13 @@ impl<T> SparseDescriptors<T> {
 #[derive(Debug)]
 pub struct UploadImage<'a> {
     pub image: &'a Image,
-    pub offset: Offset3d,
-    pub extent: Extent3d,
+    pub offset: Offset3,
+    pub extent: Extent3,
     pub layers: SubresourceLayers,
     pub old_layout: Option<Layout>,
     pub new_layout: Layout,
-    pub old_access: AccessFlags,
-    pub new_access: AccessFlags,
+    pub old_access: Access,
+    pub new_access: Access,
     pub format: Format,
     pub row_length: u32,
     pub image_height: u32,

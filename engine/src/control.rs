@@ -6,7 +6,7 @@ use std::{
 };
 
 use edict::{
-    prelude::{EntityId, World},
+    prelude::{Component, EntityId, World},
     world::NoSuchEntity,
 };
 use winit::event::VirtualKeyCode;
@@ -18,7 +18,6 @@ use crate::{
         MouseScrollDelta, WindowEvent,
     },
     funnel::Funnel,
-    resources::Res,
 };
 
 #[derive(Clone, Copy, Debug)]
@@ -76,15 +75,15 @@ pub enum ControlResult {
 /// Receives device events from `Control` hub.
 pub trait InputController: Send + 'static {
     /// Translates device event into controls.
-    fn control(&mut self, event: InputEvent, res: &mut Res, world: &mut World) -> ControlResult;
+    fn control(&mut self, event: InputEvent, world: &mut World) -> ControlResult;
 }
 
 impl<F> InputController for F
 where
-    F: FnMut(InputEvent, &mut Res, &mut World) -> ControlResult + Send + 'static,
+    F: FnMut(InputEvent, &mut World) -> ControlResult + Send + 'static,
 {
-    fn control(&mut self, event: InputEvent, res: &mut Res, world: &mut World) -> ControlResult {
-        (*self)(event, res, world)
+    fn control(&mut self, event: InputEvent, world: &mut World) -> ControlResult {
+        (*self)(event, world)
     }
 }
 
@@ -138,7 +137,7 @@ impl Control {
 }
 
 impl Funnel<Event> for Control {
-    fn filter(&mut self, res: &mut Res, world: &mut World, event: Event) -> Option<Event> {
+    fn filter(&mut self, world: &mut World, event: Event) -> Option<Event> {
         let (input_event, device_id) = match event {
             Event::DeviceEvent {
                 device_id,
@@ -182,7 +181,7 @@ impl Funnel<Event> for Control {
                     let mut device_id_control_lost = Vec::new();
                     for (device_id, controller) in &mut self.devices {
                         if let ControlResult::ControlLost =
-                            controller.control(InputEvent::Focused(v), res, world)
+                            controller.control(InputEvent::Focused(v), world)
                         {
                             device_id_control_lost.push(*device_id);
                         }
@@ -195,7 +194,7 @@ impl Funnel<Event> for Control {
                     let mut global_control_lost = Vec::new();
                     for (idx, controller) in self.global.iter_mut() {
                         if let ControlResult::ControlLost =
-                            controller.control(InputEvent::Focused(v), res, world)
+                            controller.control(InputEvent::Focused(v), world)
                         {
                             global_control_lost.push(idx);
                         }
@@ -214,7 +213,7 @@ impl Funnel<Event> for Control {
         };
 
         let mut consumed = match self.devices.get_mut(&device_id) {
-            Some(controller) => match controller.control(input_event, res, world) {
+            Some(controller) => match controller.control(input_event, world) {
                 ControlResult::ControlLost => {
                     self.devices.remove(&device_id);
                     false
@@ -228,7 +227,7 @@ impl Funnel<Event> for Control {
         for idx in 0..self.global.len() {
             if !consumed {
                 if let Some(controller) = self.global.get_mut(idx) {
-                    match controller.control(input_event, res, world) {
+                    match controller.control(input_event, world) {
                         ControlResult::ControlLost => {
                             self.global.remove(idx);
                         }
@@ -269,6 +268,7 @@ pub enum AssumeControlError {
 }
 
 /// Marker component. Marks that entity is being controlled.
+#[derive(Component)]
 pub struct Controlled {
     // Forbid construction outside of this module.
     __: (),
@@ -292,11 +292,11 @@ where
         entity: EntityId,
         world: &mut World,
     ) -> Result<Self, AssumeControlError> {
-        match world.query_one_mut::<&Controlled>(&entity).is_ok() {
+        match world.query_one::<&Controlled>(entity).is_ok() {
             true => Err(AssumeControlError::AlreadyControlled { entity }),
             false => {
                 world
-                    .try_insert_bundle(&entity, (CONTROLLED, CommandQueue::<T::Command>::new()))
+                    .insert_bundle(entity, (CONTROLLED, CommandQueue::<T::Command>::new()))
                     .map_err(|NoSuchEntity| AssumeControlError::NoSuchEntity { entity })?;
                 Ok(EntityController { commander, entity })
             }
@@ -309,8 +309,8 @@ where
     T: EventTranslator + Send + 'static,
     T::Command: Send + Sync + 'static,
 {
-    fn control(&mut self, event: InputEvent, _res: &mut Res, world: &mut World) -> ControlResult {
-        match world.query_one_mut::<&mut CommandQueue<T::Command>>(&self.entity) {
+    fn control(&mut self, event: InputEvent, world: &mut World) -> ControlResult {
+        match world.query_one::<&mut CommandQueue<T::Command>>(self.entity) {
             Ok(queue) => match self.commander.translate(event) {
                 None => ControlResult::Ignored,
                 Some(command) => {

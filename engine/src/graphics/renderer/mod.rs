@@ -1,6 +1,6 @@
 use edict::{entity::EntityId, world::World};
 use scoped_arena::Scope;
-use sierra::{Encoder, Extent2d, RenderPassEncoder};
+use sierra::{Encoder, Extent2, RenderPassEncoder};
 
 #[cfg(feature = "3d")]
 pub mod basic;
@@ -95,7 +95,7 @@ pub trait DrawNode: 'static {
         encoder: &mut Encoder<'a>,
         render_pass: &mut RenderPassEncoder<'_, 'b>,
         camera: EntityId,
-        viewport: Extent2d,
+        viewport: Extent2,
     ) -> eyre::Result<()>;
 }
 
@@ -110,7 +110,7 @@ where
         encoder: &mut Encoder<'a>,
         render_pass: &mut RenderPassEncoder<'_, 'b>,
         camera: EntityId,
-        viewport: Extent2d,
+        viewport: Extent2,
     ) -> eyre::Result<()> {
         (&mut **self).draw(cx, encoder, render_pass, camera, viewport)
     }
@@ -121,7 +121,7 @@ pub struct DrawNodeInputs<'a> {
     pub encoder: &'a mut Encoder<'a>,
     pub render_pass: RenderPassEncoder<'a, 'a>,
     pub camera: EntityId,
-    pub viewport: Extent2d,
+    pub viewport: Extent2,
 }
 
 impl<'a, N> RenderNodeInputs<'a> for N

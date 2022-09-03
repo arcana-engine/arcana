@@ -1,0 +1,19 @@
+[package]
+name = "arcana-tiles"
+version = "0.1.0"
+edition = "2021"
+
+[features]
+graphics = ["arcana/graphics", "sierra"]
+physics = ["arcana-physics/2d"]
+
+[dependencies]
+arcana = { path = "../engine" }
+arcana-physics = { path = "../physics", optional = true }
+cfg-if = "1.0"
+ordered-float = "3.0"
+hashbrown = "0.12"
+sierra = { version = "0.6", optional = true, git = "https://github.com/arcana-engine/sierra" }
+serde = { version = "1.0", features = ["derive"] }
+goods = { version = "0.13", git = "https://github.com/arcana-engine/goods" }
+thiserror = "1.0"

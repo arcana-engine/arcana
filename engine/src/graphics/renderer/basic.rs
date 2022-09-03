@@ -1,7 +1,7 @@
 use edict::entity::EntityId;
 use sierra::{
     graphics_pipeline_desc, mat4, vec4, DepthTest, Descriptors, DynamicGraphicsPipeline, Encoder,
-    Extent2d, FragmentShader, ImageView, PipelineInput, RenderPassEncoder, Sampler,
+    Extent2, FragmentShader, ImageView, PipelineInput, RenderPassEncoder, Sampler,
     ShaderModuleInfo, ShaderRepr, VertexShader,
 };
 
@@ -74,7 +74,7 @@ impl DrawNode for BasicDraw {
         encoder: &mut Encoder<'a>,
         render_pass: &mut RenderPassEncoder<'_, 'b>,
         camera: EntityId,
-        _viewport: Extent2d,
+        _viewport: Extent2,
     ) -> eyre::Result<()> {
         let (global, camera) = cx.world.query_one::<(&Global3, &Camera3)>(&camera)?;
 

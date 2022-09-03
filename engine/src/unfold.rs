@@ -1,6 +1,13 @@
-use crate::system::{Scheduler, System, SystemContext};
+use std::{any::TypeId, ptr::NonNull};
 
 pub use arcana_proc::Unfold;
+use edict::{
+    archetype::Archetype,
+    query::Access,
+    scheduler::Scheduler,
+    system::{ActionQueue, System},
+    world::World,
+};
 
 /// Unfold is a component type that triggers spawning of other components and/or additional entities.
 /// This trait is typically used as final step of game state deserialization.
@@ -44,8 +51,6 @@ pub trait Unfold {
     fn schedule_unfold_system(scheduler: &mut Scheduler) {
         #[cfg(feature = "visible")]
         scheduler.add_system(Self::UnfoldSystem::default());
-        #[cfg(not(feature = "visible"))]
-        scheduler.add_ticking_system(Self::UnfoldSystem::default());
     }
 }
 
@@ -67,10 +72,32 @@ impl<T> UnfoldResult<T> {
 #[derive(Clone, Copy, Debug, Default)]
 pub struct DummyUnfoldSystem;
 
-impl System for DummyUnfoldSystem {
-    fn name(&self) -> &str {
-        "Dummy unfold system"
+unsafe impl System for DummyUnfoldSystem {
+    #[inline]
+    fn is_local(&self) -> bool {
+        false
     }
 
-    fn run(&mut self, _: SystemContext<'_>) {}
+    #[inline]
+    fn world_access(&self) -> Option<Access> {
+        None
+    }
+
+    #[inline]
+    fn skips_archetype(&self, _archetype: &Archetype) -> bool {
+        true
+    }
+
+    #[inline]
+    fn access_component(&self, _id: TypeId) -> Option<Access> {
+        None
+    }
+
+    #[inline]
+    fn access_resource(&self, _id: TypeId) -> Option<Access> {
+        None
+    }
+
+    #[inline]
+    unsafe fn run_unchecked(&mut self, _world: NonNull<World>, _queue: &mut dyn ActionQueue) {}
 }

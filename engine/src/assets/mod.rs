@@ -18,7 +18,7 @@ use std::{
     future::Future,
     ops::{Deref, DerefMut},
     pin::Pin,
-    task::{ready, Context, Poll},
+    task::{Context, Poll},
 };
 
 pub use goods::{
@@ -118,11 +118,13 @@ where
     fn poll(self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<Self::Output> {
         let me = self.get_mut();
 
-        let result = ready!(Pin::new(&mut me.0).poll(cx));
-        Poll::Ready(Ok(WithId {
-            asset: result,
-            id: me.1,
-        }))
+        match Pin::new(&mut me.0).poll(cx) {
+            Poll::Pending => Poll::Pending,
+            Poll::Ready(result) => Poll::Ready(Ok(WithId {
+                asset: result,
+                id: me.1,
+            })),
+        }
     }
 }
 
