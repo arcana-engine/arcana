@@ -75,14 +75,14 @@ pub enum ControlResult {
 /// Receives device events from `Control` hub.
 pub trait InputController: Send + 'static {
     /// Translates device event into controls.
-    fn control(&mut self, event: InputEvent, world: &mut World) -> ControlResult;
+    fn control(&mut self, event: InputEvent, world: &World) -> ControlResult;
 }
 
 impl<F> InputController for F
 where
-    F: FnMut(InputEvent, &mut World) -> ControlResult + Send + 'static,
+    F: FnMut(InputEvent, &World) -> ControlResult + Send + 'static,
 {
-    fn control(&mut self, event: InputEvent, world: &mut World) -> ControlResult {
+    fn control(&mut self, event: InputEvent, world: &World) -> ControlResult {
         (*self)(event, world)
     }
 }
@@ -136,8 +136,12 @@ impl Control {
     }
 }
 
-impl Funnel<Event> for Control {
+pub struct ControlFunnel;
+
+impl Funnel<Event> for ControlFunnel {
     fn filter(&mut self, world: &mut World, event: Event) -> Option<Event> {
+        let mut control = world.expect_resource_mut::<Control>();
+
         let (input_event, device_id) = match event {
             Event::DeviceEvent {
                 device_id,
@@ -179,7 +183,7 @@ impl Funnel<Event> for Control {
                 WindowEvent::Focused(v) => {
                     // This event is always broadcast to every controller.
                     let mut device_id_control_lost = Vec::new();
-                    for (device_id, controller) in &mut self.devices {
+                    for (device_id, controller) in &mut control.devices {
                         if let ControlResult::ControlLost =
                             controller.control(InputEvent::Focused(v), world)
                         {
@@ -188,11 +192,11 @@ impl Funnel<Event> for Control {
                     }
 
                     for device_id in device_id_control_lost {
-                        self.devices.remove(&device_id);
+                        control.devices.remove(&device_id);
                     }
 
                     let mut global_control_lost = Vec::new();
-                    for (idx, controller) in self.global.iter_mut() {
+                    for (idx, controller) in control.global.iter_mut() {
                         if let ControlResult::ControlLost =
                             controller.control(InputEvent::Focused(v), world)
                         {
@@ -201,7 +205,7 @@ impl Funnel<Event> for Control {
                     }
 
                     for idx in global_control_lost {
-                        self.global.remove(idx);
+                        control.global.remove(idx);
                     }
 
                     return Some(event);
@@ -212,10 +216,10 @@ impl Funnel<Event> for Control {
             _ => return Some(event),
         };
 
-        let mut consumed = match self.devices.get_mut(&device_id) {
+        let mut consumed = match control.devices.get_mut(&device_id) {
             Some(controller) => match controller.control(input_event, world) {
                 ControlResult::ControlLost => {
-                    self.devices.remove(&device_id);
+                    control.devices.remove(&device_id);
                     false
                 }
                 ControlResult::Consumed => true,
@@ -224,12 +228,12 @@ impl Funnel<Event> for Control {
             None => false,
         };
 
-        for idx in 0..self.global.len() {
+        for idx in 0..control.global.len() {
             if !consumed {
-                if let Some(controller) = self.global.get_mut(idx) {
+                if let Some(controller) = control.global.get_mut(idx) {
                     match controller.control(input_event, world) {
                         ControlResult::ControlLost => {
-                            self.global.remove(idx);
+                            control.global.remove(idx);
                         }
                         ControlResult::Consumed => consumed = true,
                         ControlResult::Ignored => {}
@@ -309,15 +313,19 @@ where
     T: EventTranslator + Send + 'static,
     T::Command: Send + Sync + 'static,
 {
-    fn control(&mut self, event: InputEvent, world: &mut World) -> ControlResult {
-        match world.query_one::<&mut CommandQueue<T::Command>>(self.entity) {
-            Ok(queue) => match self.commander.translate(event) {
+    fn control(&mut self, event: InputEvent, world: &World) -> ControlResult {
+        let result = world.for_one::<&mut CommandQueue<T::Command>, _, _>(self.entity, |queue| {
+            match self.commander.translate(event) {
                 None => ControlResult::Ignored,
                 Some(command) => {
                     queue.add(command);
                     ControlResult::Consumed
                 }
-            },
+            }
+        });
+
+        match result {
+            Ok(result) => result,
             Err(_err) => ControlResult::ControlLost,
         }
     }

@@ -3,20 +3,23 @@ use std::future::Future;
 #[cfg(feature = "asset-pipeline")]
 use std::path::Path;
 
-use edict::{scheduler::Scheduler, system::Res, world::World};
+use edict::{scheduler::Scheduler, system::Res, world::World, EntityId};
 use eyre::WrapErr;
 use goods::Loader;
 
 #[cfg(feature = "visible")]
 use winit::{
     dpi::PhysicalSize,
-    window::{Window, WindowBuilder},
+    window::{self, WindowBuilder},
 };
 
-use crate::{assets::Assets, cfg::Config, clocks::Clocks};
+use crate::{assets::Assets, cfg::Config, clocks::Clocks, control::ControlFunnel, window::Windows};
 
-#[cfg(any(feature = "2d", feature = "3d"))]
-use crate::scene::SceneSystem;
+#[cfg(feature = "2d")]
+use crate::scene::scene_system2;
+
+#[cfg(feature = "3d")]
+use crate::scene::scene_system3;
 
 #[cfg(feature = "visible")]
 use crate::{
@@ -26,35 +29,34 @@ use crate::{
     event::{Event, Loop, WindowEvent},
     fps::FpsMeter,
     funnel::Funnel,
+    lifespan::lifetime_system,
     system::ToFixSystem,
+    task::teardown_tasks,
 };
 
 #[cfg(feature = "graphics")]
-use crate::{
-    graphics::{renderer::Renderer, Graphics},
-    viewport::Viewport,
-};
+use crate::graphics::{renderer::Renderer, Graphics};
 
-#[cfg(all(any(feature = "2d", feature = "3d"), feature = "graphics"))]
-use crate::graphics::renderer::simple::SimpleRenderer;
+// #[cfg(all(any(feature = "2d", feature = "3d"), feature = "graphics"))]
+// use crate::graphics::renderer::simple::SimpleRenderer;
 
-#[cfg(all(feature = "2d", feature = "graphics"))]
-use crate::{camera::Camera2, graphics::renderer::sprite::SpriteDraw, scene::Global2};
+// #[cfg(all(feature = "2d", feature = "graphics"))]
+// use crate::{camera::Camera2, graphics::renderer::sprite::SpriteDraw, scene::Global2};
 
-#[cfg(all(feature = "3d", feature = "graphics"))]
-use crate::{camera::Camera3, graphics::renderer::basic::BasicDraw, scene::Global3};
+// #[cfg(all(feature = "3d", feature = "graphics"))]
+// use crate::{camera::Camera3, graphics::renderer::basic::BasicDraw, scene::Global3};
 
 #[cfg(feature = "visible")]
 #[repr(transparent)]
 pub struct MainWindow {
-    window: Window,
+    window: window::Window,
 }
 
 #[cfg(feature = "visible")]
 impl std::ops::Deref for MainWindow {
-    type Target = Window;
+    type Target = window::Window;
 
-    fn deref(&self) -> &Window {
+    fn deref(&self) -> &window::Window {
         &self.window
     }
 }
@@ -85,22 +87,18 @@ impl Funnel<Event> for MainWindowFunnel {
                 event: WindowEvent::CloseRequested,
                 window_id,
             } => {
-                if let Some(window) = world.get_resource::<MainWindow>() {
-                    if window_id == window.id() {
-                        world.insert_resource(Exit);
-                        world.remove_resource::<MainWindow>();
-                    }
+                let is_main = world
+                    .get_resource::<MainWindow>()
+                    .map_or(false, |window| window_id == window.id());
+
+                if is_main {
+                    world.insert_resource(Exit);
+                    world.remove_resource::<MainWindow>();
                 }
-                Some(event)
             }
-            Event::Loop => {
-                if let Some(window) = world.get_resource::<MainWindow>() {
-                    window.request_redraw();
-                }
-                Some(Event::Loop)
-            }
-            _ => Some(event),
+            _ => {}
         }
+        Some(event)
     }
 }
 
@@ -117,8 +115,8 @@ pub struct Game {
     #[cfg(feature = "graphics")]
     pub renderer: Option<Box<dyn Renderer>>,
 
-    #[cfg(feature = "graphics")]
-    pub viewport: Viewport,
+    #[cfg(feature = "visible")]
+    pub camera: EntityId,
 }
 
 #[cfg(all(feature = "visible", feature = "graphics", feature = "2d"))]
@@ -128,9 +126,10 @@ where
     Fut: Future<Output = eyre::Result<Game>>,
 {
     tracing::debug!("Starting 2D game");
-    game::<_, _, _, (Camera2, Global2)>(f, |g| {
-        Ok(Box::new(SimpleRenderer::new(SpriteDraw::new(0.0..1.0, g)?)))
-    })
+    // game::<_, _, _, (Camera2, Global2)>(f, |g| {
+    //     Ok(Box::new(SimpleRenderer::new(SpriteDraw::new(0.0..1.0, g)?)))
+    // })
+    todo!()
 }
 
 #[cfg(all(feature = "visible", feature = "graphics", feature = "3d"))]
@@ -140,9 +139,10 @@ where
     Fut: Future<Output = eyre::Result<Game>>,
 {
     tracing::debug!("Starting 3D game");
-    game::<_, _, _, (Camera3, Global3)>(f, |g| {
-        Ok(Box::new(SimpleRenderer::new(BasicDraw::new(g)?)))
-    })
+    // game::<_, _, _, (Camera3, Global3)>(f, |g| {
+    //     Ok(Box::new(SimpleRenderer::new(BasicDraw::new(g)?)))
+    // })
+    todo!()
 }
 
 #[cfg(all(feature = "visible", feature = "graphics"))]
@@ -153,12 +153,7 @@ where
     R: FnOnce(&mut Graphics) -> eyre::Result<Box<dyn Renderer>> + Send + 'static,
     C: DynamicComponentBundle + Default,
 {
-    use arcana_time::TimeStamp;
-    use edict::prelude::ActionEncoderSliceExt;
-
-    use crate::{
-        clocks::ClockIndex, lifespan::lifetime_system, system::FixSystem, task::teardown_tasks,
-    };
+    use crate::graphics::spawn_window_render_target;
 
     crate::install_eyre_handler();
     crate::install_tracing_subscriber();
@@ -167,56 +162,37 @@ where
         // Load config.
         let cfg = Config::load_default();
 
-        // Initialize asset loader.
-        let loader = configure_loader(&cfg).await?;
-
-        let assets = Assets::new(loader);
-
         // Create new world with camera.
         let mut world = World::new();
+
+        // Initialize asset loader.
+        let loader = configure_loader(&cfg).await?;
+        world.insert_resource(Assets::new(loader));
 
         // Open game window.
         let window = MainWindow::new(&event_loop, cfg.game.window_size)
             .wrap_err_with(|| "Failed to initialize main window")?;
 
+        let mut windows = Windows::new();
+
+        spawn_window_render_target(&window, &mut world, &mut windows)
+            .wrap_err_with(|| "Failed to initialize main window render target")?;
+
         let camera = world.spawn(C::default());
-
-        #[cfg(any(feature = "2d", feature = "3d"))]
-        {
-            let window_size = window.inner_size();
-
-            let aspect = window_size.width as f32 / window_size.height as f32;
-
-            #[cfg(feature = "2d")]
-            if let Ok(camera) = world.query_one::<&mut Camera2>(camera) {
-                camera.set_aspect(aspect);
-            }
-
-            #[cfg(feature = "3d")]
-            if let Ok(camera) = world.query_one::<&mut Camera3>(camera) {
-                camera.set_aspect(aspect);
-            }
-        }
 
         // Initialize graphics system.
         let graphics = Graphics::new().wrap_err_with(|| "Failed to initialize graphics")?;
-
-        // Attach viewport to window and camera.
-        let viewport = Viewport::new(camera, &window, &mut world, &graphics)
-            .wrap_err_with(|| "Failed to initialize main viewport")?;
-
-        world.insert_resource(window);
-        world.insert_resource(Control::new());
         world.insert_resource(graphics);
-        world.insert_resource(assets);
 
-        // Configure game with closure.
+        world.insert_resource(Control::new());
+
+        // Configure the game with user-provided closure.
         let game = f(Game {
             world,
             scheduler: Scheduler::new(),
             funnel: None,
             renderer: None,
-            viewport,
+            camera,
         })
         .await
         .wrap_err_with(|| "Game startup failed")?;
@@ -226,11 +202,11 @@ where
             mut scheduler,
             mut funnel,
             renderer,
-            mut viewport,
+            ..
         } = game;
 
         // Take renderer. Use default one if not configured.
-        let mut renderer = match renderer {
+        let renderer = match renderer {
             Some(renderer) => renderer,
             None => {
                 let mut graphics = world.expect_resource_mut();
@@ -241,11 +217,14 @@ where
         // Start the clocks.
         let mut clocks = Clocks::new();
 
-        // Schedule default systems.
-        #[cfg(any(feature = "2d", feature = "3d"))]
-        scheduler.add_system(SceneSystem::new());
-
         scheduler.add_system(lifetime_system);
+
+        // Schedule default systems.
+        #[cfg(feature = "2d")]
+        scheduler.add_system(scene_system2);
+
+        #[cfg(feature = "3d")]
+        scheduler.add_system(scene_system3);
 
         world.insert_resource(FpsMeter::new(TimeSpan::SECOND));
         scheduler.add_system(
@@ -255,23 +234,19 @@ where
             .to_fix_system(TimeSpan::SECOND),
         );
 
-        let main_step = cfg.main_step;
-        let mut step_ns = 0;
-
         // Begin game loop.
         loop {
             loop {
                 let event = event_loop.next_event(TimeSpan::MILLISECOND).await;
-                let mut control = world.expect_resource_mut();
 
                 // Loop through new  events.
                 let mut funnel = GameFunnel {
-                    viewport: &mut viewport,
+                    windows: &mut windows,
                     custom: match &mut funnel {
                         None => None,
                         Some(funnel) => Some(&mut **funnel),
                     },
-                    control: &mut control,
+                    control: &mut ControlFunnel,
                 };
 
                 // Filter event
@@ -292,8 +267,7 @@ where
 
             let clock = clocks.advance();
 
-            let encoders = rayon::scope(|scope| scheduler.run(&mut world, scope));
-            encoders.execute_all(&mut world);
+            scheduler.run_rayon(&mut world);
 
             world
                 .expect_resource_mut::<FpsMeter>()
@@ -485,17 +459,18 @@ where
 
 #[cfg(all(feature = "visible", feature = "graphics"))]
 struct GameFunnel<'a> {
-    viewport: &'a mut Viewport,
+    windows: &'a mut Windows,
     custom: Option<&'a mut dyn Funnel<Event>>,
-    control: &'a mut Control,
+    control: &'a mut ControlFunnel,
 }
 
 #[cfg(all(feature = "visible", feature = "graphics"))]
 impl Funnel<Event> for GameFunnel<'_> {
     fn filter(&mut self, world: &mut World, event: Event) -> Option<Event> {
         let mut event = MainWindowFunnel.filter(world, event)?;
-        event = self.viewport.filter(world, event)?;
-        if self.viewport.focused() {
+        event = self.windows.filter(world, event)?;
+
+        if !self.windows.skip_event(&event, world) {
             if let Some(custom) = &mut self.custom {
                 event = custom.filter(world, event)?;
             }

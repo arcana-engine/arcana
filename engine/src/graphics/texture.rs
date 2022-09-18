@@ -7,6 +7,7 @@ use std::{
     task::{Context, Poll},
 };
 
+use edict::EntityId;
 use goods::{
     Asset, AssetBuild, AssetField, AssetFieldBuild, AssetHandle, AssetId, AssetResult, Container,
     Loader,
@@ -64,6 +65,9 @@ pub struct Texture {
 
     /// Sampler associated with the texture image.
     pub sampler: Sampler,
+
+    /// Entity id of the render target from which this texture is created.
+    pub target: Option<EntityId>,
 }
 
 pub struct TextureDecoded {
@@ -244,7 +248,11 @@ where
         let graphics: &mut Graphics = builder.borrow_mut();
         let image = decoded.texture.build(graphics)?.image.clone();
         let sampler = graphics.create_sampler(decoded.sampler)?;
-        Ok(Texture { image, sampler })
+        Ok(Texture {
+            image,
+            sampler,
+            target: None,
+        })
     }
 }
 
@@ -279,6 +287,7 @@ where
         Ok(Texture {
             image,
             sampler: graphics.create_sampler(Default::default())?,
+            target: None,
         })
     }
 }

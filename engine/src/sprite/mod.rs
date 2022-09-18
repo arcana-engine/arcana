@@ -4,8 +4,8 @@ mod graph;
 
 use std::sync::Arc;
 
-#[cfg(feature = "graphics")]
-pub use crate::graphics::renderer::sprite::*;
+// #[cfg(feature = "graphics")]
+// pub use crate::graphics::renderer::sprite::*;
 
 pub use self::{anim::*, graph::*};
 

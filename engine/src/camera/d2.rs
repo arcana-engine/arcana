@@ -5,9 +5,6 @@ use crate::rect::Rect;
 /// Camera in 2 dimensions.
 #[derive(Debug, Component)]
 pub struct Camera2 {
-    /// Viewport aspect ratio.
-    aspect: f32,
-
     /// Vertical scale
     scaley: f32,
 }
@@ -15,18 +12,18 @@ pub struct Camera2 {
 impl Default for Camera2 {
     #[inline]
     fn default() -> Self {
-        Camera2::new(1.0, 1.0)
+        Camera2::new(1.0)
     }
 }
 
 impl Camera2 {
-    pub fn new(aspect: f32, scaley: f32) -> Self {
-        Camera2 { aspect, scaley }
+    pub fn new(scaley: f32) -> Self {
+        Camera2 { scaley }
     }
 
-    pub fn affine(&self) -> na::Affine2<f32> {
+    pub fn affine(&self, aspect: f32) -> na::Affine2<f32> {
         na::Affine2::from_matrix_unchecked(na::Matrix3::new(
-            self.scaley / self.aspect,
+            self.scaley / aspect,
             0.0,
             0.0,
             0.0,
@@ -38,17 +35,12 @@ impl Camera2 {
         ))
     }
 
-    pub fn scale(&self) -> na::Vector2<f32> {
-        na::Vector2::new(self.scaley * self.aspect, self.scaley)
+    pub fn scale(&self, aspect: f32) -> na::Vector2<f32> {
+        na::Vector2::new(self.scaley * aspect, self.scaley)
     }
 
-    pub fn inverse_scale(&self) -> na::Vector2<f32> {
-        na::Vector2::new(1.0 / self.scaley / self.aspect, 1.0 / self.scaley)
-    }
-
-    /// Update aspect ration of the camera.
-    pub fn set_aspect(&mut self, aspect: f32) {
-        self.aspect = aspect;
+    pub fn inverse_scale(&self, aspect: f32) -> na::Vector2<f32> {
+        na::Vector2::new(1.0 / self.scaley / aspect, 1.0 / self.scaley)
     }
 
     /// Update aspect ration of the camera.
@@ -61,8 +53,9 @@ impl Camera2 {
         &self,
         iso: &na::Isometry2<f32>,
         point: &na::Point2<f32>,
+        aspect: f32,
     ) -> na::Point2<f32> {
-        let scale = self.scale();
+        let scale = self.scale(aspect);
         iso.inverse_transform_point(&na::Point2::from(point.coords.component_mul(&scale)))
     }
 
@@ -71,15 +64,16 @@ impl Camera2 {
         &self,
         iso: &na::Isometry2<f32>,
         point: &na::Point2<f32>,
+        aspect: f32,
     ) -> na::Point2<f32> {
-        let inverse_scale = self.inverse_scale();
+        let inverse_scale = self.inverse_scale(aspect);
         iso.transform_point(&na::Point2::from(
             point.coords.component_mul(&inverse_scale),
         ))
     }
 
-    pub fn transform_aabb(&self, iso: &na::Isometry2<f32>, aabb: &Rect) -> Rect {
-        let scale = self.scale();
+    pub fn transform_aabb(&self, iso: &na::Isometry2<f32>, aabb: &Rect, aspect: f32) -> Rect {
+        let scale = self.scale(aspect);
 
         let top_left = iso.inverse_transform_point(&na::Point2::from(
             aabb.top_left().coords.component_mul(&scale),
@@ -110,7 +104,7 @@ impl Camera2 {
         }
     }
 
-    pub fn view_aabb(&self, iso: &na::Isometry2<f32>) -> Rect {
+    pub fn view_aabb(&self, iso: &na::Isometry2<f32>, aspect: f32) -> Rect {
         self.transform_aabb(
             iso,
             &Rect {
@@ -119,6 +113,7 @@ impl Camera2 {
                 top: 1.0,
                 bottom: -1.0,
             },
+            aspect,
         )
     }
 }
