@@ -1,11 +1,13 @@
 use std::fmt::{self, Display};
 
 use edict::{
-    prelude::{ActionEncoder, Component, EntityId},
-    query::{Alt, Modified, With},
-    relation::{ChildOf, FilterNotRelates, FilterRelates, Related, RelatesExclusive, Relation},
+    component::Component,
+    entity::EntityId,
+    query::{Alt, Entities, Modified, With},
+    relation::{ChildOf, FilterNotRelates, Related, RelatesExclusive, Relation},
     world::QueryRef,
 };
+use hashbrown::{HashMap, HashSet};
 
 use crate::scoped_allocator::ScopedAllocator;
 
@@ -18,37 +20,39 @@ pub struct Local2 {
 #[cfg(feature = "2d")]
 impl Relation for Local2 {
     const EXCLUSIVE: bool = true;
-
-    fn on_target_drop(entity: EntityId, _target: EntityId, encoder: &mut ActionEncoder) {
-        encoder.despawn(entity);
-    }
+    const OWNED: bool = true;
 }
 
 #[cfg(feature = "2d")]
 impl Display for Local2 {
+    #[inline]
     fn fmt(&self, fmt: &mut fmt::Formatter<'_>) -> fmt::Result {
-        write!(fmt, "{}@{}", self.parent, self.iso)
+        Display::fmt(&self.iso, fmt)
     }
 }
 
 #[cfg(feature = "2d")]
 impl Local2 {
+    #[inline]
     pub fn identity() -> Self {
         Local2 {
             iso: na::Isometry2::identity(),
         }
     }
 
+    #[inline]
     pub fn new(iso: na::Isometry2<f32>) -> Self {
         Local2 { iso }
     }
 
+    #[inline]
     pub fn from_translation(tr: na::Translation2<f32>) -> Self {
         Local2 {
             iso: na::Isometry2::from_parts(tr, na::UnitComplex::identity()),
         }
     }
 
+    #[inline]
     pub fn from_rotation(rot: na::UnitComplex<f32>) -> Self {
         Local2 {
             iso: na::Isometry2::from_parts(na::Translation2::identity(), rot),
@@ -80,43 +84,52 @@ impl Display for Global2 {
 
 #[cfg(feature = "2d")]
 impl Global2 {
+    #[inline]
     pub fn identity() -> Self {
         Global2 {
             iso: na::Isometry2::identity(),
         }
     }
 
+    #[inline]
     pub fn is_identity(&self) -> bool {
         self.iso == na::Isometry2::identity()
     }
 
+    #[inline]
     pub fn new(iso: na::Isometry2<f32>) -> Self {
         Global2 { iso }
     }
 
+    #[inline]
     pub fn append_iso(&mut self, iso: &na::Isometry2<f32>) -> &mut Self {
         self.iso *= iso;
         self
     }
 
+    #[inline]
     pub fn append_translation(&mut self, translation: &na::Translation2<f32>) -> &mut Self {
         self.iso *= translation;
         self
     }
 
+    #[inline]
     pub fn append_rotation(&mut self, rot: &na::UnitComplex<f32>) -> &mut Self {
         self.iso *= rot;
         self
     }
 
+    #[inline]
     pub fn append_local(&mut self, local: &Local2) -> &mut Self {
         self.append_iso(&local.iso)
     }
 
+    #[inline]
     pub fn to_homogeneous(&self) -> na::Matrix4<f32> {
         self.iso.to_homogeneous().to_homogeneous()
     }
 
+    #[inline]
     pub fn to_affine(&self) -> na::Affine2<f32> {
         na::Affine2::from_matrix_unchecked(self.iso.to_homogeneous())
     }
@@ -124,6 +137,7 @@ impl Global2 {
 
 #[cfg(feature = "2d")]
 impl From<na::Point2<f32>> for Global2 {
+    #[inline]
     fn from(point: na::Point2<f32>) -> Self {
         Global2 {
             iso: na::Isometry2::from(point),
@@ -133,6 +147,7 @@ impl From<na::Point2<f32>> for Global2 {
 
 #[cfg(feature = "2d")]
 impl From<na::Isometry2<f32>> for Global2 {
+    #[inline]
     fn from(iso: na::Isometry2<f32>) -> Self {
         Global2 { iso }
     }
@@ -147,16 +162,14 @@ pub struct Local3 {
 #[cfg(feature = "3d")]
 impl Relation for Local3 {
     const EXCLUSIVE: bool = true;
-
-    fn on_target_drop(entity: EntityId, _target: EntityId, encoder: &mut ActionEncoder) {
-        encoder.despawn(entity);
-    }
+    const OWNED: bool = true;
 }
 
 #[cfg(feature = "3d")]
 impl Display for Local3 {
+    #[inline]
     fn fmt(&self, fmt: &mut fmt::Formatter<'_>) -> fmt::Result {
-        write!(fmt, "{}@{}", self.parent, self.iso)
+        Display::fmt(&self.iso, fmt)
     }
 }
 
@@ -268,155 +281,201 @@ impl From<na::Isometry3<f32>> for Global3 {
 }
 
 #[cfg(feature = "2d")]
-fn scene_system2(
-    roots_modified: QueryRef<(Modified<&Global2>, Related<ChildOf>), FilterNotRelates<ChildOf>>,
-    modified: QueryRef<Modified<&Local2>, (FilterRelates<ChildOf>, With<Global2>)>,
-    children: QueryRef<Related<ChildOf>, (With<Local2>, With<Global2>)>,
-    update: QueryRef<(RelatesExclusive<&ChildOf>, &Local2, Alt<Global2>)>,
-    read_global: QueryRef<&Global2>,
+pub fn scene_system2(
+    mut roots_modified: QueryRef<
+        (Entities, Modified<&Global2>, Related<ChildOf>),
+        FilterNotRelates<ChildOf>,
+    >,
+    mut modified: QueryRef<(
+        Entities,
+        RelatesExclusive<&ChildOf>,
+        Modified<&Local2>,
+        &Global2,
+    )>,
+    mut children: QueryRef<Related<ChildOf>, (With<Local2>, With<Global2>)>,
+    mut global: QueryRef<&Global2>,
+    mut update: QueryRef<(&Local2, Alt<Global2>)>,
     scope: &mut ScopedAllocator,
 ) {
-    use hashbrown::{hash_map::Entry, HashMap};
+    use std::collections::VecDeque;
 
-    let mut to_update = Vec::new_in(&**scope);
-    let mut visiting_counter = HashMap::new_in(&**scope);
+    let mut subtrees =
+        HashMap::<EntityId, (EntityId, Vec<(EntityId, EntityId), _>), _, _>::new_in(&**scope);
+    let mut visited = HashSet::new_in(&**scope);
+    let mut to_visit = Vec::new_in(&**scope);
+    let mut globals = HashMap::new_in(&**scope);
 
-    roots_modified.for_each(|(global, children)| {
+    roots_modified.for_each(|(entity, global, children)| {
+        globals.insert(entity, *global);
         for &child in children {
-            *visiting_counter.entry(child).or_insert(0) += 1;
-            to_update.push(child);
+            to_visit.push((entity, child));
         }
     });
+    drop(roots_modified);
 
-    let mut i = 0;
-    while i < to_update.len() {
-        let entity = to_update[i];
+    modified.for_each(|(entity, (ChildOf, parent), _local, global)| {
+        globals.insert(entity, *global);
+        to_visit.push((parent, entity));
+    });
+    drop(modified);
 
-        if let Ok(children) = children.one(entity) {
-            for &child in children {
-                let counter = visiting_counter.entry(child).or_insert(0);
-                *counter += 1;
-                debug_assert_eq!(*counter, 1, "Two roots in hierarchy");
-                to_update.push(child);
-            }
-        }
-
-        i += 1;
-    }
-
-    for (entity, _local) in modified {
-        if visiting_counter.contains_key(&entity) {
+    for (parent, entity) in to_visit.drain(..) {
+        if !visited.insert(entity) {
             continue;
         }
 
-        match visiting_counter.entry(entity) {
-            Entry::Occupied(_) => continue,
-            Entry::Vacant(entry) => {
-                entry.insert(1);
-                to_update.push(entity);
-            }
-        }
-    }
+        let mut subtree = Vec::new_in(&**scope);
 
-    while i < to_update.len() {
-        let entity = to_update[i];
+        let mut to_visit = VecDeque::new_in(&**scope);
 
-        if let Ok(children) = children.one(entity) {
-            for &child in children {
-                *visiting_counter.entry(child).or_insert(0) += 1;
-                to_update.push(child);
+        if let Ok(children) = children.get_one(entity) {
+            for child in children {
+                to_visit.push_back((entity, *child));
             }
         }
 
-        i += 1;
+        while let Some((parent, entity)) = to_visit.pop_front() {
+            subtree.push((parent, entity));
+
+            match subtrees.get(&entity) {
+                None => {
+                    let old = visited.insert(entity);
+                    debug_assert!(old, "Entity visited twice");
+                    if let Ok(children) = children.get_one(entity) {
+                        for child in children {
+                            to_visit.push_back((entity, *child));
+                        }
+                    }
+                }
+                Some((e, child_subtree)) => {
+                    debug_assert!(visited.contains(&entity));
+                    debug_assert_eq!(*e, entity);
+                    subtree.extend_from_slice(child_subtree);
+                }
+            }
+        }
+
+        subtrees.insert(entity, (parent, subtree));
     }
+    drop(to_visit);
+    drop(visited);
 
-    for entity in to_update {
-        let counter = &mut visiting_counter[&entity];
-        *counter -= 1;
+    for (_, (parent, _)) in &subtrees {
+        globals
+            .entry(*parent)
+            .or_insert_with(|| global.get_one_copied(*parent).unwrap());
+    }
+    drop(global);
 
-        if *counter == 0 {
-            let ((_, parent), local, global) = update.one(entity).unwrap();
+    for (entity, (parent, subtree)) in subtrees {
+        let (local, mut global) = update.get_one(entity).unwrap();
+        global.iso = globals[&parent].iso * local.iso;
+        globals.insert(entity, *global);
 
-            let parent_global = read_global.one(parent).unwrap();
-            global.iso = parent_global.iso * local.iso;
+        for (parent, entity) in subtree {
+            let (local, mut global) = update.get_one(entity).unwrap();
+            global.iso = globals[&parent].iso * local.iso;
+            globals.insert(entity, *global);
         }
     }
 }
 
 #[cfg(feature = "3d")]
-fn scene_system3(
-    roots_modified: QueryRef<(Modified<&Global3>, Related<ChildOf>), FilterNotRelates<ChildOf>>,
-    modified: QueryRef<Modified<&Local3>, (FilterRelates<ChildOf>, With<Global3>)>,
-    children: QueryRef<Related<ChildOf>, (With<Local3>, With<Global3>)>,
-    update: QueryRef<(RelatesExclusive<&ChildOf>, &Local3, Alt<Global3>)>,
-    read_global: QueryRef<&Global3>,
+pub fn scene_system3(
+    mut roots_modified: QueryRef<
+        (Entities, Modified<&Global3>, Related<ChildOf>),
+        FilterNotRelates<ChildOf>,
+    >,
+    mut modified: QueryRef<(
+        Entities,
+        RelatesExclusive<&ChildOf>,
+        Modified<&Local3>,
+        &Global3,
+    )>,
+    mut children: QueryRef<Related<ChildOf>, (With<Local3>, With<Global3>)>,
+    mut global: QueryRef<&Global3>,
+    mut update: QueryRef<(&Local3, Alt<Global3>)>,
     scope: &mut ScopedAllocator,
 ) {
-    use hashbrown::{hash_map::Entry, HashMap};
+    use std::collections::VecDeque;
 
-    let mut to_update = Vec::new_in(&**scope);
-    let mut visiting_counter = HashMap::new_in(&**scope);
+    let mut subtrees =
+        HashMap::<EntityId, (EntityId, Vec<(EntityId, EntityId), _>), _, _>::new_in(&**scope);
+    let mut visited = HashSet::new_in(&**scope);
+    let mut to_visit = Vec::new_in(&**scope);
+    let mut globals = HashMap::new_in(&**scope);
 
-    roots_modified.for_each(|(global, children)| {
+    roots_modified.for_each(|(entity, global, children)| {
+        globals.insert(entity, *global);
         for &child in children {
-            *visiting_counter.entry(child).or_insert(0) += 1;
-            to_update.push(child);
+            to_visit.push((entity, child));
         }
     });
+    drop(roots_modified);
 
-    let mut i = 0;
-    while i < to_update.len() {
-        let entity = to_update[i];
+    modified.for_each(|(entity, (ChildOf, parent), _local, global)| {
+        globals.insert(entity, *global);
+        to_visit.push((parent, entity));
+    });
+    drop(modified);
 
-        if let Ok(children) = children.one(entity) {
-            for &child in children {
-                let counter = visiting_counter.entry(child).or_insert(0);
-                *counter += 1;
-                debug_assert_eq!(*counter, 1, "Two roots in hierarchy");
-                to_update.push(child);
-            }
-        }
-
-        i += 1;
-    }
-
-    for (entity, _local) in modified {
-        if visiting_counter.contains_key(&entity) {
+    for (parent, entity) in to_visit.drain(..) {
+        if !visited.insert(entity) {
             continue;
         }
 
-        match visiting_counter.entry(entity) {
-            Entry::Occupied(_) => continue,
-            Entry::Vacant(entry) => {
-                entry.insert(1);
-                to_update.push(entity);
-            }
-        }
-    }
+        let mut subtree = Vec::new_in(&**scope);
 
-    while i < to_update.len() {
-        let entity = to_update[i];
+        let mut to_visit = VecDeque::new_in(&**scope);
 
-        if let Ok(children) = children.one(entity) {
-            for &child in children {
-                *visiting_counter.entry(child).or_insert(0) += 1;
-                to_update.push(child);
+        if let Ok(children) = children.get_one(entity) {
+            for child in children {
+                to_visit.push_back((entity, *child));
             }
         }
 
-        i += 1;
+        while let Some((parent, entity)) = to_visit.pop_front() {
+            subtree.push((parent, entity));
+
+            match subtrees.get(&entity) {
+                None => {
+                    let old = visited.insert(entity);
+                    debug_assert!(old, "Entity visited twice");
+                    if let Ok(children) = children.get_one(entity) {
+                        for child in children {
+                            to_visit.push_back((entity, *child));
+                        }
+                    }
+                }
+                Some((e, child_subtree)) => {
+                    debug_assert!(visited.contains(&entity));
+                    debug_assert_eq!(*e, entity);
+                    subtree.extend_from_slice(child_subtree);
+                }
+            }
+        }
+
+        subtrees.insert(entity, (parent, subtree));
     }
+    drop(to_visit);
+    drop(visited);
 
-    for entity in to_update {
-        let counter = &mut visiting_counter[&entity];
-        *counter -= 1;
+    for (_, (parent, _)) in &subtrees {
+        globals
+            .entry(*parent)
+            .or_insert_with(|| global.get_one_copied(*parent).unwrap());
+    }
+    drop(global);
 
-        if *counter == 0 {
-            let ((_, parent), local, global) = update.one(entity).unwrap();
+    for (entity, (parent, subtree)) in subtrees {
+        let (local, mut global) = update.get_one(entity).unwrap();
+        global.iso = globals[&parent].iso * local.iso;
+        globals.insert(entity, *global);
 
-            let parent_global = read_global.one(parent).unwrap();
-            global.iso = parent_global.iso * local.iso;
+        for (parent, entity) in subtree {
+            let (local, mut global) = update.get_one(entity).unwrap();
+            global.iso = globals[&parent].iso * local.iso;
+            globals.insert(entity, *global);
         }
     }
 }

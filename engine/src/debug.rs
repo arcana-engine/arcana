@@ -1,5 +1,9 @@
+// use std::marker::PhantomData;
+
+// use edict::query::QueryItem;
+
 use {
-    edict::{entity::EntityId, world::World},
+    edict::entity::EntityId,
     std::fmt::{self, Display},
 };
 
@@ -40,47 +44,43 @@ impl Display for EntityDebugInfo<'_> {
     }
 }
 
-pub struct EntityRefDebugInfo<'a> {
-    entity: EntityId,
-    info: &'a DebugInfo,
-}
+// pub struct EntityRefDebugInfo<'a> {
+//     entity: EntityId,
+//     info: QueryItem<'a, PhantomData<fn() -> &'a DebugInfo>>,
+// }
 
-impl<'a> EntityRefDebugInfo<'a> {
-    pub fn new(entity: EntityId, info: &'a DebugInfo) -> Self {
-        EntityRefDebugInfo { entity, info }
-    }
+// impl<'a> EntityRefDebugInfo<'a> {
+//     pub fn fetch(entity: EntityId, world: &'a mut World) -> Option<Self> {
+//         let info = world.query_one_mut::<&DebugInfo>(entity).ok()?;
+//         Some(EntityRefDebugInfo { entity, info })
+//     }
+// }
 
-    pub fn fetch(entity: EntityId, world: &'a World) -> Option<Self> {
-        let info = world.query_one::<&DebugInfo>(entity).ok()?;
-        Some(EntityRefDebugInfo { entity, info })
-    }
-}
+// impl Display for EntityRefDebugInfo<'_> {
+//     fn fmt(&self, fmt: &mut fmt::Formatter<'_>) -> fmt::Result {
+//         match (fmt.alternate(), &self.info.description) {
+//             (true, Some(description)) => {
+//                 write!(
+//                     fmt,
+//                     "{{ {} : {} - {} }}",
+//                     self.info.name, self.entity, description
+//                 )
+//             }
 
-impl Display for EntityRefDebugInfo<'_> {
-    fn fmt(&self, fmt: &mut fmt::Formatter<'_>) -> fmt::Result {
-        match (fmt.alternate(), &self.info.description) {
-            (true, Some(description)) => {
-                write!(
-                    fmt,
-                    "{{ {} : {} - {} }}",
-                    self.info.name, self.entity, description
-                )
-            }
+//             _ => write!(fmt, "{{ {} : {} }}", self.info.name, self.entity),
+//         }
+//     }
+// }
 
-            _ => write!(fmt, "{{ {} : {} }}", self.info.name, self.entity),
-        }
-    }
-}
+// pub trait WorldExt {
+//     fn entity_display(&self, entity: EntityId) -> Option<EntityRefDebugInfo<'_>>;
+// }
 
-pub trait WorldExt {
-    fn entity_display(&self, entity: EntityId) -> Option<EntityRefDebugInfo<'_>>;
-}
-
-impl WorldExt for World {
-    fn entity_display(&self, entity: EntityId) -> Option<EntityRefDebugInfo<'_>> {
-        EntityRefDebugInfo::fetch(entity, self)
-    }
-}
+// impl WorldExt for World {
+//     fn entity_display(&self, entity: EntityId) -> Option<EntityRefDebugInfo<'_>> {
+//         EntityRefDebugInfo::fetch(entity, self)
+//     }
+// }
 
 pub trait EntityDisplay {
     fn display<'a>(&self, info: &'a DebugInfo) -> EntityDebugInfo<'a>;

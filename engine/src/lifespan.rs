@@ -1,4 +1,4 @@
-use edict::{prelude::ActionEncoder, system::Res, world::QueryRef};
+use edict::{prelude::ActionEncoder, query::Entities, system::Res, world::QueryRef};
 
 use crate::{
     clocks::{ClockIndex, TimeSpan},
@@ -24,13 +24,13 @@ impl LifeSpan {
 
 pub fn lifetime_system(
     clock: Res<ClockIndex>,
-    query: QueryRef<&mut LifeSpan>,
-    encoder: &mut ActionEncoder,
+    mut query: QueryRef<(Entities, &mut LifeSpan)>,
+    mut encoder: ActionEncoder,
     scope: &mut ScopedAllocator,
 ) {
     let mut despawn = Vec::new_in(&**scope);
 
-    for (e, ls) in query {
+    for (e, ls) in query.iter_mut() {
         if ls.left > clock.delta {
             ls.left -= clock.delta;
         } else {

@@ -136,6 +136,7 @@ pub mod renderer;
 mod format;
 mod material;
 mod scale;
+mod target;
 mod texture;
 mod upload;
 mod vertex;
@@ -151,18 +152,22 @@ use std::{
 
 use bitsetium::{BitEmpty, BitSearch, BitUnset, Bits1024};
 use bytemuck::Pod;
-use raw_window_handle::HasRawWindowHandle;
+use edict::{EntityId, World};
+use raw_window_handle::{HasRawDisplayHandle, HasRawWindowHandle};
 use scoped_arena::Scope;
 use sierra::{
     Access, Buffer, BufferInfo, CommandBuffer, CreateSurfaceError, Device, Encoder, Extent3, Fence,
-    Format, Image, ImageInfo, ImageUsage, Layout, Offset3, OutOfMemory, PipelineStages, PresentOk,
-    Queue, Semaphore, SingleQueueQuery, SubresourceLayers, Surface, SwapchainImage,
+    Format, Image, ImageInfo, ImageUsage, Layout, Offset3, OutOfMemory, PipelineStages,
+    PresentMode, PresentOk, Queue, Semaphore, SingleQueueQuery, SubresourceLayers, Surface,
+    SwapchainImage,
 };
 
 pub use sierra::VertexInputRate;
 
+use crate::window::Windows;
+
 use self::upload::Uploader;
-pub use self::{format::*, material::*, scale::*, texture::*, vertex::*};
+pub use self::{format::*, material::*, scale::*, target::*, texture::*, vertex::*};
 
 #[cfg(feature = "3d")]
 pub use self::mesh::*;
@@ -210,12 +215,12 @@ impl Graphics {
 
 impl Graphics {
     /// Returns newly created surface for a window.
-    #[tracing::instrument(skip(self, window))]
     pub fn create_surface(
         &self,
         window: &impl HasRawWindowHandle,
+        display: &impl HasRawDisplayHandle,
     ) -> Result<Surface, CreateSurfaceError> {
-        self.device.graphics().create_surface(window)
+        self.device.graphics().create_surface(window, display)
     }
 
     #[inline]
@@ -420,4 +425,67 @@ pub struct UploadImage<'a> {
     pub format: Format,
     pub row_length: u32,
     pub image_height: u32,
+}
+
+/// Returns new viewport instance attached to specified camera.
+pub fn spawn_window_render_target(
+    window: &winit::window::Window,
+    world: &mut World,
+    windows: &mut Windows,
+) -> eyre::Result<EntityId> {
+    let mut graphics = world.expect_resource_mut::<Graphics>();
+
+    let mut surface = graphics.create_surface(window, window)?;
+    let mut swapchain = graphics.create_swapchain(&mut surface)?;
+
+    drop(graphics);
+
+    let format = swapchain
+        .capabilities()
+        .formats
+        .iter()
+        .filter(|format| {
+            format.is_color()
+                && matches!(
+                    format.description().channels,
+                    sierra::Channels::RGBA
+                        | sierra::Channels::BGRA
+                        | sierra::Channels::RGB
+                        | sierra::Channels::BGR
+                )
+        })
+        .max_by_key(|format| match format.description().channels {
+            sierra::Channels::RGBA | sierra::Channels::BGRA => 0,
+            sierra::Channels::BGR | sierra::Channels::RGB => 1,
+            _ => unreachable!(),
+        } + match format.description().ty {
+            sierra::Type::Srgb => 4,
+            sierra::Type::Sint => 0,
+            sierra::Type::Unorm => 2,
+            sierra::Type::Snorm => 2,
+            _ => 0,
+        });
+
+    match format {
+        None => {
+            return Err(eyre::eyre!(
+                "Failed to find suitable format. Supported formats are {:?}",
+                swapchain.capabilities().formats
+            ))
+        }
+        Some(format) => {
+            swapchain.configure(ImageUsage::COLOR_ATTACHMENT, *format, PresentMode::Fifo)?;
+        }
+    }
+
+    let id = windows.spawn(window, world);
+    world.insert_bundle(
+        id,
+        (
+            SurfaceSwapchain::new(surface, swapchain),
+            RenderTarget::new_swapchain(),
+        ),
+    );
+
+    Ok(id)
 }

@@ -1,11 +1,11 @@
-use edict::entity::EntityId;
+use edict::{entity::EntityId, Component, Entities};
 use sierra::{
     graphics_pipeline_desc, mat4, vec4, DepthTest, Descriptors, DynamicGraphicsPipeline, Encoder,
     Extent2, FragmentShader, ImageView, PipelineInput, RenderPassEncoder, Sampler,
     ShaderModuleInfo, ShaderRepr, VertexShader,
 };
 
-use super::{mat4_na_to_sierra, DrawNode, RendererContext};
+use super::{mat4_na_to_sierra, DrawNode, RenderContext};
 use crate::{
     camera::Camera3,
     graphics::{
@@ -63,6 +63,7 @@ struct BasicPipeline {
     set: BasicDescriptors,
 }
 
+#[derive(Component)]
 struct BasicRenderable {
     descriptors: <BasicDescriptors as Descriptors>::Instance,
 }
@@ -70,16 +71,18 @@ struct BasicRenderable {
 impl DrawNode for BasicDraw {
     fn draw<'a, 'b: 'a>(
         &'b mut self,
-        cx: RendererContext<'a, 'b>,
+        cx: RenderContext<'a, 'b>,
         encoder: &mut Encoder<'a>,
         render_pass: &mut RenderPassEncoder<'_, 'b>,
         camera: EntityId,
-        _viewport: Extent2,
+        viewport: Extent2,
     ) -> eyre::Result<()> {
-        let (global, camera) = cx.world.query_one::<(&Global3, &Camera3)>(&camera)?;
+        let (global, camera) = cx.world.query_one_mut::<(&Global3, &Camera3)>(camera)?;
 
         let view = global.iso.inverse().to_homogeneous();
-        let proj = camera.proj().to_homogeneous();
+        let proj = camera
+            .proj(viewport.width as f32 / viewport.height as f32)
+            .to_homogeneous();
 
         let mut uniforms = Uniforms {
             camera_view: mat4_na_to_sierra(view),
@@ -89,13 +92,14 @@ impl DrawNode for BasicDraw {
 
         let mut new_entities = Vec::new_in(&*cx.scope);
 
-        for (e, ()) in cx
+        for e in cx
             .world
-            .query_mut::<()>()
+            .query_mut::<Entities>()
             .with::<Mesh>()
             .with::<Material>()
             .with::<Global3>()
             .without::<BasicRenderable>()
+            .iter()
         {
             new_entities.push(e);
         }
@@ -106,8 +110,8 @@ impl DrawNode for BasicDraw {
 
         for e in new_entities {
             cx.world
-                .try_insert(
-                    &e,
+                .insert(
+                    e,
                     BasicRenderable {
                         descriptors: self.pipeline_layout.set.instance(),
                     },
@@ -115,7 +119,10 @@ impl DrawNode for BasicDraw {
                 .unwrap();
         }
 
-        render_pass.bind_dynamic_graphics_pipeline(&mut self.pipeline, cx.graphics)?;
+        render_pass.bind_dynamic_graphics_pipeline(
+            &mut self.pipeline,
+            &mut cx.world.expect_resource_mut::<Graphics>(),
+        )?;
 
         let query = cx.world.query_mut::<(
             &Mesh,
@@ -126,7 +133,7 @@ impl DrawNode for BasicDraw {
         )>();
 
         // let mut drawn_count = 0;
-        for (_, (mesh, mat, global, renderable, scale)) in query {
+        for (mesh, mat, global, renderable, scale) in query.iter_mut() {
             uniforms.albedo_factor = mat.albedo_factor.into();
 
             if let Some(albedo) = mat.albedo.clone() {
@@ -146,7 +153,7 @@ impl DrawNode for BasicDraw {
                         albedo: albedo.image,
                         uniforms,
                     },
-                    &*cx.graphics,
+                    &cx.world.expect_resource::<Graphics>(),
                     &mut *encoder,
                 )?;
 

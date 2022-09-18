@@ -1,11 +1,12 @@
 use std::hash::{Hash, Hasher};
 
+use edict::Component;
 use goods::AssetField;
 use ordered_float::OrderedFloat;
 
 use super::texture::Texture;
 
-#[derive(Clone, Debug, AssetField)]
+#[derive(Clone, Debug, AssetField, Component)]
 pub struct Material {
     #[asset(container)]
     pub metalness_roughness: Option<Texture>,

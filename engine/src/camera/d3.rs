@@ -15,9 +15,6 @@ use crate::scene::Global3;
 pub struct Camera3 {
     kind: Kind,
 
-    /// Viewport aspect ratio.
-    aspect: f32,
-
     /// Vertical Field of View
     fovy: f32,
 
@@ -26,8 +23,6 @@ pub struct Camera3 {
 
     /// Farthest visible distance
     zfar: f32,
-
-    proj: na::Projective3<f32>,
 }
 
 #[derive(Clone, Copy, Debug)]
@@ -39,72 +34,56 @@ enum Kind {
 impl Default for Camera3 {
     #[inline]
     fn default() -> Self {
-        Camera3::perspective(1.0, std::f32::consts::FRAC_PI_2, 1.0, 100.0)
+        Camera3::perspective(std::f32::consts::FRAC_PI_2, 1.0, 100.0)
     }
 }
 
 impl Camera3 {
     /// Constructs perspective [`Camera3`].
-    pub fn perspective(aspect: f32, fovy: f32, znear: f32, zfar: f32) -> Self {
-        let proj = na::Perspective3::new(aspect, fovy, znear, zfar).to_projective();
+    pub fn perspective(fovy: f32, znear: f32, zfar: f32) -> Self {
         Camera3 {
-            aspect,
             fovy,
             znear,
             zfar,
             kind: Kind::Perspective,
-            proj,
         }
     }
 
     /// Constructs orthographic [`Camera3`].
-    pub fn orthographic(aspect: f32, fovy: f32, znear: f32, zfar: f32) -> Self {
-        let top = fovy * 0.5;
-        let bottom = -top;
-        let right = top * aspect * 0.5;
-        let left = -right;
-        let proj = na::Orthographic3::new(left, right, bottom, top, znear, zfar).to_projective();
+    pub fn orthographic(fovy: f32, znear: f32, zfar: f32) -> Self {
         Camera3 {
-            aspect,
             fovy,
             znear,
             zfar,
             kind: Kind::Orthographic,
-            proj,
         }
     }
 
     #[inline]
-    pub fn proj(&self) -> &na::Projective3<f32> {
-        &self.proj
-    }
-
-    /// Update aspect ration of the camera.
-    #[inline]
-    pub fn set_aspect(&mut self, aspect: f32) {
-        self.aspect = aspect;
-        self.update_proj();
+    pub fn proj(&self, aspect: f32) -> na::Projective3<f32> {
+        let top = self.fovy * 0.5;
+        let bottom = -top;
+        let right = top * aspect * 0.5;
+        let left = -right;
+        na::Orthographic3::new(left, right, bottom, top, self.znear, self.zfar).to_projective()
     }
 
     /// Update aspect ration of the camera.
     #[inline]
     pub fn set_fovy(&mut self, fovy: f32) {
         self.fovy = fovy;
-        self.update_proj();
     }
 
     /// Update aspect ration of the camera.
     #[inline]
     pub fn set_znear(&mut self, znear: f32) {
         self.znear = znear;
-        self.update_proj();
     }
 
     /// Update aspect ration of the camera.
     #[inline]
     pub fn set_zfar(&mut self, zfar: f32) {
         self.zfar = zfar;
-        self.update_proj();
     }
 
     /// Converts point in world space into point in screen space.
@@ -114,8 +93,9 @@ impl Camera3 {
         &self,
         view: &na::Affine3<f32>,
         point: &na::Point3<f32>,
+        aspect: f32,
     ) -> na::Point3<f32> {
-        self.proj
+        self.proj(aspect)
             .transform_point(&view.inverse_transform_point(point))
     }
 
@@ -126,8 +106,9 @@ impl Camera3 {
         &self,
         view: &na::Affine3<f32>,
         point: &na::Point3<f32>,
+        aspect: f32,
     ) -> na::Point3<f32> {
-        view.transform_point(&self.proj.inverse_transform_point(point))
+        view.transform_point(&self.proj(aspect).inverse_transform_point(point))
     }
 
     /// Converts point in screen space into ray in world space.
@@ -137,29 +118,13 @@ impl Camera3 {
         &self,
         view: &na::Affine3<f32>,
         point: &na::Point2<f32>,
+        aspect: f32,
     ) -> parry3d::query::Ray {
-        let origin = self.screen_to_world(view, &na::Point3::new(point.x, point.y, 0.0));
-        let target = self.screen_to_world(view, &na::Point3::new(point.x, point.y, 1.0));
+        let origin = self.screen_to_world(view, &na::Point3::new(point.x, point.y, 0.0), aspect);
+        let target = self.screen_to_world(view, &na::Point3::new(point.x, point.y, 1.0), aspect);
         let dir = (target - origin).normalize();
 
         parry3d::query::Ray { origin, dir }
-    }
-
-    fn update_proj(&mut self) {
-        match self.kind {
-            Kind::Perspective => {
-                self.proj = na::Perspective3::new(self.aspect, self.fovy, self.znear, self.zfar)
-                    .to_projective();
-            }
-            Kind::Orthographic => {
-                let top = self.fovy * 0.5;
-                let bottom = -top;
-                let right = top * self.aspect * 0.5;
-                let left = -right;
-                self.proj = na::Orthographic3::new(left, right, bottom, top, self.znear, self.zfar)
-                    .to_projective();
-            }
-        }
     }
 }
 

@@ -8,6 +8,7 @@ use std::{borrow::Cow, convert::TryFrom as _, mem::size_of_val, ops::Range, sync
 use std::mem::size_of;
 
 use bytemuck::cast_slice;
+use edict::Component;
 use scoped_arena::Scope;
 use sierra::{
     AccelerationStructure, AccelerationStructureBuildFlags, AccelerationStructureBuildGeometryInfo,
@@ -149,7 +150,7 @@ impl MeshBuilder {
     }
 }
 
-#[derive(Clone, Debug, Hash, PartialEq, Eq)]
+#[derive(Clone, Debug, Hash, PartialEq, Eq, Component)]
 pub struct Mesh {
     bindings: Arc<[Binding]>,
     indices: Option<Indices>,
